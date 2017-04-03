@@ -159,48 +159,18 @@ static inline void testAgainstP( std::shared_ptr<CODEC8> codec, std::ofstream &t
 
 	// output tex graph
 	if (tex) {
-		tex << "\\begin{tikzpicture} ";
-		tex << "\\begin{semilogyaxis}[title=" << codec->name() <<", title style={yshift=-1mm},";
-		tex << "\\customChartSize, "; 
-		tex << "log origin=infty, ";
-		tex << "log ticks with fixed point, ";
-		tex << "scale only axis, ";
-		tex << "ybar=0pt, ";
-		tex << "enlargelimits=false, ";
-		tex << "bar width=5pt, ";
-		tex << "ymin=0.021544, ymax=46.416, xmin=0, xmax=100, ";
-		tex << "ymajorgrids, major grid style={dotted, gray}, ";
-		tex << "axis y line=right, ";
-		tex << "x tick label style={font={\\footnotesize},yshift=1mm}, "; 
-		tex << "y tick label style={font={\\footnotesize},xshift=-1mm}, "; 
-        tex << "xtick=data, ";
-		tex << "ylabel={\\emph{GB/s}}, ";
-		tex << "xlabel={\\emph{H (\\%)}}, ";
-        tex << "ylabel style={font={\\footnotesize},at={(+0.895,0.5)}}, "; 
-        tex << "xlabel style={font={\\footnotesize},yshift=5.25mm, xshift=29mm}, "; 
-		tex << "]" << std::endl;
+		tex << "\\compfig{" << codec->name() << "}{ " << std::endl;
 		tex << "\\addplot coordinates {";
 		for (auto &c : C) tex << "("<<c.first*100<<","<<c.second/(1<<30)<<") ";
 		tex << "};" << std::endl;
 		tex << "\\addplot coordinates {";
 		for (auto &c : D) tex << "("<<c.first*100<<","<<c.second/(1<<30)<<") ";
 		tex << "};" << std::endl;
-		tex << "\\end{semilogyaxis} ";
-		tex << "\\begin{axis}[  ";
-		tex << "\\customChartSize, "; 
-		tex << "scale only axis, ";
-		tex << "axis x line=none, ";
-		tex << "axis y line*=left, ";
-		tex << "ymin=0,ymax=100,xmin=0,xmax=100,enlargelimits=false, ";
-        tex << "y tick label style={font={\\footnotesize},xshift=1mm}, "; 
-		tex << "y label style={font={\\footnotesize},at={(+0.105,0.5)}}, ";
-		tex << "ylabel={\\emph{efficiency (\\%)}}, ";
-		tex << "]" << std::endl;
+		tex << "}{" << std::endl;
 		tex << "\\addplot+[line width=2pt,teal, mark=none] coordinates {";
 		for (auto &c : E) tex << "("<<c.first*100<<","<<c.second*100<<") ";
 		tex << "};" << std::endl;
-		tex << "\\end{axis} ";
-		tex << "\\end{tikzpicture}%" << std::endl;
+		tex << "}%" << std::endl;
 	}
 }
 
@@ -269,16 +239,15 @@ using namespace std;
 int main( int , char *[] ) {
 		
 	std::vector<shared_ptr<CODEC8>> C = {
-//		std::make_shared<RLE>(),
 		std::make_shared<Nibble>(),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,   9),
+		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,   9),
 		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  16),
+		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  16),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL, 9),
 		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,16),
 		std::make_shared<Rice>(),
-//		std::make_shared<RLE>(),
+		std::make_shared<RLE>(),
 		std::make_shared<Snappy>(),
 		std::make_shared<Nibble>(),
 //		std::make_shared<CODEC8>(),
@@ -288,7 +257,7 @@ int main( int , char *[] ) {
 		std::make_shared<Gipfeli>(),
 		std::make_shared<Gzip>(),
 		std::make_shared<Lzo>(),
-//		std::make_shared<Huff0>(),
+		std::make_shared<Huff0>(),
 		std::make_shared<Lz4>(),
 		std::make_shared<Zstd>(),
 		std::make_shared<CharLS>(),
@@ -316,11 +285,22 @@ int main( int , char *[] ) {
 
 	tex << "\\newcommand{\\customChartSize}{height=3cm, width=5cm,}" << endl;
 
+	tex << R"ML(
+		\newcommand {\compfig}[3]{
+		\begin{tikzpicture} \begin{semilogyaxis}[title=#1, title style={yshift=-1mm},\customChartSize, log origin=infty, log ticks with fixed point, scale only axis, ybar=0pt, enlargelimits=false, bar width=5pt, ymin=0.021544, ymax=46.416, xmin=0, xmax=100, ymajorgrids, major grid style={dotted, gray}, axis y line=right, x tick label style={font={\footnotesize},yshift=1mm}, y tick label style={font={\footnotesize},xshift=-1mm}, xtick=data, ylabel={\emph{GiB/s}}, xlabel={\emph{H(\%)}}, ylabel style={font={\footnotesize},yshift=4mm}, xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}, ]
+		#2
+		\end{semilogyaxis} \begin{axis}[  \customChartSize, scale only axis, axis x line=none, axis y line*=left, ymin=0,ymax=100,xmin=0,xmax=100,enlargelimits=false, y tick label style={font={\footnotesize},xshift=1mm}, y label style={font={\footnotesize},yshift=-3mm}, ylabel={\emph{efficiency (\%)}}, ]
+		#3
+		\end{axis} \end{tikzpicture}
+		})ML";
 
 	tex << "\\begin{figure}" << "  ";
 	tex << "\\centering" << "  ";
-	for (auto c : C) 
+	int idx = 0;
+	for (auto c : C) {
+//		if (idx++%2) tex << "%" << std::endl;
 		testAgainstP(c, tex);
+	}
 	tex << "\\caption{";tex << "}" << std::endl;
 	tex << "\\label{fig:";tex << "}" << std::endl;
 	tex << "\\end{figure}" << std::endl << std::endl;
