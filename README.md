@@ -10,8 +10,8 @@ make bin/dcc2017 && bin/dcc2017
 
 It will generate a lot of results and checks, and also will generate a tex file with lots of graphs in the format used for the paper.
 
-Please, note that, although I tried to make the code as clear as possible, it is still a research code, and thus it is not as thouroughly documented as it would be if it was a readily available algorithm.
-On the other hand, this respository includes wrappers over 12 other compression algorithms, including rice encoding, nibble encoding, and rle which have been coded from scratch and achieve compelling performance too.
+Please note that, although I tried to make the code as clear as possible, this is still research code, and thus it is not as thouroughly documented as it should be.
+On the other hand, this respository includes wrappers over 12 other compression algorithms, including rice encoding, nibble encoding, and rle which have been coded from scratch and achieve quite good performance.
 
-For any questions about the code, please mail me  manuel (dot) martinez (at) kit (dot) edu. 
+For questions about the code, please mail me  manuel (dot) martinez (at) kit (dot) edu. 
 
