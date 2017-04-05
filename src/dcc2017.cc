@@ -275,13 +275,9 @@ int main( int , char *[] ) {
 		C["marlin16"],
 	);*/
 
-
-	
-	
-
 	ofstream tex("out.tex");
 	
-	tex << "\\documentclass{article}" << endl << "\\usepackage{tikz}" << endl << "\\usepackage{pgfplots}" << endl << "\\begin{document}" << endl;	
+	tex << "\\documentclass{article}" << endl << "\\usepackage[a4paper, landscape, margin=0cm]{geometry}" << endl << "\\usepackage{tikz}" << endl << "\\usepackage{pgfplots}" << endl << "\\begin{document}" << endl;	
 
 	tex << "\\newcommand{\\customChartSize}{height=3cm, width=5cm,}" << endl;
 
