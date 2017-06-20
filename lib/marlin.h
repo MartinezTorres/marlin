@@ -38,8 +38,8 @@ size_t Marlin_compress  (int8_t* dst, size_t dstCapacity, const int8_t* src, siz
 size_t Marlin_decompress(int8_t* dst, size_t dstCapacity, const int8_t* Src, size_t SrcSize);
 
 // Simple functions for 16 bit sources
-size_t Marlin_compress_16  (size_t wordSize, int16_t* dst, size_t dstCapacity, const int16_t* src, size_t srcSize);
-size_t Marlin_decompress_16(size_t wordSize, int16_t* dst, size_t dstCapacity, const int16_t* Src, size_t SrcSize);
+//size_t Marlin_compress_16  (size_t wordSize, int16_t* dst, size_t dstCapacity, const int16_t* src, size_t srcSize);
+//size_t Marlin_decompress_16(size_t wordSize, int16_t* dst, size_t dstCapacity, const int16_t* Src, size_t SrcSize);
 
 // Simple functions for single precision floating point sources
 //size_t Marlin_compress_float  (size_t wordSize, float* dst, size_t dstCapacity, const float* src, size_t srcSize);
