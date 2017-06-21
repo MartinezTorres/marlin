@@ -1,6 +1,6 @@
 .PHONY: all
 
-all: gipfeli.a FiniteStateEntropy.a
+all: gipfeli.a FiniteStateEntropy.a constexpr
 	@true
 
 EXTLIBFLAGS := -flto -Ofast -march=native
@@ -29,5 +29,11 @@ gipfeli.a:
 	done
 	@gcc-ar rcs $@  $(patsubst %,/tmp/%.o,$(GIPFELIFILES))
 
+constexpr:
+	@echo "DOWNLOADING $*"
+	@rm -rf constexpr
+	@git clone -q https://github.com/elbeno/constexpr
+	@cd constexpr && git checkout -q a98b1db39c909e0130d21d3910d4faf97035a625
+
 clean:
-	rm -rf gipfeli FiniteStateEntropy gipfeli.a FiniteStateEntropy.a
+	rm -rf gipfeli FiniteStateEntropy constexpr gipfeli.a FiniteStateEntropy.a

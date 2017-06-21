@@ -1,11 +1,12 @@
-//#pragma once
+//#pragmonce
 #include <vector>
 #include <array>
 #include <string>
 #include <limits>
-#include <cmath>
-#include <ieee754.h>
 #include <numeric>
+
+#include <constexpr/src/include/cx_math.h>
+#include <constexpr/src/include/cx_array.h>
 
 
 class Distribution {
@@ -14,7 +15,7 @@ public:
 	constexpr static long double constexpr_exp(long double d) {
 
 		if ( d >= 600) d = 600;
-		if (-d >= 600) return 0;
+		if (-d >= 600) return std::numeric_limits<double>::min();
 	
 		if (d>1 or d<-1) return constexpr_exp(d/2)*constexpr_exp(d/2);
 
@@ -25,6 +26,24 @@ public:
 		}
 		return t+1.;
 	}
+
+
+	constexpr static long double constexpr_log(long double d) {
+		return constexpr_log2(d) * 0.693147180559945309417232121458176568075500134360255254120680009;
+	}
+
+	constexpr static long double constexpr_log2(long double d) {
+        
+        if ( d < std::numeric_limits<double>::min() ) return std::numeric_limits<double>::lowest();
+        int exp = ((ieee854_long_double *)&d)->ieee.exponent - IEEE854_LONG_DOUBLE_BIAS+1;
+        ((ieee854_long_double *)&d)->ieee.exponent = IEEE854_LONG_DOUBLE_BIAS-1;
+        
+        long double x = 1 - d, r = 0,  xp = 1;
+		for (size_t i=1; i<1024 and xp>std::numeric_limits<double>::min(); i++)
+            r -= (xp *= x)/i;
+
+        return exp + r*1.442695040888963407359924681001892137426645954152985934135449407;
+    }
 
 	template<size_t N> 
 	class constexpr_array {
@@ -44,6 +63,9 @@ public:
 		constexpr double operator[](size_t i) const { return arr[i]; }
 
 		constexpr size_t size() const { return N; }
+        
+        constexpr const double *begin() const { return &arr[0]; }
+        constexpr const double *end() const { return &arr[N]; }
 	};
 	
 	template<size_t N> 
@@ -51,8 +73,8 @@ public:
 		using constexpr_array<N>::arr;
 		
 		constexpr Gaussian(double b) : constexpr_array<N>() {
-			for (int64_t i=-10*int(N)+1; i<int(10*N); i++)
-				arr[(10*N+i) % N] += constexpr_exp(-double(i*i)/b);
+			for (int64_t i=-10*N+1; i<10*N; i++)
+				arr[(10*N+i) % N] += constexpr_exp(-i*i/b);
 			
 			double sum = 0;
 			for (size_t n=N; n; n--) sum += arr[n-1];
@@ -60,35 +82,70 @@ public:
 		};
 	};
 
+	template<size_t N> 
+	struct Laplace : constexpr_array<N> {
+		using constexpr_array<N>::arr;
+		
+		constexpr Laplace(double b) : constexpr_array<N>() {
+
+            arr[0] += 1.;
+            for (int64_t i=1; i<10*N; i++) {
+                arr[      i  % N] += constexpr_exp(-i/b );
+                arr[(10*N-i) % N] += constexpr_exp(-i/b );
+            }
+			
+			double sum = 0;
+			for (size_t n=N; n; n--) sum += arr[n-1];
+			for (size_t n=N; n; n--) arr[n-1] /= sum;
+		};
+	};
+
+	template<size_t N> 
+	struct Exponential : constexpr_array<N> {
+		using constexpr_array<N>::arr;
+		
+		constexpr Exponential(double b) : constexpr_array<N>() {
+
+            arr[0] += 1.;
+            for (int64_t i=1; i<10*N; i++)
+                arr[      i  % N] += constexpr_exp(-i/b );
+			
+			double sum = 0;
+			for (size_t n=N; n; n--) sum += arr[n-1];
+			for (size_t n=N; n; n--) arr[n-1] /= sum;
+		};
+	};
+    
+    template<size_t N> 
+	struct Poisson : constexpr_array<N> {
+		using constexpr_array<N>::arr;
+		
+		constexpr Poisson(double l) : constexpr_array<N>() {
+
+            double lp=0,kf=0;
+            for (int64_t k=0; k<10*N and kf<1e300; k++) {
+                kf = (k?kf*k:1);
+                lp = (k?lp*l:1);
+                arr[      k  % N] += lp*constexpr_exp(-l)/kf;
+            }
+			
+			double sum = 0;
+			for (size_t n=N; n; n--) sum += arr[n-1];
+			for (size_t n=N; n; n--) arr[n-1] /= sum;
+		};
+	};
 	
-/*	static inline std::vector<double> PDFGaussian(size_t N, double b) {
+    template<size_t N> 
+    static constexpr long double entropy(constexpr_array<N> const &pmf) {
 
-		std::vector<double> pdf(N, 1e-100);
-		return norm1(pdf);
-	}
-
-	static inline std::vector<double> PDFLaplace(size_t N, double b) {
-
-		std::vector<double> pdf(N, 1e-100);
-		pdf[0] += 1.;
-		for (size_t i=1; i<10*N; i++) {
-			pdf[      i  % N] += std::exp(-double(  i)/b );
-			pdf[(10*N-i) % N] += std::exp(-double(  i)/b );
-		}
-		return norm1(pdf);
-	}
-
-	static inline std::vector<double> PDFExponential(size_t N, double b) {
-
-		std::vector<double> pdf(N, 1e-100);
-		pdf[0] += 1.;
-		for (size_t i=1; i<10*N; i++)
-			pdf[      i  % N] += std::exp(-double(  i)/b );
-
-		return norm1(pdf);
-	}
-
-public:
+		long double distEntropy=0;
+        for (auto &p : pmf)
+            if (p)
+                distEntropy += -p*constexpr_log2(p);
+		return distEntropy;        
+    }
+/*	
+	
 
 	enum Type { Gaussian, Laplace, Exponential };
 
