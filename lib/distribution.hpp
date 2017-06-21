@@ -11,12 +11,15 @@
 class Distribution {
 public:
 	
-	constexpr static double constexpr_exp(long double d) {
+	constexpr static long double constexpr_exp(long double d) {
+
+		if ( d >= 600) d = 600;
+		if (-d >= 600) return 0;
 	
 		if (d>1 or d<-1) return constexpr_exp(d/2)*constexpr_exp(d/2);
 
 		long double t=0, f=1;
-		for (size_t i=1; i<16; i++) {
+		for (size_t i=1; i<20; i++) {
 			f*=d/i;
 			t+=f;
 		}
@@ -42,31 +45,14 @@ public:
 
 		constexpr size_t size() const { return N; }
 	};
-
-	template<size_t N> 
-	struct Norm : constexpr_array<N> {
-		using constexpr_array<N>::arr;
-		
-		constexpr Norm(constexpr_array<N> src) : constexpr_array<N>() {
-			double sum = 0;
-			for (size_t n=N; n; n--) sum += src[n-1];
-			for (size_t n=N; n; n--) arr[n-1] = src[n-1] / sum;
-		}
-	};
 	
-
 	template<size_t N> 
 	struct Gaussian : constexpr_array<N> {
 		using constexpr_array<N>::arr;
 		
 		constexpr Gaussian(double b) : constexpr_array<N>() {
-			for (int i=-10*int(N)+1; i<int(10*N); i++) {
-				//double e=0; macro_exp(-double(i*i)/b, e);
-				double e=constexpr_exp(-double(i*i)/b);
-				arr[(10*N+i) % N] += e;
-			}
-			
-			Norm<N>(*this);
+			for (int64_t i=-10*int(N)+1; i<int(10*N); i++)
+				arr[(10*N+i) % N] += constexpr_exp(-double(i*i)/b);
 			
 			double sum = 0;
 			for (size_t n=N; n; n--) sum += arr[n-1];
