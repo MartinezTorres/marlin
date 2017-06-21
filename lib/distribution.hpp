@@ -1,25 +1,83 @@
-#pragma once
+//#pragma once
 #include <vector>
 #include <array>
 #include <string>
+#include <limits>
 #include <cmath>
+#include <ieee754.h>
 #include <numeric>
 
+
 class Distribution {
+public:
+	
+	constexpr static double constexpr_exp(long double d) {
+	
+		if (d>1 or d<-1) return constexpr_exp(d/2)*constexpr_exp(d/2);
 
-
-	static inline std::vector<double> norm1(std::vector<double> pdf) {
-
-		double sum  = std::accumulate(pdf.rbegin(), pdf.rend(), 0.);
-		for (auto &v : pdf) v/=sum;
-		return pdf;
+		long double t=0, f=1;
+		for (size_t i=1; i<16; i++) {
+			f*=d/i;
+			t+=f;
+		}
+		return t+1.;
 	}
 
-	static inline std::vector<double> PDFGaussian(size_t N, double b) {
+	template<size_t N> 
+	class constexpr_array {
+	protected:
+		double arr[N];
+	public:
+		constexpr constexpr_array() : arr() {
+			for (size_t n = 0; n<N; n++)
+				arr[n] = std::numeric_limits<double>::min();
+		};
+
+		constexpr constexpr_array(const constexpr_array &src) : arr() { 
+			for (size_t n = 0; n<N; n++)
+				arr[n] = src[n];
+		}
+		
+		constexpr double operator[](size_t i) const { return arr[i]; }
+
+		constexpr size_t size() const { return N; }
+	};
+
+	template<size_t N> 
+	struct Norm : constexpr_array<N> {
+		using constexpr_array<N>::arr;
+		
+		constexpr Norm(constexpr_array<N> src) : constexpr_array<N>() {
+			double sum = 0;
+			for (size_t n=N; n; n--) sum += src[n-1];
+			for (size_t n=N; n; n--) arr[n-1] = src[n-1] / sum;
+		}
+	};
+	
+
+	template<size_t N> 
+	struct Gaussian : constexpr_array<N> {
+		using constexpr_array<N>::arr;
+		
+		constexpr Gaussian(double b) : constexpr_array<N>() {
+			for (int i=-10*int(N)+1; i<int(10*N); i++) {
+				//double e=0; macro_exp(-double(i*i)/b, e);
+				double e=constexpr_exp(-double(i*i)/b);
+				arr[(10*N+i) % N] += e;
+			}
+			
+			Norm<N>(*this);
+			
+			double sum = 0;
+			for (size_t n=N; n; n--) sum += arr[n-1];
+			for (size_t n=N; n; n--) arr[n-1] /= sum;
+		};
+	};
+
+	
+/*	static inline std::vector<double> PDFGaussian(size_t N, double b) {
 
 		std::vector<double> pdf(N, 1e-100);
-		for (int i=-10*int(N)+1; i<int(10*N); i++)
-			pdf[(10*N+i) % N] += std::exp(-double(  i*i)/b );
 		return norm1(pdf);
 	}
 
@@ -119,5 +177,6 @@ public:
 	static inline std::vector<uint8_t> getResiduals(const std::array<double,256> &pdf, size_t S) {
 		return getResiduals(std::vector<double>(pdf.begin(), pdf.end()), S);
 	}
-
+*/
 };
+
