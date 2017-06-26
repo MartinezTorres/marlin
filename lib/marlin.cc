@@ -658,8 +658,12 @@ size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, s
 		return a.dictionaryIndex < b.dictionaryIndex; 
 	});
 	
-	for (auto &&block : blocks) {
+	for (auto  it1 = blocks.begin(); i != blocks.end();) {
+		auto it2 = it1;
+		while (it2 != blocks.end() and it1->dictionaryIndex == it2->dictionaryIndex) 
+			it2++;
 		
+		dictionaries[it1->dictionaryIndex].multiencode(it1, it2, &dst);
 	}
 	
 	
@@ -676,8 +680,8 @@ size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, s
 		
 		
 		header.setCompressedSize(dictionaries[header.getDictionaryIndex()].encode(srcData, sz, dst));
-		dst += header.getCompressedSize();*/
-	}
+		dst += header.getCompressedSize();
+	}*/
 
 	return dst - dstOrig;
 }
