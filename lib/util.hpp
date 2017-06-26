@@ -1,34 +1,32 @@
-#include <string>
+#pragma once
+#include <cstddef>
 #include <limits>
-#include <cmath>
-#include <ieee754.h>
-#include <numeric>
 
 namespace {
 namespace cx {
 	
 	// MATH
 	
-	constexpr long double exp(long double d) {
+	constexpr double exp(double d) {
 
 		if ( d >= 600) d = 600;
 		if (-d >= 600) return std::numeric_limits<double>::min();
 	
 		if (d>1 or d<-1) return exp(d/2)*exp(d/2);
 
-		long double t=0, f=1;
-		for (size_t i=1; i<20; i++) {
+		double t=0, f=1;
+		for (size_t i=1; i<1024; i++) {
 			f*=d/i;
+			if (t+f == t) break;
 			t+=f;
 		}
 		return t+1.;
 	}
 
-	constexpr long double log_2 = 0.693147180559945309417232121458176568075500134360255254120680009L;
+	constexpr double log_2 = 0.693147180559945309417232121458176568075500134360255254120680009L;
 
-	constexpr long double log2(long double d) {
+	constexpr double log2(double d) {
 		
-		if ( d < std::numeric_limits<double>::min() ) return std::numeric_limits<double>::lowest();
 		if ( d > 1 ) return -log2(1./d);
 		
 		int exp = 0;
@@ -36,14 +34,17 @@ namespace cx {
 		while (d < 1./(1<< 6)) { exp -=  6; d*= (1<< 6); }
 		while (d < 1./(1<< 1)) { exp -=  1; d*= (1<< 1); }
 		
-		long double x = 1 - d, r = 0,  xp = 1;
-		for (size_t i=1; i<1024 and xp>std::numeric_limits<double>::min(); i++)
-			r -= (xp *= x)/i;
+		double x = 1 - d, r = 0,  xp = 1;
+		for (size_t i=1; i<1024; i++) {
+			double update = (xp *= x)/i;
+			if (r-update == r) break;
+			r -= update;
+		}
 
 		return exp + r*(1/log_2);
 	}
 	
-	constexpr long double log(long double d) { return log2(d) * log_2; }
+	constexpr double log(double d) { return log2(d) * log_2; }
 
 	// ARRAY
 

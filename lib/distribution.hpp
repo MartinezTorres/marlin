@@ -1,26 +1,18 @@
-//#pragmonce
-#include <vector>
-#include <array>
-#include <string>
-#include <limits>
-#include <cmath>
-#include <ieee754.h>
-#include <numeric>
-
-#include <iostream>
-
+#pragma once
 #include <util.hpp>
 
 namespace { // internal linkage
 namespace Distribution {
 	
-    
     template<size_t N>
     constexpr cx::array<N> Gaussian(double b) {
         
         cx::array<N> arr;
-        for (int64_t i=-10*N+1; i<10*int(N); i++)
-            arr[(10*N+i) % N] += cx::exp(-i*i/b);
+        arr[0] += 1.;
+        for (int64_t i=1; i<10*int(N) and cx::exp(-i*i/b )>std::numeric_limits<double>::min(); i++) {
+            arr[      i  % N] += cx::exp(-i*i/b);
+            arr[(10*N-i) % N] += cx::exp(-i*i/b);
+        }
             
         return arr.norm1();
     }
@@ -29,7 +21,8 @@ namespace Distribution {
     constexpr cx::array<N> Laplace(double b) {
         
         cx::array<N> arr;
-        for (int64_t i=1; i<10*N; i++) {
+        arr[0] += 1.;
+        for (int64_t i=1; i<10*int(N) and cx::exp(-i/b )>std::numeric_limits<double>::min(); i++) {
             arr[      i  % N] += cx::exp(-i/b );
             arr[(10*N-i) % N] += cx::exp(-i/b );
         }    
@@ -41,7 +34,7 @@ namespace Distribution {
         
         cx::array<N> arr;
         arr[0] += 1.;
-        for (int64_t i=1; i<10*N; i++)
+        for (int64_t i=1; i<10*int(N) and cx::exp(-i/b )>std::numeric_limits<double>::min(); i++)
             arr[      i  % N] += cx::exp(-i/b );
 
         return arr.norm1();
@@ -61,45 +54,32 @@ namespace Distribution {
     }
 	
     template<typename F>
-    constexpr long double entropy(const F &pmf) {
+    constexpr double entropy(const F &pmf) {
 
-		long double distEntropy=0;
+		double distEntropy=0;
         for (auto &p : pmf)
             if (p)
                 distEntropy += -p*cx::log2(p);
 		return distEntropy;        
     }
-    
-    
-    template<typename F>
-	constexpr auto getWithEntropySlow(const F &pmf, double h) {
-
-		double b=1<<16;
-		// Estimate parameter b from p using dicotomic search
-		double stepSize = 1<<15;
-		while (stepSize>1e-10) {
-			if (h > entropy(pmf(b))/cx::log2( pmf(b).size()) ) b+=stepSize;
-			else b-=stepSize;
-			stepSize/=2.;
-		}
-
-		return pmf(b);
-	}
 
     template<typename F>
 	constexpr auto getWithEntropy(const F &pmf, double h) {
 
-		double bMax = 1<<16, bMin = 1./(1<<30);
+        h = std::min(std::max(h,1e-5),1.-1e-5);
+		double bMax = 1<<1, bMin = 1./(1<<30);
         double hMax = entropy(pmf(bMax)), hMin = entropy(pmf(bMin));
         double hGoal = h * cx::log2(pmf(bMax).size());
         
-        while (hMax-hMin>(1e-7)) {
-            cout << "A " << bMax << " " << bMin << " " << hMax << " " << hMin << " " << ((hGoal-hMin)/(hMax-hMin)) << endl;          
+        while (hMax<hGoal) {
+            bMax *= 2;
+            hMax = entropy(pmf(bMax));
+        }
+        
+        while (hMax-hMin>(1e-6)) {
 
-            double bHinge = bMin+(bMax-bMin)*((hGoal-hMin)/(hMax-hMin));
+            double bHinge = bMin+(bMax-bMin)*( .95*((hGoal-hMin)/(hMax-hMin)) + .025);
             double hHinge = entropy(pmf(bHinge));
-
-            cout << "B " << bMax << " " << bMin << " " << bHinge << " " << ((hHinge-hMin)/(hHinge-hMin)) << endl;          
 
             if ( (hGoal-hHinge)/(hMax-hHinge) >=0. ) {
                 hMin = hHinge;
@@ -112,7 +92,7 @@ namespace Distribution {
 
 		return pmf((bMax+bMin)/2);
 	}
-
+/*
 	template<typename T, typename F>
 	std::vector<uint8_t> getResiduals(const F &pmf, size_t S) {
 
@@ -134,7 +114,7 @@ namespace Distribution {
 		}
 
 		return ret;
-	}
+	}*/
 }
 }
 

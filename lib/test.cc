@@ -1,6 +1,7 @@
 
 #include <array>
 #include <iostream>
+#include <cmath>
 
 using namespace std;
 #include "distribution.hpp"
@@ -15,9 +16,12 @@ int main() {
     //for (auto &&i : p) std::cout << i << std::endl;
     constexpr auto a  = Distribution::entropy(Distribution::Gaussian<256>(10000));
     std::cout << a << std::endl;
-
-    auto e = Distribution::getWithEntropy(Distribution::Gaussian<256>,.5);
+    
+    constexpr auto e = Distribution::getWithEntropy(Distribution::Gaussian<256>,.5);
     std::cout << Distribution::entropy(e) << std::endl;
+
+    std::cout << std::log2(1e+307) << endl;
+    std::cout << std::log2(1e+308) << endl;
 
 /*
     constexpr Distribution::Gaussian<256> t1(3);

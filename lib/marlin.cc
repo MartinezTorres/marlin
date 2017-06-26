@@ -581,21 +581,22 @@ namespace {
 	}
 
 
+	
+	
+	
 	size_t error(const std::string &str) {
 	
 		std::log << str;
 		return 0;
 	};
-
-	constexpr const size_t BS = 4096;
 	
-	class Header {
 
+	constexpr const size_t MAX_BS = 4096s;
+	
+	class Block {
+		uint8_t  dictionaryIndex:;
 		uint16_t compressedSize : 12;
-		uint8_t  dictionaryIndex :  6;
-		uint8_t  reserved : 2;
-//		uint16_t compressedSize : 12;
-//		uint16_t uncompressedSize;
+		uint16_t uncompressedSize : 12;
 
 	public:
 		size_t getCompressedSize() const { return ntohl(data)};
@@ -606,84 +607,79 @@ namespace {
 
 
 
-size_t Marlin_compress  (int8_t* dst, size_t dstCapacity, const int8_t* src, size_t srcSize) {
+size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) {
+	
+	
+	std::vector<Block> blocks(1 + srcSize/Block.maxCapacity());
 
-	// Format: consecutive blocks. Each block has a 6 byte header:
-
-	if (dstCapacity < srcSize+srcSize/BS+1) return error("Insufficient Capacity");
-
-	uint8_t *head = uint8_t *dst;
-
-	for (size_t i=0; i<srcSize; i+=BS) {
+//	if (not distCapacity < blocks.size()**(MAX_BS+4)) 
+//		throw std::runtime_error("Insufficient Output Capacity");
 		
+	for (size_t i=0; i<blocks.size(); i++) block.idx = i;
+	
+	for (auto &&block : blocks) {
+		
+		block.uncompressedSize = std::min(srcSize - src, Block.maxCapacity());
+		block.src = src;
+		src += block.uncompressedSize;
+				
 		// Skip compression of very small blocks
-		if (srcSize-i < 256) {
-			memcpy(dst,src,srcSize-i);
-			*head = 255;
-			continue;				
+		if (sz < 256) continue;
+		
+		// Find the best dictionary
+		block.expectedLength = block.uncompressedSize*.99;		
+		std::array<size_t, 256> hist; 
+		
+		hist.fill(0);
+		for (size_t j = 0; j<sz; j++) hist[src[j]]++;
+		
+		for (size_t j = 0; j<dictionaries.size(); j++) {
+			double el = dictionaries[j].expectedLength(hist);
+			if (el < block.expectedLength) {
+				block.expectedLength = el;
+				block.dictionaryIndex = j;
+			}
 		}
 
-		std::array<double, 256> hist; hist.fill(0.);
-		for (auto &v : in[i]) hist[v]++;
-		for (auto &h : hist) h /= in[i].size();
+		hist.fill(0);
+		for (size_t j = 16; j<sz; j++) hist[uint8_t(int8_t(src[j])-int8_t(src[j-16]))]++;
 		
-		double entropy = Distribution::entropy(hist)/8.;
-
-		head[i] = std::max(1,std::min(255,int(entropy*256)));
-		
-		// Case where there is almost no entropy to gain
-		if (entropy>.99) {
-			
-			out[i]=in[i];
-			head[i] = 255;
-			continue;				
-		}
-		
-		// Case where all values (except the first) are zero. The first value may contain a DC component.
-		if (entropy<.01) {
-			
-			bool found = false;
-			for (size_t j=1; not found and j<in[i].size(); j++) 
-				found  = (in[i][j] != 0);
-			if (found) continue;
-
-			out[i][0] = in[i][0];
-			out[i].resize(1);
-			head[i] = 0;
+		for (size_t j = 0; j<dictionaries.size(); j++) {
+			double el = dictionaries[j].expectedLength(hist);
+			if (el < block.expectedLength) {
+				block.expectedLength = el;
+				block.delta = true;
+				block.dictionaryIndex = j;
+			}
 		}
 	}
-
-
-	// Sort packets depending on increasing zerocount and decreasing packet size
-	std::vector<std::pair<std::pair<int64_t, int64_t>, size_t>> packets;
-	for (size_t i=0; i<in.size(); i++)
-		if (head[i]!=255 and head[i]!=0)
-			packets.emplace_back(std::make_pair(head[i], -in[i].size()), i);
-	std::sort(packets.begin(), packets.end());
-
-	std::vector<std::reference_wrapper<const AlignedArray8>> rIn;
-	std::vector<std::reference_wrapper<      AlignedArray8>> rOut;
-	std::vector<std::reference_wrapper<      uint8_t      >> zeroCounts;
-
-	for (size_t i=0; i<packets.size(); i++) {
-		rIn       .emplace_back(std::cref(in  [packets[i].second]));
-		rOut      .emplace_back(std:: ref(out [packets[i].second]));
-		zeroCounts.emplace_back(std:: ref(head[packets[i].second]));
+	
+	std::sort(blocks.begin(), blocks.end(), [](const Block &a, const Block &b) { 
+		return a.dictionaryIndex < b.dictionaryIndex; 
+	});
+	
+	for (auto &&block : blocks) {
+		
 	}
-
-	compress(rIn, rOut, zeroCounts);
-
-	for (size_t i=0; i<packets.size(); i++) {
-
-		// If we achieve at least 1% compression, we keep the compressed one.
-		if (out[i].size() > in[i].size()*0.99) {
-			out[i] = in[i];
-			head[i] = 255;
+	
+	
+		
+/*		if (header.getDelta()) {
+			uint8_t data[MAX_BS];
+			memcpy(data, src, 16);
+			for (size_t j = 16; j<sz; j++) data[j] = uint8_t(int8_t(src[j])-int8_t(src[j-16]));
+			srcData = &data[0];
 		}
+		
+		//last zeroes do not need to be encoded.
+		while (sz and not srcData[sz-1]) sz--;
+		
+		
+		header.setCompressedSize(dictionaries[header.getDictionaryIndex()].encode(srcData, sz, dst));
+		dst += header.getCompressedSize();*/
 	}
 
-	return out.nBytes();
-
+	return dst - dstOrig;
 }
 
 size_t Marlin_decompress(int8_t* dst, size_t dstCapacity, const int8_t* Src, size_t SrcSize) {
