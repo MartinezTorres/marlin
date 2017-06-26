@@ -555,65 +555,150 @@ namespace {
 		}
 	}
 
-	
-	void   compress(
-		const std::vector<std::reference_wrapper<const AlignedArray8>> &in,
-			  std::vector<std::reference_wrapper<      AlignedArray8>> &out,
-			  std::vector<std::reference_wrapper<      uint8_t      >> &entropy) const { 
-		
-		for (size_t i=0; i<in.size(); i++)
-			if (encoders[entropy[i]])
-				(*encoders[entropy[i]])(in[i], out[i]);
-			else
-				out[i].get().resize(in[i].get().size());
-	}
-
-	void uncompress(
-		const std::vector<std::reference_wrapper<const AlignedArray8>> &in,
-			  std::vector<std::reference_wrapper<      AlignedArray8>> &out,
-			  std::vector<std::reference_wrapper<const uint8_t      >> &entropy) const {
-		
-		for (size_t i=0; i<in.size(); i++)
-			if (decoders[entropy[i]])
-				(*decoders[entropy[i]])(in[i], out[i]);
-			else
-				out[i].get().resize(in[i].get().size());
-	}
-
 
 	
-	
-	
-	size_t error(const std::string &str) {
-	
-		std::log << str;
-		return 0;
-	};
-	
-
-	constexpr const size_t MAX_BS = 4096s;
 	
 	class Block {
-		uint8_t  dictionaryIndex:;
-		uint16_t compressedSize : 12;
-		uint16_t uncompressedSize : 12;
+		uint8_t  dictIndex = 0;
+		uint16_t uncompressedSize = 0;
+		double expectedLength = 0;
+		bool delta = false;
+	};
 
+	template<size_t N>
+	class Dictionary {
+		
+		class Encoder {
+
+			struct Node {
+				cx::array<uint32_t,256> child;
+				uint32_t code;
+				uint32_t increment;
+			};
+			std::vector<Node> nodes;
+			
+			void add(const std::vector<uint8_t> &s, uint32_t code) {
+				
+				Node blank;
+				blank.code = 0;
+				blank.increment = 0;
+				for (size_t i=0; i<256; i++)
+					blank.child[i] = i+1;
+
+				if (nodes.empty()) {
+					nodes.push_back(blank);
+					for (size_t i=0; i<256; i++) {
+						nodes.push_back(blank);
+						nodes.back().increment = 1;
+					}
+				}
+					
+				uint32_t nodeId = 0;
+				for (uint8_t c : s) {
+					if (nodeId and nodes[nodeId].child[c] == uint32_t(c)+1) {
+						nodes[nodeId].child[c] = nodes.size();
+						nodes.push_back(blank);
+					}
+					nodeId = nodes[nodeId].child[c];
+				}
+				nodes[nodeId].code = code;
+			}
+			
+			void bitCrush(AlignedArray8 &out) const {
+			
+				if (dictSize2==16) return;
+				if (dictSize2 >16) std::runtime_error ("dictSize not supported");
+				if (dictSize2 <8 ) std::runtime_error ("dictSize not supported");
+				
+				const uint16_t *i = (const uint16_t *)out.begin();
+				uint8_t *o = out.begin();
+				uint64_t v = 0; uint32_t c = 0;
+				while (i!=(const uint16_t *)out.end()) {
+					v += *i++ << c;
+					c += dictSize2;
+					while (c>=8) {
+						*o++ = v & 0xFF;
+						v >>= 8;
+						c -= 8;
+					}
+				}
+				if (c) *o++ = v & 0xFF;
+
+				out.resize(o-out.begin());
+			}
+
+		public: 
+
+			uint maxWordSize;
+			uint dictSize2;
+		
+			Encoder() {}
+		
+			Encoder(const Dictionary &dict, const std::array<std::pair<double, uint8_t>,256> &distSorted) 
+				: maxWordSize(dict.maxWordSize), dictSize2(dict.dictSize2) {
+				
+				for (size_t i=0; i<dict.W.size(); i++) {
+					std::vector<uint8_t> w = dict.W[i];
+					for (auto &c : w) c = distSorted[c].second;
+					add (w, i);
+				}
+			}
+			
+			void operator()(const AlignedArray8 &in, AlignedArray8 &out) const { // Slower and I don't know why.
+				
+				const uint8_t *i = in.begin();
+				const uint8_t *end = in.end();
+				uint16_t *o = (uint16_t *)out.begin();
+
+				uint32_t nodeId = 1 + *i++;
+				while (i<end) {
+					*o = nodes[nodeId].code;
+					nodeId = nodes[nodeId].child[*i++];
+					o += nodes[nodeId].increment;
+				};
+				do {
+					*o = nodes[nodeId].code;
+					nodeId = nodes[nodeId].child[0];
+				} while (not nodes[nodeId].increment);
+				o++;
+				
+				out.resize( ((uint8_t *)o)-out.begin() );
+				
+				bitCrush(out);
+			}
+		};
+		
+		cx::array<N> meanLengthPerSymbol = {};
+		
 	public:
-		size_t getCompressedSize() const { return ntohl(data)};
-		void setCompressedSize() {};
+	
+		constexpr double expectedLength(const std::array<size_t, N> &hist) const {
+			
+			double ret = 0;
+			for (size_t i=0; i<N; i++)
+				ret += meanLengthPerSymbol[i]*hist[i];
+			return ret;
+		}
+		
+		void encode(const Block *begin, const Block *end, uint8_t *&dst) {
+			
+			
+		}
 		
 	};
+	
+	Dictionary<256> dictionaries[] = {};
+	
 };
 
 
 
-size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) {
+size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize, size_t bs = 4096) {
 	
-	
-	std::vector<Block> blocks(1 + srcSize/Block.maxCapacity());
+	std::vector<Block> blocks(1 + srcSize/bs);
 
-//	if (not distCapacity < blocks.size()**(MAX_BS+4)) 
-//		throw std::runtime_error("Insufficient Output Capacity");
+	if (not distCapacity < blocks.size()*(bs + 4)) 
+		throw std::runtime_error("Insufficient Output Capacity");
 		
 	for (size_t i=0; i<blocks.size(); i++) block.idx = i;
 	
@@ -637,11 +722,12 @@ size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, s
 			double el = dictionaries[j].expectedLength(hist);
 			if (el < block.expectedLength) {
 				block.expectedLength = el;
-				block.dictionaryIndex = j;
+				block.dictIndex = j;
 			}
 		}
 
 		hist.fill(0);
+		for (size_t j = 1; j<sz and j<16; j++) hist[uint8_t(int8_t(src[j])-int8_t(src[j-1]))]++;
 		for (size_t j = 16; j<sz; j++) hist[uint8_t(int8_t(src[j])-int8_t(src[j-16]))]++;
 		
 		for (size_t j = 0; j<dictionaries.size(); j++) {
@@ -649,43 +735,30 @@ size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, s
 			if (el < block.expectedLength) {
 				block.expectedLength = el;
 				block.delta = true;
-				block.dictionaryIndex = j;
+				block.dictIndex = j;
 			}
 		}
 	}
 	
-	std::sort(blocks.begin(), blocks.end(), [](const Block &a, const Block &b) { 
-		return a.dictionaryIndex < b.dictionaryIndex; 
-	});
+	std::sort(
+		blocks.begin(), blocks.end(), 
+		[](const Block &a, const Block &b) { 
+			return a.dictIndex == b.dictIndex ? a.delta < b.delta : a.dictIndex < b.dictIndex; 
+		}
+	);
 	
+	size_t outSize = 0;
 	for (auto  it1 = blocks.begin(); i != blocks.end();) {
 		auto it2 = it1;
-		while (it2 != blocks.end() and it1->dictionaryIndex == it2->dictionaryIndex) 
+		while (it2 != blocks.end() and it1->dictIndex == it2->dictIndex and it1->delta == it2->delta) 
 			it2++;
 		
-		dictionaries[it1->dictionaryIndex].multiencode(it1, it2, &dst);
+		outSize += dictionaries[it1->dictIndex].encode(it1, it2, &dst);
 	}
-	
-	
-		
-/*		if (header.getDelta()) {
-			uint8_t data[MAX_BS];
-			memcpy(data, src, 16);
-			for (size_t j = 16; j<sz; j++) data[j] = uint8_t(int8_t(src[j])-int8_t(src[j-16]));
-			srcData = &data[0];
-		}
-		
-		//last zeroes do not need to be encoded.
-		while (sz and not srcData[sz-1]) sz--;
-		
-		
-		header.setCompressedSize(dictionaries[header.getDictionaryIndex()].encode(srcData, sz, dst));
-		dst += header.getCompressedSize();
-	}*/
 
-	return dst - dstOrig;
+	return outSize;
 }
-
+/*
 size_t Marlin_decompress(int8_t* dst, size_t dstCapacity, const int8_t* Src, size_t SrcSize) {
 	
 	out.resize(in.size()-1);
@@ -723,3 +796,4 @@ size_t Marlin_decompress(int8_t* dst, size_t dstCapacity, const int8_t* Src, siz
 
 		return out.nBytes();		
 }
+*/
