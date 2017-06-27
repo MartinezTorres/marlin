@@ -5,52 +5,52 @@ namespace { // internal linkage
 namespace Distribution {
 	
     template<size_t N>
-    constexpr cx::array<N> Gaussian(double b) {
+    constexpr cx::array<double,N> Gaussian(double b) {
         
-        cx::array<N> arr;
+        cx::array<double,N> arr(std::numeric_limits<double>::min());
         arr[0] += 1.;
         for (int64_t i=1; i<10*int(N) and cx::exp(-i*i/b )>std::numeric_limits<double>::min(); i++) {
             arr[      i  % N] += cx::exp(-i*i/b);
             arr[(10*N-i) % N] += cx::exp(-i*i/b);
         }
             
-        return arr.norm1();
+        return cx::norm1(arr);
     }
 
     template<size_t N>
-    constexpr cx::array<N> Laplace(double b) {
+    constexpr cx::array<double,N> Laplace(double b) {
         
-        cx::array<N> arr;
+        cx::array<double,N> arr(std::numeric_limits<double>::min());
         arr[0] += 1.;
         for (int64_t i=1; i<10*int(N) and cx::exp(-i/b )>std::numeric_limits<double>::min(); i++) {
             arr[      i  % N] += cx::exp(-i/b );
             arr[(10*N-i) % N] += cx::exp(-i/b );
         }    
-        return arr.norm1();
+        return cx::norm1(arr);
     }
 
     template<size_t N>
-    constexpr cx::array<N> Exponential(double b) {
+    constexpr cx::array<double,N> Exponential(double b) {
         
-        cx::array<N> arr;
+        cx::array<double,N> arr(std::numeric_limits<double>::min());
         arr[0] += 1.;
         for (int64_t i=1; i<10*int(N) and cx::exp(-i/b )>std::numeric_limits<double>::min(); i++)
             arr[      i  % N] += cx::exp(-i/b );
 
-        return arr.norm1();
+        return cx::norm1(arr);
     }
 
     template<size_t N>
-    constexpr cx::array<N> Poisson(double l) {
+    constexpr cx::array<double,N> Poisson(double l) {
         
-        cx::array<N> arr;
+        cx::array<double,N> arr(std::numeric_limits<double>::min());
         double lp=0,kf=0;
         for (int64_t k=0; k<10*N and kf>k*std::numeric_limits<double>::min(); k++) {
             kf = (k?kf*k:1);
             lp = (k?lp*l:1);
             arr[      k  % N] += lp*cx::exp(-l)/kf;
         }
-        return arr.norm1();
+        return cx::norm1(arr);
     }
 	
     template<typename F>

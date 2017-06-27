@@ -5,6 +5,34 @@
 namespace {
 namespace cx {
 	
+	// ARRAY
+	template<typename T, size_t N> 
+	class array {
+	protected:
+		T arr[N] = {};
+	public:
+		constexpr array() {}
+		
+		constexpr array(const T &val) {
+			for (auto &a : arr) a = val;
+		}
+
+		constexpr array(const T(&a)[N]) {
+			for (size_t n = 0; n<N; n++)
+				arr[n] = a[n];
+		}
+		
+		constexpr T &operator[](size_t i)       { return arr[i]; }
+		constexpr T  operator[](size_t i) const { return arr[i]; }
+
+		static constexpr size_t size() { return N; }
+		
+		constexpr       T *begin()       { return &arr[0]; }
+		constexpr const T *begin() const { return &arr[0]; }
+		constexpr       T *end()         { return &arr[N]; }
+		constexpr const T *end()  const { return &arr[N]; }
+	};
+
 	// MATH
 	
 	constexpr double exp(double d) {
@@ -46,40 +74,15 @@ namespace cx {
 	
 	constexpr double log(double d) { return log2(d) * log_2; }
 
-	// ARRAY
-
-	template<size_t N> 
-	class array {
-	protected:
-		double arr[N];
-	public:		
-		constexpr array() : arr() {
-			for (auto &a : arr) a = std::numeric_limits<double>::min();
-		}
-
-		constexpr array(const double(&a)[N]) : arr() {
-			for (size_t n = 0; n<N; n++)
-				arr[n] = a[n];
-		}
-		
-		constexpr double &operator[](size_t i)       { return arr[i]; }
-		constexpr double  operator[](size_t i) const { return arr[i]; }
-
-		static constexpr size_t size() { return N; }
-		
-		constexpr       double *begin()       { return &arr[0]; }
-		constexpr const double *begin() const { return &arr[0]; }
-		constexpr       double *end()         { return &arr[N]; }
-		constexpr const double *end()  const { return &arr[N]; }
-	
-		constexpr array norm1() const { 
+	template<typename T, size_t N> 
+	constexpr array<T,N> norm1(const array<T,N> &a) { 
 			
-			array a;
-		    double sum = 0;
-			for (size_t n=N; n; n--) sum += arr[n-1];
-			for (size_t n=N; n; n--) a[n-1] = arr[n-1]/sum;
-			return a;
-		}
-	};
+		array<T,N> ret;
+		double sum = 0;
+		for (size_t n=0; n<N; ++n) sum += a[n];
+		for (size_t n=0; n<N; ++n) ret[n] = a[n]/sum;
+		return ret;
+	}
+
 }
 }
