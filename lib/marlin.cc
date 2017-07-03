@@ -567,14 +567,16 @@ namespace {
 
 	template<size_t N>
 	class Dictionary {
+            
+        struct Node {
+            cx::array<uint16_t,256> child;
+            uint16_t code;
+            uint16_t increment;
+        };
+        auto nodes = 
 		
 		class Encoder {
 
-			struct Node {
-				cx::array<uint32_t,256> child;
-				uint32_t code;
-				uint32_t increment;
-			};
 			std::vector<Node> nodes;
 			
 			void add(const std::vector<uint8_t> &s, uint32_t code) {

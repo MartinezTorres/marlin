@@ -30,7 +30,25 @@ namespace cx {
 		constexpr       T *begin()       { return &arr[0]; }
 		constexpr const T *begin() const { return &arr[0]; }
 		constexpr       T *end()         { return &arr[N]; }
-		constexpr const T *end()  const { return &arr[N]; }
+		constexpr const T *end()   const { return &arr[N]; }
+        
+        constexpr array<T,N+1> operator+(const T &rho ) const {
+            array<T,N+1> ret;
+			for (size_t n = 0; n<N; n++)
+				ret[n] = arr[n];
+            ret[N] = rho;
+            return ret;
+        }
+
+        template<size_t M> 
+        constexpr array<T,N+M> append(const array<T,M> &rho) const {
+            array<T,N+M> ret;
+			for (size_t n = 0; n<N; n++)
+				ret[n] = arr[n];
+			for (size_t n = 0; n<M; n++)
+				ret[N+n] = rho[n];
+            return ret;            
+        }
 	};
 
 	// MATH
