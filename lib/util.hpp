@@ -5,22 +5,22 @@
 namespace {
 namespace cx {
 	
+	//using std::array;
+	
+	
 	// ARRAY
 	template<typename T, size_t N> 
 	class array {
 	protected:
-		T arr[N] = {};
+		T arr[N];
 	public:
-		constexpr array() {}
+//		constexpr array() {}
 		
-		constexpr array(const T &val) {
-			for (auto &a : arr) a = val;
-		}
+//		constexpr array(const T &val) { for (auto &a : arr) a = val; }
 
-		constexpr array(const T(&a)[N]) {
-			for (size_t n = 0; n<N; n++)
-				arr[n] = a[n];
-		}
+//		constexpr array(const T(&a)[N]) { for (size_t n = 0; n<N; n++) arr[n] = a[n]; }
+	
+		constexpr void fill( const T& value ) { for (auto &a : arr) a = value; }
 		
 		constexpr T &operator[](size_t i)       { return arr[i]; }
 		constexpr T  operator[](size_t i) const { return arr[i]; }
@@ -53,33 +53,33 @@ namespace cx {
     
 	// ARRAY
 	template<typename T> 
-	class vararray {
+	class constvector {
 	protected:
-        constexpr const size_t N;
-		T arr[N];
+		T *arr = nullptr;
+		size_t sz = 0;
+		size_t cap = 0;
 	public:
-		constexpr vararray() : N(0), arr({}) {}
 		
-		constexpr vararray(const T &val) : N(1), arr({}) {
-			for (auto &a : arr) a = val;
-		}
+		constexpr T &&operator[](size_t i)       && { return arr[i]; }
+		constexpr T   operator[](size_t i) const && { return arr[i]; }
 
-        template<size_t M>
-		constexpr vararray(const T(&a)[M]) : N(N), arr({}) {
-			for (size_t n = 0; n<N; n++)
-				arr[n] = a[n];
-		}
-		
-		constexpr T &operator[](size_t i)       { return arr[i]; }
-		constexpr T  operator[](size_t i) const { return arr[i]; }
-
-		constexpr size_t size() const { return N; }
+		constexpr size_t size()     const && { return sz; }
+		constexpr size_t capacity() const && { return capacity; }
 		
 		constexpr       T *begin()       { return &arr[0]; }
 		constexpr const T *begin() const { return &arr[0]; }
-		constexpr       T *end()         { return &arr[N]; }
-		constexpr const T *end()   const { return &arr[N]; }
-	};    
+		constexpr       T *end()         { return &arr[sz]; }
+		constexpr const T *end()   const { return &arr[sz]; }
+		
+		constexpr constvector && operator+(const T &rho ) const && {
+			
+            array<T,N+1> ret;
+			for (size_t n = 0; n<N; n++)
+				ret[n] = arr[n];
+            ret[N] = rho;
+            return ret;
+        }
+	};
 
 	// MATH
 	
@@ -125,7 +125,7 @@ namespace cx {
 	template<typename T, size_t N> 
 	constexpr array<T,N> norm1(const array<T,N> &a) { 
 			
-		array<T,N> ret;
+		array<T,N> ret = {};
 		double sum = 0;
 		for (size_t n=0; n<N; ++n) sum += a[n];
 		for (size_t n=0; n<N; ++n) ret[n] = a[n]/sum;

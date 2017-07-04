@@ -7,7 +7,7 @@ namespace Distribution {
     template<size_t N>
     constexpr cx::array<double,N> Gaussian(double b) {
         
-        cx::array<double,N> arr(std::numeric_limits<double>::min());
+        cx::array<double,N> arr = {}; arr.fill(std::numeric_limits<double>::min());
         arr[0] += 1.;
         for (int64_t i=1; i<10*int(N) and cx::exp(-i*i/b )>std::numeric_limits<double>::min(); i++) {
             arr[      i  % N] += cx::exp(-i*i/b);
@@ -20,7 +20,7 @@ namespace Distribution {
     template<size_t N>
     constexpr cx::array<double,N> Laplace(double b) {
         
-        cx::array<double,N> arr(std::numeric_limits<double>::min());
+        cx::array<double,N> arr = {}; arr.fill(std::numeric_limits<double>::min());
         arr[0] += 1.;
         for (int64_t i=1; i<10*int(N) and cx::exp(-i/b )>std::numeric_limits<double>::min(); i++) {
             arr[      i  % N] += cx::exp(-i/b );
@@ -32,7 +32,7 @@ namespace Distribution {
     template<size_t N>
     constexpr cx::array<double,N> Exponential(double b) {
         
-        cx::array<double,N> arr(std::numeric_limits<double>::min());
+        cx::array<double,N> arr = {}; arr.fill(std::numeric_limits<double>::min());
         arr[0] += 1.;
         for (int64_t i=1; i<10*int(N) and cx::exp(-i/b )>std::numeric_limits<double>::min(); i++)
             arr[      i  % N] += cx::exp(-i/b );
@@ -43,7 +43,7 @@ namespace Distribution {
     template<size_t N>
     constexpr cx::array<double,N> Poisson(double l) {
         
-        cx::array<double,N> arr(std::numeric_limits<double>::min());
+        cx::array<double,N> arr = {}; arr.fill(std::numeric_limits<double>::min());
         double lp=0,kf=0;
         for (int64_t k=0; k<10*N and kf>k*std::numeric_limits<double>::min(); k++) {
             kf = (k?kf*k:1);
