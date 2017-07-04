@@ -50,6 +50,36 @@ namespace cx {
             return ret;            
         }
 	};
+    
+	// ARRAY
+	template<typename T> 
+	class vararray {
+	protected:
+        constexpr const size_t N;
+		T arr[N];
+	public:
+		constexpr vararray() : N(0), arr({}) {}
+		
+		constexpr vararray(const T &val) : N(1), arr({}) {
+			for (auto &a : arr) a = val;
+		}
+
+        template<size_t M>
+		constexpr vararray(const T(&a)[M]) : N(N), arr({}) {
+			for (size_t n = 0; n<N; n++)
+				arr[n] = a[n];
+		}
+		
+		constexpr T &operator[](size_t i)       { return arr[i]; }
+		constexpr T  operator[](size_t i) const { return arr[i]; }
+
+		constexpr size_t size() const { return N; }
+		
+		constexpr       T *begin()       { return &arr[0]; }
+		constexpr const T *begin() const { return &arr[0]; }
+		constexpr       T *end()         { return &arr[N]; }
+		constexpr const T *end()   const { return &arr[N]; }
+	};    
 
 	// MATH
 	

@@ -565,26 +565,27 @@ namespace {
 		bool delta = false;
 	};
 
-	template<size_t N>
+	template<size_t N, size_t W, size_t WL>
 	class Dictionary {
+        
+        class Encoder {
             
-        struct Node {
-            cx::array<uint16_t,256> child;
-            uint16_t code;
-            uint16_t increment;
-        };
-        auto nodes = 
-		
-		class Encoder {
-
-			std::vector<Node> nodes;
-			
-			void add(const std::vector<uint8_t> &s, uint32_t code) {
+            struct Node {
+                cx::array<uint16_t,256> child;
+                uint16_t code;
+                uint16_t increment;
+            };
+            
+            cv:array<Node, W*2> nodes = {};
+            
+            
+					
+			void add(const cx::array<uint8_t, N> &translation, uint16_t code) {
 				
 				Node blank;
 				blank.code = 0;
 				blank.increment = 0;
-				for (size_t i=0; i<256; i++)
+				for (size_t i=0; i<N; i++)
 					blank.child[i] = i+1;
 
 				if (nodes.empty()) {
@@ -606,29 +607,6 @@ namespace {
 				nodes[nodeId].code = code;
 			}
 			
-			void bitCrush(AlignedArray8 &out) const {
-			
-				if (dictSize2==16) return;
-				if (dictSize2 >16) std::runtime_error ("dictSize not supported");
-				if (dictSize2 <8 ) std::runtime_error ("dictSize not supported");
-				
-				const uint16_t *i = (const uint16_t *)out.begin();
-				uint8_t *o = out.begin();
-				uint64_t v = 0; uint32_t c = 0;
-				while (i!=(const uint16_t *)out.end()) {
-					v += *i++ << c;
-					c += dictSize2;
-					while (c>=8) {
-						*o++ = v & 0xFF;
-						v >>= 8;
-						c -= 8;
-					}
-				}
-				if (c) *o++ = v & 0xFF;
-
-				out.resize(o-out.begin());
-			}
-
 		public: 
 
 			uint maxWordSize;
@@ -636,13 +614,30 @@ namespace {
 		
 			Encoder() {}
 		
-			Encoder(const Dictionary &dict, const std::array<std::pair<double, uint8_t>,256> &distSorted) 
-				: maxWordSize(dict.maxWordSize), dictSize2(dict.dictSize2) {
+			Encoder(const cx::array<cx::array<N,WL>,W> &words) {
 				
-				for (size_t i=0; i<dict.W.size(); i++) {
-					std::vector<uint8_t> w = dict.W[i];
-					for (auto &c : w) c = distSorted[c].second;
-					add (w, i);
+                Node &root = nodes[0];
+				root.code = 0;
+				root.increment = 0;
+				for (size_t i=0; i<N; i++)
+					root.child[i] = i+1;
+
+                for (size_t i=0; i<N; i++) {
+                    nodes[i+1] = root;
+                    nodes[i+1].increment = 1;
+				}
+                
+				for (auto &&w : words) {
+                    
+                    uint32_t nodeId = 0;
+                    for (uint8_t c : s) {
+                        if (nodeId and nodes[nodeId].child[c] == uint32_t(c)+1) {
+                            nodes[nodeId].child[c] = nodes.size();
+                            nodes.push_back(blank);
+                        }
+                        nodeId = nodes[nodeId].child[c];
+                    }
+                    nodes[nodeId].code = code;
 				}
 			}
 			

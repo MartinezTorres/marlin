@@ -22,6 +22,8 @@ int main() {
 
     std::cout << std::log2(1e+307) << endl;
     std::cout << std::log2(1e+308) << endl;
+    
+    
 
 /*
     constexpr Distribution::Gaussian<256> t1(3);
