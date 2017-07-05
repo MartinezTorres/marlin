@@ -565,18 +565,23 @@ namespace {
 		bool delta = false;
 	};
 
-	template<size_t N, size_t W, size_t WL>
+    
+
+	template<size_t N>
 	class Dictionary {
+        
+        using Word = cx::vector<uint8_t, 16>;
+        using Words = cx::vector<Word, 1<<12>;
         
         class Encoder {
             
             struct Node {
-                cx::array<uint16_t,256> child;
+                cx::array<uint16_t,N> child;
                 uint16_t code;
                 uint16_t increment;
             };
             
-            cv:array<Node, W*2> nodes = {};
+            cv:array<Node, 2*Words::capacity()> nodes = {};
             
             
 					
@@ -614,7 +619,7 @@ namespace {
 		
 			Encoder() {}
 		
-			Encoder(const cx::array<cx::array<N,WL>,W> &words) {
+			Encoder(const Words &words) {
 				
                 Node &root = nodes[0];
 				root.code = 0;

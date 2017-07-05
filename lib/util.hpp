@@ -51,34 +51,26 @@ namespace cx {
         }
 	};
     
-	// ARRAY
-	template<typename T> 
-	class constvector {
+	// VECTOR
+	template<typename T, size_t C> 
+	class vector {
 	protected:
-		T *arr = nullptr;
-		size_t sz = 0;
-		size_t cap = 0;
+		T arr[C];
+        size_t sz;
 	public:
-		
-		constexpr T &&operator[](size_t i)       && { return arr[i]; }
-		constexpr T   operator[](size_t i) const && { return arr[i]; }
+    		
+		constexpr T &operator[](size_t i)       { return arr[i]; }
+		constexpr T  operator[](size_t i) const { return arr[i]; }
 
-		constexpr size_t size()     const && { return sz; }
-		constexpr size_t capacity() const && { return capacity; }
+		constexpr size_t size() const { return sz; }
+		constexpr size_t capacity() const { return C; }
 		
 		constexpr       T *begin()       { return &arr[0]; }
 		constexpr const T *begin() const { return &arr[0]; }
 		constexpr       T *end()         { return &arr[sz]; }
 		constexpr const T *end()   const { return &arr[sz]; }
-		
-		constexpr constvector && operator+(const T &rho ) const && {
-			
-            array<T,N+1> ret;
-			for (size_t n = 0; n<N; n++)
-				ret[n] = arr[n];
-            ret[N] = rho;
-            return ret;
-        }
+        
+        constexpr void push_back(const T &rho) { arr[sz++] = rho; }
 	};
 
 	// MATH

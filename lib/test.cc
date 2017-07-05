@@ -14,7 +14,7 @@ int main() {
     
     constexpr auto p = Distribution::Gaussian<256>(100000);
     //for (auto &&i : p) std::cout << i << std::endl;
-    constexpr auto a  = Distribution::entropy(Distribution::Gaussian<256>(10000));
+    constexpr auto a  = Distribution::entropy(p);
     std::cout << a << std::endl;
     
     constexpr auto e = Distribution::getWithEntropy(Distribution::Gaussian<256>,.5);
@@ -23,8 +23,6 @@ int main() {
     std::cout << std::log2(1e+307) << endl;
     std::cout << std::log2(1e+308) << endl;
     
-    
-
 /*
     constexpr Distribution::Gaussian<256> t1(3);
     constexpr Distribution::Laplace<256> t2(3);
