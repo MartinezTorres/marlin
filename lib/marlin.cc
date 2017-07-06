@@ -342,118 +342,6 @@ namespace {
 		}
 	};
 
-	class Decoder {
-
-		AlignedArray<uint8_t,8<<20> data;
-		uint maxWordSize;
-		uint dictSize2;
-
-		template<typename T, size_t N>
-		void uncompressA(const AlignedArray8 &in, AlignedArray8 &out) const  {
-			
-			uint8_t *o = out.begin();
-			const uint32_t *i = (const uint32_t *)in.begin();
-			
-			std::array<T,N>  *DD = (std::array<T,N> *)&data[0];
-			uint64_t v32=0; uint32_t c=0;
-			while (o<out.end()) {
-				
-				if (c<32) {
-					v32 += uint64_t(*i++) << c;
-					c   += 32;
-				}
-				{				
-					uint8_t *&&v = (uint8_t *)&DD[v32 & ((1<<dictSize2)-1)];
-					v32 >>= dictSize2;
-					c -= dictSize2;
-					for (size_t n=0; n<N; n++)
-						*(((T *)o)+n) = *(((T *)v)+n);
-					o += v[N*sizeof(T)-1];
-				}
-				{				
-					uint8_t *&&v = (uint8_t *)&DD[v32 & ((1<<dictSize2)-1)];
-					v32 >>= dictSize2;
-					c -= dictSize2;
-					for (size_t n=0; n<N; n++)
-						*(((T *)o)+n) = *(((T *)v)+n);
-					o += v[N*sizeof(T)-1];
-				}
-			}		
-		}
-		
-		template<typename T>
-		void uncompress12(const AlignedArray8 &in, AlignedArray8 &out) const  {
-			
-			uint8_t *o = out.begin();
-			const uint8_t *i = (const uint8_t *)in.begin();
-			
-			T *D = (T *)data.begin();
-			while (o<out.end()) {
-				
-				uint64_t v64=0;
-				v64 = *(const uint64_t *)i;
-				i+=6;
-				
-				{				
-					T v = D[(v64>>0 ) & 0xFFF];
-					*((T *)o) = v;
-					o += v >> ((sizeof(T)-1)*8);
-				}
-				{				
-					T v = D[(v64>>12) & 0xFFF];
-					*((T *)o) = v;
-					o += v >> ((sizeof(T)-1)*8);
-				}
-				{				
-					T v = D[(v64>>24) & 0xFFF];
-					*((T *)o) = v;
-					o += v >> ((sizeof(T)-1)*8);
-				}
-				{				
-					T v = D[(v64>>36) & 0xFFF];
-					*((T *)o) = v;
-					o += v >> ((sizeof(T)-1)*8);
-				}
-			}
-		}
-
-	public:
-
-		Decoder() {}
-		
-		Decoder(const Dictionary &dict, const std::array<std::pair<double, uint8_t>,256> &distSorted) 
-			: maxWordSize(dict.maxWordSize), dictSize2(dict.dictSize2) {
-			
-			data.resize(dict.W.size()*maxWordSize);
-			for (size_t i=0; i<dict.W.size(); i++) {
-
-				uint8_t *d = &data[i*maxWordSize];
-				d[maxWordSize-1] = dict.W[i].size();
-				for (auto c : dict.W[i])
-					*d++ = distSorted[c].second;
-			}
-		}
-
-		void operator()(const AlignedArray8 &in, AlignedArray8 &out) const {
-
-			if (dictSize2==12) {
-				switch (maxWordSize) {
-					case   4: return uncompress12<uint32_t>(in, out);
-					case   8: return uncompress12<uint64_t>(in, out);
-				}
-			} 
-			switch (maxWordSize) {
-				case   4: return uncompressA<uint32_t, 1>(in, out);
-				case   8: return uncompressA<uint64_t, 1>(in, out);
-				case  16: return uncompressA<uint64_t, 2>(in, out);
-				case  32: return uncompressA<uint64_t, 4>(in, out);
-				case  64: return uncompressA<uint64_t, 8>(in, out);
-				case 128: return uncompressA<uint64_t,16>(in, out);
-				default: throw std::runtime_error ("unsupported maxWordSize");
-			}
-		}
-
-	};
 
 	std::vector<std::shared_ptr<Encoder>> encoders;
 	std::vector<std::shared_ptr<Decoder>> decoders;
@@ -565,111 +453,194 @@ namespace {
 		bool delta = false;
 	};
 
-    
-
 	template<size_t N>
 	class Dictionary {
         
-        using Word = cx::vector<uint8_t, 16>;
-        using Words = cx::vector<Word, 1<<12>;
+        typedef cx::vector<uint8_t, 7> Word;
+        typedef cx::vector<Word, 1<<12> Words;
         
         class Encoder {
             
             struct Node {
                 cx::array<uint16_t,N> child;
                 uint16_t code;
-                uint16_t increment;
-            };
-            
+            };            
             cv:array<Node, 2*Words::capacity()> nodes = {};
             
-            
-					
-			void add(const cx::array<uint8_t, N> &translation, uint16_t code) {
-				
-				Node blank;
-				blank.code = 0;
-				blank.increment = 0;
-				for (size_t i=0; i<N; i++)
-					blank.child[i] = i+1;
-
-				if (nodes.empty()) {
-					nodes.push_back(blank);
-					for (size_t i=0; i<256; i++) {
-						nodes.push_back(blank);
-						nodes.back().increment = 1;
-					}
-				}
-					
-				uint32_t nodeId = 0;
-				for (uint8_t c : s) {
-					if (nodeId and nodes[nodeId].child[c] == uint32_t(c)+1) {
-						nodes[nodeId].child[c] = nodes.size();
-						nodes.push_back(blank);
-					}
-					nodeId = nodes[nodeId].child[c];
-				}
-				nodes[nodeId].code = code;
-			}
-			
 		public: 
-
-			uint maxWordSize;
-			uint dictSize2;
-		
-			Encoder() {}
 		
 			Encoder(const Words &words) {
 				
-                Node &root = nodes[0];
-				root.code = 0;
-				root.increment = 0;
+                Node blank;
+				blank.code = 0;
+				blank.increment = 0;
 				for (size_t i=0; i<N; i++)
-					root.child[i] = i+1;
+					blank.child[i] = i;
 
-                for (size_t i=0; i<N; i++) {
-                    nodes[i+1] = root;
-                    nodes[i+1].increment = 1;
-				}
+                for (size_t i=0; i<N; i++)
+                    nodes.push_back(blank);
                 
-				for (auto &&w : words) {
+                for (size_t i=0; i<words.size(); ++i) {
                     
-                    uint32_t nodeId = 0;
-                    for (uint8_t c : s) {
-                        if (nodeId and nodes[nodeId].child[c] == uint32_t(c)+1) {
+                    auto &&w = words[i];
+                    // No word should be empty
+                    uint32_t nodeId = uint8_t(w[0]);
+                    
+                    for (size_t j=1; j<w.size(); ++j) {
+                        
+                        uint8_t c = w[j];
+                        if (nodeId and nodes[nodeId].child[c] == c) {
                             nodes[nodeId].child[c] = nodes.size();
                             nodes.push_back(blank);
                         }
                         nodeId = nodes[nodeId].child[c];
                     }
-                    nodes[nodeId].code = code;
+                    nodes[nodeId].code = i;
 				}
 			}
 			
-			void operator()(const AlignedArray8 &in, AlignedArray8 &out) const { // Slower and I don't know why.
-				
-				const uint8_t *i = in.begin();
-				const uint8_t *end = in.end();
-				uint16_t *o = (uint16_t *)out.begin();
+			size_t operator()(uint8_t* dst, const uint8_t* src, size_t srcSize) const { 
+                
+                uint8_t* dst0 = dst;
+                
+				const uint8_t *end = src+srcSize;
+                if (src == end) return;
 
-				uint32_t nodeId = 1 + *i++;
-				while (i<end) {
-					*o = nodes[nodeId].code;
-					nodeId = nodes[nodeId].child[*i++];
-					o += nodes[nodeId].increment;
-				};
+				uint32_t nodeId = *src++, oldNodeId = 0;
+                uint64_t v64 = 0;
+				while (src + 4*Word::capacity() < end) {
+                    
+                    do { 
+                        oldNodeId = nodeId;
+                        nodeId = nodes[nodeId].child[*src++]; 
+                    } while (nodeId < N);
+                    v64 = nodes[oldNodeId].code;
+                    do { 
+                        oldNodeId = nodeId;
+                        nodeId = nodes[nodeId].child[*src++]; 
+                    } while (nodeId < N);
+                    v64 += nodes[oldNodeId].code << 12;
+                    do { 
+                        oldNodeId = nodeId;
+                        nodeId = nodes[nodeId].child[*src++]; 
+                    } while (nodeId < N);
+                    v64 += nodes[oldNodeId].code << 24;
+                    do { 
+                        oldNodeId = nodeId;
+                        nodeId = nodes[nodeId].child[*src++]; 
+                    } while (nodeId < N);
+                    v64 += nodes[oldNodeId].code << 36;
+
+                    *(uint64_t *)dst = v64;
+                    dst += 6;
+                }
+                
+                v64 = 0;
+                uint32_t c = 0;
+                while (src < end) {
+                    oldNodeId = nodeId;
+                    nodeId = nodes[nodeId].child[*src++]; 
+                    if (nodeId < N) {
+                        v64 += nodes[oldNodeId].code << c;
+                        c += 12;
+                        if (c==48) {
+                            *(uint64_t *)dst = v64;
+                            dst += 6;
+                            c    =  0;                            
+                        }
+                    }
+                }
+
 				do {
-					*o = nodes[nodeId].code;
-					nodeId = nodes[nodeId].child[0];
-				} while (not nodes[nodeId].increment);
-				o++;
-				
-				out.resize( ((uint8_t *)o)-out.begin() );
-				
-				bitCrush(out);
+                    oldNodeId = nodeId;
+                    nodeId = nodes[nodeId].child[0]; 
+				} while (not (nodeId < N));
+                v64 += nodes[oldNodeId].code << c;
+                c += 12;
+                *(uint64_t *)dst = v64;
+                dst += (c+7)/8;
+                
+                return dst - dst0;
 			}
 		};
 		
+        class Decoder {
+            
+            cx::array<cx::array<uint8_t,8>> data;
+        public:
+        
+            void operator()(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) const { 
+                            
+                uint8_t* dst0 = dst;
+                
+				const uint8_t *end = src+srcSize;
+                if (src == end) return;
+                
+                while (src + 6 <= end) {
+                    
+                    uint64_t v64=0;
+                    v64 = *(const uint64_t *)src;
+                    src+=6;
+                    
+                    {
+                        uint64_t v = data[(v64>>0 ) & 0xFFF];
+                        *((uint64_t *)dst) = v;
+                        dst += v >> ((sizeof(uint64_t)-1)*8);
+                    }
+                    {				
+                        uint64_t v = data[(v64>>0 ) & 0xFFF];
+                        *((uint64_t *)dst) = v;
+                        dst += v >> ((sizeof(uint64_t)-1)*8);
+                    }
+                    {				
+                        uint64_t v = data[(v64>>0 ) & 0xFFF];
+                        *((uint64_t *)dst) = v;
+                        dst += v >> ((sizeof(uint64_t)-1)*8);
+                    }
+                    {				
+                        uint64_t v = data[(v64>>0 ) & 0xFFF];
+                        *((uint64_t *)dst) = v;
+                        dst += v >> ((sizeof(uint64_t)-1)*8);
+                    }
+                }
+
+                uint64_t v64=0, c=0;
+                while (src < end) {
+                    while (c<12) {
+                        v64 += *src++ << c;
+                        c+= 8;
+                    }
+                    
+                    {
+                        const uint8_t *v = (const uint8_t *)&data[(v64>>0 ) & 0xFFF];
+                        size_t sz = v[sizeof(uint64_t)-1];
+                        for (size_t i=0; i<sz and dst<dstEnd; i++)
+                            *dst++ = *v++;
+                    }
+                    
+                    v64 = v64 >> 12;
+                    c-= 12;
+                }
+            }
+
+        
+
+            
+            Decoder(const Dictionary &dict, const std::array<std::pair<double, uint8_t>,256> &distSorted) 
+                : maxWordSize(dict.maxWordSize), dictSize2(dict.dictSize2) {
+                
+                data.resize(dict.W.size()*maxWordSize);
+                for (size_t i=0; i<dict.W.size(); i++) {
+
+                    uint8_t *d = &data[i*maxWordSize];
+                    d[maxWordSize-1] = dict.W[i].size();
+                    for (auto c : dict.W[i])
+                        *d++ = distSorted[c].second;
+                }
+            }
+        };
+        
+        
 		cx::array<N> meanLengthPerSymbol = {};
 		
 	public:
