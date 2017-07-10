@@ -355,7 +355,7 @@ namespace {
 					sums[state] = sum = sum + Pstate[state]/PN[state];
 			}
 			
-			cx::matrix<double,ALPHABET_SIZE,ALPHABET_SIZE> T = {};
+			cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T = {};
 	
 			for (auto &&node : words)
 				for (size_t state=0; state<=node.symbolIndexes.front(); ++state)
@@ -363,7 +363,7 @@ namespace {
 
 			// Solving Maxwell
 			for (size_t MaxwellIterations = 1; MaxwellIterations; --MaxwellIterations)
-				T = T* T;
+				T = cx::array<double,ALPHABET_SIZE>::square(T);
 				
 			for (size_t state = 0; state < ALPHABET_SIZE; ++state)
 				Pstate[state] = T[0][state];

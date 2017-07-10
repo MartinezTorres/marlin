@@ -9,7 +9,7 @@ namespace cx {
 	// ARRAY
 	template<typename T, size_t N> 
 	class array {
-	protected:
+	public:
 		T arr[N];
 	public:
 
@@ -28,6 +28,30 @@ namespace cx {
 		constexpr const T* end()   const { return &arr[N]; }
 		constexpr       T& back()        { return  arr[N-1]; }
 		constexpr const T& back()  const { return  arr[N-1]; }
+		
+		
+		constexpr static cx::array<T,N> mulLine(
+			size_t i,
+			cx::array<cx::array<T,N>,N> M) {
+		
+			cx::array<T,N> L = {};
+			
+			for (size_t j=0; j<N; ++j)
+				for (size_t k=0; k<N; ++k)
+					L.arr[j] += M.arr[i].arr[k] * M.arr[k].arr[j];
+
+			return L;
+		}
+		
+		constexpr static cx::array<cx::array<T,N>,N> square( cx::array<cx::array<T,N>,N> M) {
+		
+			cx::array<cx::array<T,N>,N> M2 = {};
+			
+			for (size_t i=0; i<N; ++i)
+				M2[i] = mulLine(i, M);
+			
+			return M2;
+		}
     };
     
 	// VECTOR
