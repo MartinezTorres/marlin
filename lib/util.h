@@ -86,7 +86,7 @@ namespace cx {
 		
 		
 		template<size_t N3>
-		constexpr matrix<T,N1,N3> operator*(const matrix<T,N2,N3>& rhs) const {
+		constexpr matrix<T,N1,N3> operator*(matrix<T,N2,N3> rhs) const {
 			
 			matrix<T,N1,N3> ret = {};
 			for (size_t i=0; i<N1; ++i)
