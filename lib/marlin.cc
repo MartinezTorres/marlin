@@ -236,7 +236,7 @@ namespace {
 		
 		cx::vector<Word,NUM_WORDS> words = cx::vector<Word,NUM_WORDS>();
 		
-		constexpr void buildDictionary() {
+/*		constexpr void buildDictionary() {
 
 			cx::priority_queue<Word,NUM_WORDS,std::greater<Word>> pq;
 
@@ -284,9 +284,69 @@ namespace {
 			words.clear();
 			for (auto && n : pq)
 				words.push_back(n);
+		}*/
+
+		constexpr static cx::vector<Word,NUM_WORDS> buildDictionary(
+			cx::array<double,ALPHABET_SIZE> Pstate, 
+			cx::array<double,ALPHABET_SIZE> PN, 
+			cx::array<double,ALPHABET_SIZE> Pchild, 
+			cx::array<SymbolWithProbability,ALPHABET_SIZE> symbols ) {
+
+			cx::priority_queue<Word,NUM_WORDS,std::greater<Word>> pq;
+
+			// DICTIONARY INITIALIZATION
+			for (size_t c=0; c<ALPHABET_SIZE; ++c) {
+				
+				double sum = 0;
+				for (size_t t = 0; t<=c; ++t) sum += Pstate[t]/PN[t];
+				
+				Word node = {};
+				node.symbolIndexes.push_back(c);
+				node.nChildren = 0;
+				node.p = sum * symbols[c].p;
+				
+				pq.push(node);
+			}
+			
+			// GROW THE DICTIONARY
+			while (pq.size() < NUM_WORDS and pq.top().symbolIndexes.size() < WORD_SIZE) {
+				
+				Word node = pq.top();
+				pq.pop();
+				
+				Word newNode = {};
+				newNode.symbolIndexes = node.symbolIndexes;
+				newNode.symbolIndexes.push_back(node.nChildren);
+				
+				newNode.nChildren = 0;
+				
+				newNode.p = node.p * Pchild[node.nChildren];
+				pq.push(newNode);
+				
+				node.p -= newNode.p;
+				node.nChildren++;
+				
+				if (node.nChildren == ALPHABET_SIZE-1) {
+
+					node.symbolIndexes.push_back(node.nChildren);
+					node.p = node.p * Pchild[node.nChildren];
+					node.nChildren = 0;
+				}					
+				pq.push(node);
+			}
+			
+			cx::vector<Word,NUM_WORDS> words = {};
+			for (auto && n : pq)
+				words.push_back(n);
+				
+			return words;
 		}
 		
-		constexpr void updateStateProbabilities() {
+
+		constexpr static cx::array<double,ALPHABET_SIZE> updateStateProbabilities(
+			cx::array<double,ALPHABET_SIZE> Pstate, 
+			cx::array<double,ALPHABET_SIZE> PN, 
+			cx::vector<Word,NUM_WORDS> words ) {
 			
 			cx::array<double,ALPHABET_SIZE> sums = {};
 			{
@@ -307,6 +367,8 @@ namespace {
 				
 			for (size_t state = 0; state < ALPHABET_SIZE; ++state)
 				Pstate[state] = T[0][state];
+				
+			return Pstate;
 		}
 
 		
@@ -335,9 +397,9 @@ namespace {
 				
 			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
 
-				buildDictionary();
+				words = buildDictionary(Pstate, PN, Pchild, symbols);
 				
-				updateStateProbabilities();
+				Pstate = updateStateProbabilities(Pstate, PN, words);
 								
 				
 				/*{
