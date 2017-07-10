@@ -42,6 +42,19 @@ namespace cx {
 			return L;
 		}		
     };
+
+    template<typename T, size_t N>
+    struct Liner {
+		
+		cx::array<T,N> L = {};
+		
+		constexpr Liner( size_t i, const cx::array<cx::array<T,N>,N> MM) {
+
+			L = array<T,N>::mulLine(i, MM);
+		}
+		
+	};
+
     template<typename T, size_t N>
     struct Squarer {
 		
@@ -50,9 +63,8 @@ namespace cx {
 		constexpr Squarer( const cx::array<cx::array<T,N>,N> MM) {
 
 			for (size_t i=0; i<N; i++)
-				M[i] = array<T,N>::mulLine(i, MM);
+				M[i] = Liner<T,N>(i, MM).L;
 		}
-		
 		
 	};
 	
