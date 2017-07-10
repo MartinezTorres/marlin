@@ -29,10 +29,9 @@ namespace cx {
 		constexpr       T& back()        { return  arr[N-1]; }
 		constexpr const T& back()  const { return  arr[N-1]; }
 		
-		
 		constexpr static cx::array<T,N> mulLine(
 			size_t i,
-			cx::array<cx::array<T,N>,N> M) {
+			const cx::array<cx::array<T,N>,N> M) {
 		
 			cx::array<T,N> L = {};
 			
@@ -41,18 +40,30 @@ namespace cx {
 					L.arr[j] += M.arr[i].arr[k] * M.arr[k].arr[j];
 
 			return L;
-		}
-		
-		constexpr static cx::array<cx::array<T,N>,N> square( cx::array<cx::array<T,N>,N> M) {
-		
-			cx::array<cx::array<T,N>,N> M2 = {};
-			
-			for (size_t i=0; i<N; ++i)
-				M2[i] = mulLine(i, M);
-			
-			return M2;
-		}
+		}		
     };
+    
+	template<typename T, size_t N, size_t I> struct R {
+	constexpr static void sq( cx::array<cx::array<T,N>,N> &M2, const cx::array<cx::array<T,N>,N> &M) {
+
+		M2[I-1] = array<T,N>::mulLine(I-1, M);
+		R<T,N,I-1>::sq(M2, M);	
+	}};
+
+	template<typename T, size_t N> struct R<T,N,0>{
+	constexpr static void sq( cx::array<cx::array<T,N>,N> &M2, const cx::array<cx::array<T,N>,N> &M) {}
+	};
+	
+	template<typename T, size_t N>
+	constexpr cx::array<cx::array<T,N>,N> square( const cx::array<cx::array<T,N>,N> M) {
+
+		cx::array<cx::array<T,N>,N> M2 = {};
+
+		R<T,N,N>::sq(M2, M);
+
+		return M2;
+	}
+
     
 	// VECTOR
 	template<typename T, size_t C> 
