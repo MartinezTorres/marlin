@@ -363,7 +363,7 @@ namespace {
 
 			// Solving Maxwell
 			for (size_t MaxwellIterations = 1; MaxwellIterations; --MaxwellIterations)
-				T = cx::square(T);
+				T = cx::Squarer<double,ALPHABET_SIZE>(T).M;
 				
 			for (size_t state = 0; state < ALPHABET_SIZE; ++state)
 				Pstate[state] = T[0][state];

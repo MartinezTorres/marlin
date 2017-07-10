@@ -42,28 +42,21 @@ namespace cx {
 			return L;
 		}		
     };
-    
-	template<typename T, size_t N, size_t I> struct R {
-	constexpr static void sq( cx::array<cx::array<T,N>,N> &M2, const cx::array<cx::array<T,N>,N> M) {
+    template<typename T, size_t N>
+    struct Squarer {
+		
+		cx::array<cx::array<T,N>,N> M;
+		
+		constexpr Squarer( const cx::array<cx::array<T,N>,N> MM) {
 
-		const auto L = array<T,N>::mulLine(I-1, M);
-		M2[I-1] = L;
-		R<T,N,I-1>::sq(M2, M);	
-	}};
-
-	template<typename T, size_t N> struct R<T,N,0>{
-	constexpr static void sq( cx::array<cx::array<T,N>,N> &, const cx::array<cx::array<T,N>,N>) {}
+			for (size_t i=0; i<N; i++)
+				M[i] = array<T,N>::mulLine(i, MM);
+		}
+		
+		
 	};
 	
-	template<typename T, size_t N>
-	constexpr cx::array<cx::array<T,N>,N> square( const cx::array<cx::array<T,N>,N> M) {
-
-		cx::array<cx::array<T,N>,N> M2 = {};
-
-		R<T,N,N>::sq(M2, M);
-
-		return M2;
-	}
+	
 
     
 	// VECTOR
