@@ -59,11 +59,14 @@ namespace cx {
     struct Squarer {
 		
 		cx::array<cx::array<T,N>,N> M = {};
+		cx::array<T,N> L = {};
 		
 		constexpr Squarer( const cx::array<cx::array<T,N>,N> MM) {
 
-			for (size_t i=0; i<N; i++)
-				M[i] = Liner<T,N>(i, MM).L;
+			for (size_t i=0; i<N; i++) {
+				L = Liner<T,N>(i, MM).L;
+				M[i] = L;
+			}
 		}
 		
 	};
