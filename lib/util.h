@@ -45,7 +45,7 @@ namespace cx {
     template<typename T, size_t N>
     struct Squarer {
 		
-		cx::array<cx::array<T,N>,N> M;
+		cx::array<cx::array<T,N>,N> M = {};
 		
 		constexpr Squarer( const cx::array<cx::array<T,N>,N> MM) {
 
