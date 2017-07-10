@@ -57,9 +57,11 @@ namespace Distribution {
     constexpr double entropy(const F &pmf) {
 
 		double distEntropy=0;
-        for (auto &p : pmf)
-            if (p)
+        for (auto &p : pmf) {
+            if (p) {
                 distEntropy += -p*cx::log2(p);
+            }
+        }
 		return distEntropy;        
     }
 

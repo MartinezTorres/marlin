@@ -5,21 +5,13 @@
 namespace {
 namespace cx {
 	
-	//using std::array;
-	
-	
 	// ARRAY
 	template<typename T, size_t N> 
 	class array {
 	protected:
 		T arr[N];
 	public:
-//		constexpr array() {}
-		
-//		constexpr array(const T &val) { for (auto &a : arr) a = val; }
 
-//		constexpr array(const T(&a)[N]) { for (size_t n = 0; n<N; n++) arr[n] = a[n]; }
-	
 		constexpr void fill( const T& value ) { for (auto &a : arr) a = value; }
 		
 		constexpr T &operator[](size_t i)       { return arr[i]; }
@@ -27,29 +19,15 @@ namespace cx {
 
 		static constexpr size_t size() { return N; }
 		
-		constexpr       T *begin()       { return &arr[0]; }
-		constexpr const T *begin() const { return &arr[0]; }
-		constexpr       T *end()         { return &arr[N]; }
-		constexpr const T *end()   const { return &arr[N]; }
-        
-        constexpr array<T,N+1> operator+(const T &rho ) const {
-            array<T,N+1> ret;
-			for (size_t n = 0; n<N; n++)
-				ret[n] = arr[n];
-            ret[N] = rho;
-            return ret;
-        }
-
-        template<size_t M> 
-        constexpr array<T,N+M> append(const array<T,M> &rho) const {
-            array<T,N+M> ret;
-			for (size_t n = 0; n<N; n++)
-				ret[n] = arr[n];
-			for (size_t n = 0; n<M; n++)
-				ret[N+n] = rho[n];
-            return ret;            
-        }
-	};
+		constexpr       T* begin()       { return &arr[0]; }
+		constexpr const T* begin() const { return &arr[0]; }
+		constexpr       T& front()       { return  arr[0]; }
+		constexpr const T& front() const { return  arr[0]; }
+		constexpr       T* end()         { return &arr[N]; }
+		constexpr const T* end()   const { return &arr[N]; }
+		constexpr       T& back()        { return  arr[N-1]; }
+		constexpr const T& back()  const { return  arr[N-1]; }
+    };
     
 	// VECTOR
 	template<typename T, size_t C> 
@@ -62,17 +40,148 @@ namespace cx {
 		constexpr T &operator[](size_t i)       { return arr[i]; }
 		constexpr T  operator[](size_t i) const { return arr[i]; }
 
-		constexpr size_t size() const { return sz; }
+		constexpr size_t size()     const { return sz; }
+        constexpr void   resize(size_t newSz) { sz = newSz; }
+		constexpr bool   empty()    const { return sz==0; }
 		constexpr size_t capacity() const { return C; }
 		
-		constexpr       T *begin()       { return &arr[0]; }
-		constexpr const T *begin() const { return &arr[0]; }
-		constexpr       T *end()         { return &arr[sz]; }
-		constexpr const T *end()   const { return &arr[sz]; }
+		constexpr       T* begin()        { return &arr[0]; }
+		constexpr const T* begin()  const { return &arr[0]; }
+		constexpr       T& front()        { return  arr[0]; }
+		constexpr const T& front()  const { return  arr[0]; }
+		constexpr       T* end()          { return &arr[sz]; }
+		constexpr const T* end()    const { return &arr[sz]; }
+		constexpr       T& back()         { return  arr[sz-1]; }
+		constexpr const T& back()   const { return  arr[sz-1]; }
         
-        constexpr void push_back(const T &rho) { arr[sz++] = rho; }
+        constexpr void push_back(const T &item) { arr[sz++] = item; }
+        constexpr void pop_back() { if (sz!=C) arr[sz] = T(); sz--; }
 	};
+    
+    // PRIORITY_QUEUE
+    template<typename T, size_t C, typename Compare = std::less<T>>
+    class priority_queue {
+    protected:
+        vector<T,C> container = {};
 
+    public:
+    
+        constexpr void push(const T&  item) {
+
+            size_t pos = container.size();
+            container.resize(pos + 1);
+            
+            size_t parent = (pos-1)>>1;
+            while (pos and Compare()(container[parent], item)) {
+                container[pos] = std::move(container[parent]);
+                pos = parent;
+                parent = (pos-1)>>1;
+            }
+            container[pos] = std::move(item);
+        }
+        
+        constexpr void pop() {
+            
+            if (container.empty()) return;
+            
+            auto && item = container[size()-1];
+            size_t pos = 0;
+            while (true) {
+                size_t l = (pos<<1)+1;
+                if (l < size()-1 and not Compare()(container[l], item)) {
+                    container[pos] = std::move(container[l]);
+                    pos = l;
+                    continue;
+                }
+                
+                size_t r = (pos<<1)+2;
+                if (r < size()-1 and not Compare()(container[r], item)) {
+                    container[pos] = std::move(container[r]);
+                    pos = r;
+                    continue;
+                }
+                break;
+            }
+            container[pos] = std::move(item);
+            container.pop_back();
+        }
+
+        constexpr const T& top()   const { return container.front(); }
+        constexpr size_t   size()  const { return container.size();  }
+        constexpr const T* begin() const { return container.begin(); }
+		constexpr const T* end()   const { return container.end();   }       
+    };
+    
+    
+    template<typename T, size_t N, typename Compare = std::less<T>>
+    constexpr cx::array<T,N> getSorted(cx::array<T,N> arr, Compare = std::less<T>()) {
+        
+        priority_queue<T,N,Compare> pq;
+        for (auto &&i : arr)
+            pq.push(i);
+        
+        for (auto &&i : arr) {
+            i = pq.top();
+            pq.pop();
+        }
+        
+        return arr;
+    }
+
+    template<
+        typename RandomAccessIterator, 
+        typename Compare = std::less<typename RandomAccessIterator::value_type> 
+    >
+    constexpr void sort(
+        RandomAccessIterator first, 
+        RandomAccessIterator last,
+        Compare compare = Compare()) {
+        
+        // Create heap
+        size_t sz = 0;
+        while (first + sz != last) {
+
+            size_t pos = sz;
+            size_t parent = (pos-1)>>1;
+            while (pos and compare(first[parent], first[sz])) {
+                first[pos] = std::move(first[parent]);
+                pos = parent;
+                parent = (pos-1)>>1;
+            }
+            first[pos] = first[sz];
+            sz++;
+        }
+            
+        // Empty heap
+        while (sz) {
+
+            auto larger = std::move(first[0]);
+            auto && item = first[sz-1];
+            size_t pos = 0;
+            while (true) {
+                size_t l = (pos<<1)+1;
+                if (l < sz-1 and not compare(first[l], item)) {
+                    first[pos] = std::move(first[l]);
+                    pos = l;
+                    continue;
+                }
+                
+                size_t r = (pos<<1)+2;
+                if (r < sz-1 and not compare(first[r], item)) {
+                    first[pos] = std::move(first[r]);
+                    pos = r;
+                    continue;
+                }
+                break;
+            }
+            first[pos] = std::move(item);
+            first[sz-1] = std::move(larger);
+            sz--;
+        } 
+    }
+    
+      
+    
 	// MATH
 	
 	constexpr double exp(double d) {
