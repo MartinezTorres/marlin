@@ -69,11 +69,11 @@ namespace cx {
 		T arr[N1][N2];
 
 		template<size_t N3>
-		constexpr double vecmul(size_t i, size_t j, const matrix<T,N2,N3>& rhs) const {
+		constexpr static double vecmul(size_t i, size_t j, const matrix<T,N2,N3> lhs, const matrix<T,N2,N3> rhs) {
 
 			double ret = 0.0;
 			for (size_t k=0; k<N2; ++k)
-				ret += arr[i][k] * rhs.arr[k][j];
+				ret += lhs.arr[i][k] * rhs.arr[k][j];
 			return ret;
 		}	
 
@@ -91,7 +91,7 @@ namespace cx {
 			matrix<T,N1,N3> ret = {};
 			for (size_t i=0; i<N1; ++i)
 				for (size_t j=0; j<N3; ++j)
-					ret.arr[i][j] = vecmul(i,j,rhs);
+					ret.arr[i][j] = vecmul(i,j,*this,rhs);
 			return ret;
 		}
     };
