@@ -1,5 +1,5 @@
 #pragma once
-#include <util.hpp>
+#include <util.h>
 
 namespace { // internal linkage
 namespace Distribution {

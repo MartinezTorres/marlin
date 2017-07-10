@@ -5,7 +5,7 @@
 #include <bitset>
 
 using namespace std;
-#include "distribution.hpp"
+#include "distribution.h"
 
 template<typename T, size_t N, typename Compare = std::less<T>>
 static constexpr cx::array<T,N> getSorted2(cx::array<T,N> arr, Compare = std::less<T>()) {
@@ -13,12 +13,18 @@ static constexpr cx::array<T,N> getSorted2(cx::array<T,N> arr, Compare = std::le
     cx::sort(arr.begin(), arr.end(), Compare());
     return arr;
 }
+	template<uint64_t N> struct RequiredBits    { enum { value = 1 + RequiredBits<(N>>1)>::value }; };
+	template<>           struct RequiredBits<0> { enum { value = 0 }; };
+	template<>           struct RequiredBits<1> { enum { value = 1 }; };
 
-    template<uint64_t N> struct bitcount    { enum { value = 1 + bitcount<(N>>1)>::value }; };
-	template<>           struct bitcount<0> { enum { value = 0 }; };
-	template<>           struct bitcount<1> { enum { value = 1 }; };
-    template<uint64_t N> struct bytecount   { enum { value = (bitcount<N>::value + 7) / 8 }; };
-
+	template<uint64_t Max, uint8_t requiredBits = RequiredBits<Max>::value>
+	struct SmallestUint {typedef typename SmallestUint<Max, requiredBits+1>::type type; };	
+	template<uint64_t Max> struct SmallestUint<Max, 8> { typedef uint8_t  type; };
+	template<uint64_t Max> struct SmallestUint<Max,16> { typedef uint16_t type; };
+	template<uint64_t Max> struct SmallestUint<Max,32> { typedef uint32_t type; };
+	template<uint64_t Max> struct SmallestUint<Max,64> { typedef uint64_t type; };
+	
+	
 int main() {
 
     
@@ -50,18 +56,7 @@ int main() {
     }
     std::cout << std::endl;
     
-    std::cout << bytecount<0>::value << std::endl;
-    std::cout << bytecount<1>::value << std::endl;
-    std::cout << bytecount<2>::value << std::endl;
-    std::cout << bytecount<3>::value << std::endl;
-    std::cout << bytecount<4>::value << std::endl;
-    std::cout << bytecount<5>::value << std::endl;
-    std::cout << bytecount<6>::value << std::endl;
-    std::cout << bytecount<7>::value << std::endl;
-    std::cout << bytecount<8>::value << std::endl;
-    std::cout << bytecount<16>::value << std::endl;
-    std::cout << bytecount<32>::value << std::endl;
-    std::cout << bytecount<0x100000000LL>::value << std::endl;
+    std::cout << sizeof(SmallestUint<255>::type) << std::endl;
 
     
 /*

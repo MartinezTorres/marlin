@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <functional>
 #include <limits>
 
 namespace {
@@ -41,9 +42,12 @@ namespace cx {
 		constexpr T  operator[](size_t i) const { return arr[i]; }
 
 		constexpr size_t size()     const { return sz; }
-        constexpr void   resize(size_t newSz) { sz = newSz; }
 		constexpr bool   empty()    const { return sz==0; }
 		constexpr size_t capacity() const { return C; }
+
+		// Todo: unallocate unused objects
+        constexpr void   resize(size_t newSz) { sz = newSz; }
+        constexpr void   clear() { sz = 0; }
 		
 		constexpr       T* begin()        { return &arr[0]; }
 		constexpr const T* begin()  const { return &arr[0]; }
@@ -57,6 +61,38 @@ namespace cx {
         constexpr void push_back(const T &item) { arr[sz++] = item; }
         constexpr void pop_back() { if (sz!=C) arr[sz] = T(); sz--; }
 	};
+    
+    // MATRIX
+	template<typename T, size_t N1, size_t N2> 
+	class matrix {
+	protected:
+		T arr[N1][N2];
+	public:
+
+//		constexpr void fill( const T& value ) { for (auto &a : arr) a = value; }
+		
+		constexpr       T* operator[](size_t i)       { return arr[i]; }
+		constexpr const T* operator[](size_t i) const { return arr[i]; }
+		
+		template<size_t N3>
+		constexpr matrix<T,N1,N3> operator*(const matrix<T,N2,N3>& rhs) const {
+			
+			matrix<T,N1,N3> ret = {};
+			for (size_t i=0; i<N1; ++i) {
+				for (size_t j=0; j<N3; ++j) {
+					double a = 0.0;
+					for (size_t k=0; k<N2; ++k) {
+						a += arr[i][k] * rhs.arr[k][j];
+					}
+					ret.arr[i][j] = a;
+				}
+			}
+			return ret;
+		}
+
+    };
+    
+	
     
     // PRIORITY_QUEUE
     template<typename T, size_t C, typename Compare = std::less<T>>
@@ -112,22 +148,7 @@ namespace cx {
 		constexpr const T* end()   const { return container.end();   }       
     };
     
-    
-    template<typename T, size_t N, typename Compare = std::less<T>>
-    constexpr cx::array<T,N> getSorted(cx::array<T,N> arr, Compare = std::less<T>()) {
-        
-        priority_queue<T,N,Compare> pq;
-        for (auto &&i : arr)
-            pq.push(i);
-        
-        for (auto &&i : arr) {
-            i = pq.top();
-            pq.pop();
-        }
-        
-        return arr;
-    }
-
+    // SORT ALGORITHM
     template<
         typename RandomAccessIterator, 
         typename Compare = std::less<typename RandomAccessIterator::value_type> 

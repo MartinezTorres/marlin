@@ -1,37 +1,33 @@
 
+#include <util.h>
+#include <distribution.h>
+#include <marlin.h>
+
+
 namespace {
 	
-    template<uint64_t N> struct bitcount    { enum { value = 1 + bitcount<(N>>1)>::value }; };
-	template<>           struct bitcount<0> { enum { value = 0 }; };
-	template<>           struct bitcount<1> { enum { value = 1 }; };
-    template<uint64_t N> struct bytecount   { enum { value = (bitcount<N>::value + 7) / 8 }; };
+	template<uint64_t N> struct RequiredBits    { enum { value = 1 + RequiredBits<(N>>1)>::value }; };
+	template<>           struct RequiredBits<0> { enum { value = 0 }; };
+	template<>           struct RequiredBits<1> { enum { value = 1 }; };
 
-	
-	template<uint64_t Max>
-	struct RequiredBits { enum { value = 
-			Max < 0x100         ?  8 :
-			Max < 0x10000       ? 16 :
-			Max < 0x100000000LL ? 32 :
-								  64 };
-	};
-
-	template<int bits> struct SelectInteger_;
-	template<> struct SelectInteger_ <8> { typedef uint8_t type; };
-	template<> struct SelectInteger_<16> { typedef uint16_t type; };
-	template<> struct SelectInteger_<32> { typedef uint32_t type; };
-	template<> struct SelectInteger_<64> { typedef uint64_t type; };
-
-	template<uint64_t Max>
-	struct SelectInteger : SelectInteger_<RequiredBits<Max>::value> {};
+	template<uint64_t Max, uint8_t requiredBits = RequiredBits<Max>::value>
+	struct SmallestUint {typedef typename SmallestUint<Max, requiredBits+1>::type type; };	
+	template<uint64_t Max> struct SmallestUint<Max, 8> { typedef uint8_t  type; };
+	template<uint64_t Max> struct SmallestUint<Max,16> { typedef uint16_t type; };
+	template<uint64_t Max> struct SmallestUint<Max,32> { typedef uint32_t type; };
+	template<uint64_t Max> struct SmallestUint<Max,64> { typedef uint64_t type; };
 
 
 	// Template parameters:
-	// A  -> number of letters in the alphabet, maximum is 2^16
-	// WS -> maximum size of the word, maximum is 128
-	// NW -> number of words in the dictionary, maximum is 2^16
+	// A  -> number of symbols in the alphabet
+	// WS -> maximum number of symbols in a word
+	// NW -> maximum number of words in the dictionary
 	template<size_t A, size_t WS, size_t NW>
 	class Dictionary {
 		
+		typedef typename SmallestUint<A-1>::type TSymbol;
+
+/*
 		struct Word : cx::vector<uint16_t, WS> {
 			
 			double probability;
@@ -212,52 +208,54 @@ namespace {
 		
 		
 		cx::array<N> meanLengthPerSymbol = {};
-		
+		*/
 	public:
 			
 		constexpr Dictionary(cx::array<double,A> Punsorted) {
 			
 			struct SymbolWithProbability {
 				double p;
-				Tsymbol symbol;
-				constexpr bool operator>(const &rhs) { return p > rhs.p; }
+				TSymbol symbol;
+				constexpr bool operator>(const SymbolWithProbability& rhs) const { return p > rhs.p; }
 			};
 			
-			cx::array<SymbolWithProbability,A> symbols;
+			cx::array<SymbolWithProbability,A> symbols = {};
 			
 			for (size_t i=0; i<symbols.size(); i++)
-				symbols[i] = { Punsorted[i] , i };
+				symbols[i] = { Punsorted[i] , TSymbol(i) };
 			
-			cx::sort<std::greater>(symbols);
+			cx::sort(symbols.begin(), symbols.end(), std::greater<SymbolWithProbability>());
 			
 						
-			cx::array<double,A> Pstate; 
+			cx::array<double,A> Pstate = {}; 
 			Pstate.fill(0.);
 			Pstate.front() = 1.;
 			
 			
-			cx::array<double,A> PN;
+			cx::array<double,A> PN = {};
 			PN.back() = symbols.back().p;
-			for (size_t i=PN.size()-1; i; i--)
+			for (size_t i=A-1; i; i--)
 				PN[i-1] = PN[i] + symbols[i-1].p;
 
 
-			cx::array<double,A> Pchild;
-			for (size_t i=0; i<P.size(); i++)
+			cx::array<double,A> Pchild = {};
+			for (size_t i=0; i<A; i++)
 				Pchild[i] = symbols[i].p / PN[i];
+				
 				
 			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
 
 				struct Node {
-					Word word; //Not symbols but symbol orders
+					cx::vector<TSymbol,WS> symbolIndexes; //Not symbols but symbol idn
 					int nChildren;
 					double p;
-					constexpr bool operator>(const &rhs) { 
-						return (not (word.size() == WS)) and (p > rhs.p); 
+					constexpr bool operator>(const Node& rhs) const {
+						return ((symbolIndexes.size() == WS) xor (rhs.symbolIndexes.size() == WS)) ?
+							p > rhs.p  : symbolIndexes.size() != WS;
 					}
 				};
 				
-				cx::priority_queue<Node,NW,std::greater> pq;
+				cx::priority_queue<Node,NW,std::greater<Node>> pq;
 
 				// DICTIONARY INITIALIZATION
 				for (size_t c=0; c<A; ++c) {
@@ -265,8 +263,8 @@ namespace {
 					double sum = 0;
 					for (size_t t = 0; t<=c; ++t) sum += Pstate[t]/PN[t];
 					
-					Node node;
-					node.word.push_back(c);
+					Node node = {};
+					node.symbolIndexes.push_back(c);
 					node.nChildren = 0;
 					node.p = sum * symbols[c].p;
 					
@@ -274,27 +272,27 @@ namespace {
 				}
 				
 				// GROW THE DICTIONARY
-				while (pq.size() < NW and pw.top().word.size() < WS) {
+				while (pq.size() < NW and pq.top().symbolIndexes.size() < WS) {
 					
 					Node node = pq.top();
 					pq.pop();
 					
-					Node newNode;
-					newNode.word = node.word;
-					newNode.word.push_back(node.word.nChildren);
+					Node newNode = {};
+					newNode.symbolIndexes = node.symbolIndexes;
+					newNode.symbolIndexes.push_back(node.nChildren);
 					
 					newNode.nChildren = 0;
 					
-					newNode.p = node.p * Pchild[node.word.nChildren];
+					newNode.p = node.p * Pchild[node.nChildren];
 					pq.push(newNode);
 					
-					node.p -= newWord.p;
+					node.p -= newNode.p;
 					node.nChildren++;
 					
 					if (node.nChildren == A-1) {
 
-						node.word.push_back(node.word.nChildren);
-						node.p = node.p * Pchild[node.word.nChildren];
+						node.symbolIndexes.push_back(node.nChildren);
+						node.p = node.p * Pchild[node.nChildren];
 						node.nChildren = 0;
 					}					
 					pq.push(node);
@@ -302,63 +300,47 @@ namespace {
 								
 				// UPDATE STATE PROBABILITIES
 				{
-					cx::array<cx::array<double,A>,A> T;
-					for (auto &&t : T)
-						t.fill(0.);
-
-					cx::array<double,A> sums;
+					
+					cx::array<double,A> sums = {};
 					{
 						double sum = 0.0;
 						for (size_t state = 0; state < A; ++state)
 							sums[state] = sum = sum + Pstate[state]/PN[state];
 					}
+					
+					cx::matrix<double,A,A> T = {};
 			
 					for (auto &&node : pq)
-						for (size_t state=0; state<=node.word.front(); ++state)
-							T[state][node.nChildren] += node.p /(sum[node.word.front()] * PN[state]);
+						for (size_t state=0; state<=node.symbolIndexes.front(); ++state)
+							T[state][node.nChildren] += node.p /(sums[node.symbolIndexes.front()] * PN[state]);
 
 					// Solving Maxwell
-					for (size_t MaxwellIterations = 10; MaxwellIterations; --MaxwellIterations) {
-						
-						auto T2 = T;
-						for (auto &&t : T)
-							t.fill(0.);
-						for (size_t i=0; i<A; ++i)
-							for (size_t j=0; j<A; ++j)
-								for (size_t k=0; k<A; ++k)
-									T[i][j] += T2[i][k] * T2[k][j];
-					}					
-					Pstate = T[0];
+					for (size_t MaxwellIterations = 1; MaxwellIterations; --MaxwellIterations)
+						T = T* T;
+
+/*					Pstate = T[0];*/
 				}
 				
-				W.clear();
-				for (auto &&node : pq) {
-					W.push_back(pq.word);
-					for (auto &&c: W.back().word)
-						c = symbols[c].symbol;
-				}					
+				/*{
+					W.clear();
+					for (auto &&node : pq) {
+						W.push_back(pq.word);
+						for (auto &&c: W.back().word)
+							c = symbols[c].symbol;
+					}					
+				}*/
 			}		
 		}
 				
-		constexpr double averageBitsPerSymbol() const {
-			
-			double meanLength = 0;
-			for (auto &w : W) 
-				meanLength += prob(w)*w.size();
-
-			return dictSize2/meanLength;		
-		}
-	
-		constexpr double expectedLength(const std::array<size_t, N> &hist) const {
+		/*constexpr double expectedLength(const std::array<size_t, N> &hist) const {
 			
 			double ret = 0;
 			for (size_t i=0; i<N; i++)
 				ret += meanLengthPerSymbol[i]*hist[i];
 			return ret;
-		}
-		
+		}*/
 	};
-	
+	/*
 	Dictionary<256> dictionaries[] = {};
 
 	void encode(const Block *begin, const Block *end, uint8_t *&dst) {
@@ -372,11 +354,16 @@ namespace {
 		uint16_t uncompressedSize = 0;
 		double expectedLength = 0;
 		bool delta = false;
-	};
+	};*/
 
-};
+}
 
+int main() {
+	
+	constexpr auto dictionary  = Dictionary<256,7,4096>( Distribution::getWithEntropy(Distribution::Gaussian<256>,.5) );
+}
 
+/*
 size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize, size_t bs = 4096) {
 	
 	std::vector<Block> blocks(1 + srcSize/bs);
@@ -441,7 +428,7 @@ size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, s
 	}
 
 	return outSize;
-}
+}*/
 /*
 size_t Marlin_decompress(int8_t* dst, size_t dstCapacity, const int8_t* Src, size_t SrcSize) {
 	

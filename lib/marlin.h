@@ -32,6 +32,8 @@ extern "C" {
 #endif
 
 #include <stddef.h>
+#include <stdint.h>
+
 
 // Simple functions for 8 bit sources
 size_t Marlin_compress  (int8_t* dst, size_t dstCapacity, const int8_t* src, size_t srcSize);
