@@ -19,13 +19,13 @@ namespace {
 
 
 	// Template parameters:
-	// A  -> number of symbols in the alphabet
-	// WS -> maximum number of symbols in a word
-	// NW -> maximum number of words in the dictionary
-	template<size_t A, size_t WS, size_t NW>
+	// ALPHABET_SIZE  -> number of symbols in the alphabet
+	// WORD_SIZE -> maximum number of symbols in a word
+	// NUM_WORDS -> maximum number of words in the dictionary
+	template<size_t ALPHABET_SIZE, size_t WORD_SIZE, size_t NUM_WORDS>
 	class Dictionary {
 		
-		typedef typename SmallestUint<A-1>::type TSymbol;
+		typedef typename SmallestUint<ALPHABET_SIZE-1>::type TSymbol;
 
 /*
 		struct Word : cx::vector<uint16_t, WS> {
@@ -209,117 +209,136 @@ namespace {
 		
 		cx::array<N> meanLengthPerSymbol = {};
 		*/
+		
+		cx::array<double,ALPHABET_SIZE> Pstate = {}; 
+		cx::array<double,ALPHABET_SIZE> PN = {};
+		cx::array<double,ALPHABET_SIZE> Pchild = {};
+		
+		
+		struct SymbolWithProbability {
+			double p;
+			TSymbol symbol;
+			constexpr bool operator>(const SymbolWithProbability& rhs) const { return p > rhs.p; }
+		};
+		
+		cx::array<SymbolWithProbability,ALPHABET_SIZE> symbols = {};
+		
+		
+		struct Word {
+			cx::vector<TSymbol,WORD_SIZE> symbolIndexes; //Not symbols but symbol idn
+			int nChildren;
+			double p;
+			constexpr bool operator>(const Word& rhs) const {
+				return ((symbolIndexes.size() == WORD_SIZE) xor (rhs.symbolIndexes.size() == WORD_SIZE)) ?
+					p > rhs.p  : symbolIndexes.size() != WORD_SIZE;
+			}
+		};
+		
+		cx::vector<Word,NUM_WORDS> words = cx::vector<Word,NUM_WORDS>();
+		
+		constexpr void buildDictionary() {
+
+			cx::priority_queue<Word,NUM_WORDS,std::greater<Word>> pq;
+
+			// DICTIONARY INITIALIZATION
+			for (size_t c=0; c<ALPHABET_SIZE; ++c) {
+				
+				double sum = 0;
+				for (size_t t = 0; t<=c; ++t) sum += Pstate[t]/PN[t];
+				
+				Word node = {};
+				node.symbolIndexes.push_back(c);
+				node.nChildren = 0;
+				node.p = sum * symbols[c].p;
+				
+				pq.push(node);
+			}
+			
+			// GROW THE DICTIONARY
+			while (pq.size() < NUM_WORDS and pq.top().symbolIndexes.size() < WORD_SIZE) {
+				
+				Word node = pq.top();
+				pq.pop();
+				
+				Word newNode = {};
+				newNode.symbolIndexes = node.symbolIndexes;
+				newNode.symbolIndexes.push_back(node.nChildren);
+				
+				newNode.nChildren = 0;
+				
+				newNode.p = node.p * Pchild[node.nChildren];
+				pq.push(newNode);
+				
+				node.p -= newNode.p;
+				node.nChildren++;
+				
+				if (node.nChildren == ALPHABET_SIZE-1) {
+
+					node.symbolIndexes.push_back(node.nChildren);
+					node.p = node.p * Pchild[node.nChildren];
+					node.nChildren = 0;
+				}					
+				pq.push(node);
+			}
+			
+			words.clear();
+			for (auto && n : pq)
+				words.push_back(n);
+		}
+		
+		constexpr void updateStateProbabilities() {
+			
+			cx::array<double,ALPHABET_SIZE> sums = {};
+			{
+				double sum = 0.0;
+				for (size_t state = 0; state < ALPHABET_SIZE; ++state)
+					sums[state] = sum = sum + Pstate[state]/PN[state];
+			}
+			
+			cx::matrix<double,ALPHABET_SIZE,ALPHABET_SIZE> T = {};
+	
+			for (auto &&node : words)
+				for (size_t state=0; state<=node.symbolIndexes.front(); ++state)
+					T[state][node.nChildren] += node.p /(sums[node.symbolIndexes.front()] * PN[state]);
+
+			// Solving Maxwell
+			for (size_t MaxwellIterations = 1; MaxwellIterations; --MaxwellIterations)
+				T = T* T;
+				
+			for (size_t state = 0; state < ALPHABET_SIZE; ++state)
+				Pstate[state] = T[0][state];
+		}
+
+		
+		
 	public:
 			
-		constexpr Dictionary(cx::array<double,A> Punsorted) {
-			
-			struct SymbolWithProbability {
-				double p;
-				TSymbol symbol;
-				constexpr bool operator>(const SymbolWithProbability& rhs) const { return p > rhs.p; }
-			};
-			
-			cx::array<SymbolWithProbability,A> symbols = {};
-			
+		constexpr Dictionary(cx::array<double,ALPHABET_SIZE> Punsorted) {
+						
+			// Sort symbols by probability
 			for (size_t i=0; i<symbols.size(); i++)
 				symbols[i] = { Punsorted[i] , TSymbol(i) };
 			
 			cx::sort(symbols.begin(), symbols.end(), std::greater<SymbolWithProbability>());
 			
-						
-			cx::array<double,A> Pstate = {}; 
-			Pstate.fill(0.);
+			// Initial State Probability
 			Pstate.front() = 1.;
 			
-			
-			cx::array<double,A> PN = {};
+			// Reverse cummulative symbol probability
 			PN.back() = symbols.back().p;
-			for (size_t i=A-1; i; i--)
+			for (size_t i=ALPHABET_SIZE-1; i; i--)
 				PN[i-1] = PN[i] + symbols[i-1].p;
 
-
-			cx::array<double,A> Pchild = {};
-			for (size_t i=0; i<A; i++)
+			// Probability of a given child
+			for (size_t i=0; i<ALPHABET_SIZE; i++)
 				Pchild[i] = symbols[i].p / PN[i];
-				
 				
 			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
 
-				struct Node {
-					cx::vector<TSymbol,WS> symbolIndexes; //Not symbols but symbol idn
-					int nChildren;
-					double p;
-					constexpr bool operator>(const Node& rhs) const {
-						return ((symbolIndexes.size() == WS) xor (rhs.symbolIndexes.size() == WS)) ?
-							p > rhs.p  : symbolIndexes.size() != WS;
-					}
-				};
+				buildDictionary();
 				
-				cx::priority_queue<Node,NW,std::greater<Node>> pq;
-
-				// DICTIONARY INITIALIZATION
-				for (size_t c=0; c<A; ++c) {
-					
-					double sum = 0;
-					for (size_t t = 0; t<=c; ++t) sum += Pstate[t]/PN[t];
-					
-					Node node = {};
-					node.symbolIndexes.push_back(c);
-					node.nChildren = 0;
-					node.p = sum * symbols[c].p;
-					
-					pq.push(node);
-				}
-				
-				// GROW THE DICTIONARY
-				while (pq.size() < NW and pq.top().symbolIndexes.size() < WS) {
-					
-					Node node = pq.top();
-					pq.pop();
-					
-					Node newNode = {};
-					newNode.symbolIndexes = node.symbolIndexes;
-					newNode.symbolIndexes.push_back(node.nChildren);
-					
-					newNode.nChildren = 0;
-					
-					newNode.p = node.p * Pchild[node.nChildren];
-					pq.push(newNode);
-					
-					node.p -= newNode.p;
-					node.nChildren++;
-					
-					if (node.nChildren == A-1) {
-
-						node.symbolIndexes.push_back(node.nChildren);
-						node.p = node.p * Pchild[node.nChildren];
-						node.nChildren = 0;
-					}					
-					pq.push(node);
-				}
+				updateStateProbabilities();
 								
-				// UPDATE STATE PROBABILITIES
-				{
-					
-					cx::array<double,A> sums = {};
-					{
-						double sum = 0.0;
-						for (size_t state = 0; state < A; ++state)
-							sums[state] = sum = sum + Pstate[state]/PN[state];
-					}
-					
-					cx::matrix<double,A,A> T = {};
-			
-					for (auto &&node : pq)
-						for (size_t state=0; state<=node.symbolIndexes.front(); ++state)
-							T[state][node.nChildren] += node.p /(sums[node.symbolIndexes.front()] * PN[state]);
-
-					// Solving Maxwell
-					for (size_t MaxwellIterations = 1; MaxwellIterations; --MaxwellIterations)
-						T = T* T;
-
-/*					Pstate = T[0];*/
-				}
 				
 				/*{
 					W.clear();
