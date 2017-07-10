@@ -67,6 +67,16 @@ namespace cx {
 	class matrix {
 	protected:
 		T arr[N1][N2];
+
+		template<size_t N3>
+		constexpr double vecmul(size_t i, size_t j, const matrix<T,N2,N3>& rhs) const {
+
+			double ret = 0.0;
+			for (size_t k=0; k<N2; ++k)
+				ret += arr[i][k] * rhs.arr[k][j];
+			return ret;
+		}	
+
 	public:
 
 //		constexpr void fill( const T& value ) { for (auto &a : arr) a = value; }
@@ -74,26 +84,18 @@ namespace cx {
 		constexpr       T* operator[](size_t i)       { return arr[i]; }
 		constexpr const T* operator[](size_t i) const { return arr[i]; }
 		
+		
 		template<size_t N3>
 		constexpr matrix<T,N1,N3> operator*(const matrix<T,N2,N3>& rhs) const {
 			
 			matrix<T,N1,N3> ret = {};
-			for (size_t i=0; i<N1; ++i) {
-				for (size_t j=0; j<N3; ++j) {
-					double a = 0.0;
-					for (size_t k=0; k<N2; ++k) {
-						a += arr[i][k] * rhs.arr[k][j];
-					}
-					ret.arr[i][j] = a;
-				}
-			}
+			for (size_t i=0; i<N1; ++i)
+				for (size_t j=0; j<N3; ++j)
+					ret.arr[i][j] = vecmul(i,j,rhs);
 			return ret;
 		}
-
     };
-    
-	
-    
+        
     // PRIORITY_QUEUE
     template<typename T, size_t C, typename Compare = std::less<T>>
     class priority_queue {
