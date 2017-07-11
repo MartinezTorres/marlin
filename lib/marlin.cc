@@ -342,11 +342,10 @@ namespace {
 			return words;
 		}
 		
-
-		constexpr static cx::array<double,ALPHABET_SIZE> updateStateProbabilities(
-			cx::array<double,ALPHABET_SIZE> Pstate, 
-			cx::array<double,ALPHABET_SIZE> PN, 
-			cx::vector<Word,NUM_WORDS> words ) {
+		constexpr static cx::array<double,ALPHABET_SIZE> updatePstate(
+			const cx::array<double,ALPHABET_SIZE> &Pstate, 
+			const cx::array<double,ALPHABET_SIZE> &PN, 
+			const cx::vector<Word,NUM_WORDS> &words ) {
 			
 			cx::array<double,ALPHABET_SIZE> sums = {};
 			{
@@ -359,16 +358,23 @@ namespace {
 	
 			for (auto &&node : words)
 				for (size_t state=0; state<=node.symbolIndexes.front(); ++state)
-					T[state][node.nChildren] += node.p /(sums[node.symbolIndexes.front()] * PN[state]);
-
+					T[state][node.nChildren] += node.p /(sums[node.symbolIndexes.front()] * PN[state]);		
+			
+			// T*T is too slow for constexpr... 
+			
 			// Solving Maxwell
-			for (size_t MaxwellIterations = 1; MaxwellIterations; --MaxwellIterations)
-				T = cx::Squarer<double,ALPHABET_SIZE>(T).M;
-				
+			//for (size_t MaxwellIterations = 1; MaxwellIterations; --MaxwellIterations)
+			//	T = T * T;
+			//	
+			//for (size_t state = 0; state < ALPHABET_SIZE; ++state)
+			//	Pstate[state] = T[0][state];
+			
+			cx::array<double,ALPHABET_SIZE> newPstate = {};
 			for (size_t state = 0; state < ALPHABET_SIZE; ++state)
-				Pstate[state] = T[0][state];
-				
-			return Pstate;
+				for (size_t k=0; k<ALPHABET_SIZE; ++k)
+					newPstate[state] += T[0][k] * T[k][state];
+					
+			return newPstate;
 		}
 
 		
@@ -395,11 +401,11 @@ namespace {
 			for (size_t i=0; i<ALPHABET_SIZE; i++)
 				Pchild[i] = symbols[i].p / PN[i];
 				
-			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
+			for (size_t StateUpdateIterations = 1; StateUpdateIterations; --StateUpdateIterations) {
 
 				words = buildDictionary(Pstate, PN, Pchild, symbols);
 				
-				Pstate = updateStateProbabilities(Pstate, PN, words);
+				Pstate = updatePstate(Pstate, PN, words);
 								
 				
 				/*{
@@ -412,6 +418,8 @@ namespace {
 				}*/
 			}		
 		}
+		
+		
 				
 		/*constexpr double expectedLength(const std::array<size_t, N> &hist) const {
 			

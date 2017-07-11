@@ -6,6 +6,8 @@
 namespace {
 namespace cx {
 	
+//	using std::array; // Can be used when array is finally constexpr compliant
+	
 	// ARRAY
 	template<typename T, size_t N> 
 	class array {
@@ -28,51 +30,7 @@ namespace cx {
 		constexpr const T* end()   const { return &arr[N]; }
 		constexpr       T& back()        { return  arr[N-1]; }
 		constexpr const T& back()  const { return  arr[N-1]; }
-		
-		constexpr static cx::array<T,N> mulLine(
-			size_t i,
-			const cx::array<cx::array<T,N>,N> M) {
-		
-			cx::array<T,N> L = {};
-			
-			for (size_t j=0; j<N; ++j)
-				for (size_t k=0; k<N; ++k)
-					L.arr[j] += M.arr[i].arr[k] * M.arr[k].arr[j];
-
-			return L;
-		}		
     };
-
-    template<typename T, size_t N>
-    struct Liner {
-		
-		cx::array<T,N> L = {};
-		
-		constexpr Liner( size_t i, const cx::array<cx::array<T,N>,N> MM) {
-
-			L = array<T,N>::mulLine(i, MM);
-		}
-		
-	};
-
-    template<typename T, size_t N>
-    struct Squarer {
-		
-		cx::array<cx::array<T,N>,N> M = {};
-		cx::array<T,N> L = {};
-		
-		constexpr Squarer( const cx::array<cx::array<T,N>,N> MM) {
-
-			for (size_t i=0; i<N; i++) {
-				L = Liner<T,N>(i, MM).L;
-				M[i] = L;
-			}
-		}
-		
-	};
-	
-	
-
     
 	// VECTOR
 	template<typename T, size_t C> 
