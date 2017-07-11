@@ -1,5 +1,7 @@
-#include <marlin.h>
+
+#include <util.h>
 #include <distribution.h>
+#include <marlin.h>
 
 
 namespace {
@@ -424,17 +426,12 @@ namespace {
 		double expectedLength = 0;
 		bool delta = false;
 	};*/
-	
-	constexpr Dictionary dictionaries[] = {
-#include "dictionaries.inc"
-	};
-	
 
 }
 
 int main() {
 	
-	//constexpr auto dictionary  = Dictionary<256,7,4096>( Distribution::getWithEntropy(Distribution::Gaussian<256>,.5) );
+	constexpr auto dictionary  = Dictionary<256,7,4096>( Distribution::getWithEntropy(Distribution::Gaussian<256>,.5) );
 }
 
 /*
