@@ -1,4 +1,5 @@
 #include <marlin.h>
+#include <util.h>
 #include <distribution.h>
 
 
@@ -15,7 +16,112 @@ namespace {
 	template<uint64_t Max> struct SmallestUint<Max,32> { typedef uint32_t type; };
 	template<uint64_t Max> struct SmallestUint<Max,64> { typedef uint64_t type; };
 
+	struct obitstream {
+		
+		uint8_t *start;
+		uint8_t *p;
+		uint8_t *end;
+		uint64_t val = 0;
+		uint64_t roll = 0;
+		
+		constexpr obitstream(uint8_t *p, size_t sz) : start(p), p(p), end(p+sz) {}
+		
+		constexpr void write(size_t bits, uint64_t data) {
+			
+			if (p + 16 > end) { // End is near
+				
+				while (roll >= 8 and p!= end) { 
+					*(uint8_t *)p = val + (data << roll);
+					p += sizeof(uint8_t);
+					roll -= 8;
+				}
+				
+				val += (data << roll);
+				roll += bits;
+				
+				while (roll >= 8 and p!= end) { 
+					*(uint8_t *)p = val + (data << roll);
+					p += sizeof(uint8_t);
+					roll -= 8;
+				}
+				
+				
+			} else if (roll >= 64 - bits ) {
+				
+				*(uint64_t *)p = val + (data << roll);
+				p += sizeof(uint64_t);
+				val = (data >> (64-roll));
+				roll = 0;
+				
+			} else {
+				
+				val += (data << roll);
+				roll += bits;
+			}
+		}
+		
+		constexpr void writeBytes(size_t bytes, uint64_t data) {
+			
+			*(uint64_t *)p = data;
+			p += bytes;
+		}
+		
+		constexpr size_t bytesLeft() const {
+			return end - p;
+		}
+	};
 
+	struct ibitstream {
+		
+		const uint8_t *start;
+		const uint8_t *p;
+		const uint8_t *end;
+		uint64_t val = 0;
+		uint64_t roll = 0;
+		
+		constexpr ibitstream(const uint8_t *p, size_t sz) : start(p), p(p), end(p+sz) {}
+		
+		constexpr uint64_t read(size_t bits) {
+
+			if (roll < bits) {
+				if (p + 4 < end) {
+					val += ( (*(uint32_t *)p) << roll);
+					p += sizeof(uint32_t);
+					roll += 32;
+				} else while (p!= end) {
+					val += ( (*(uint8_t *)p) << roll);
+					p += sizeof(uint8_t);
+					roll += 8;
+				}
+			}
+
+			uint64_t ret = val;
+			roll -= bits;
+			val = (val >> bits);
+			return ret & ((1<<bits)-1);
+		}
+		
+		constexpr uint64_t readBytes(size_t bytes) {
+			
+			uint64_t ret = *(uint64_t *)p;
+			p += bytes;
+			return ret;
+		}
+		
+		constexpr operator bool() const {
+			return not roll or p != end;
+		}
+		
+		constexpr size_t bytesLeft() const {
+			return end - p;
+		}
+	};
+
+	// Uncompressed symbols may be anything from 1 bit to N bits, and it shold even be variable, and it might be padded, and and and... s**t.
+	
+	// Compressed symbols may even be variable.
+	// Let's keep Marlin being Marlin: fixed sized uncompressed
+	
 	// Template parameters:
 	// ALPHABET_SIZE  -> number of symbols in the alphabet
 	// WORD_SIZE -> maximum number of symbols in a word
@@ -23,413 +129,168 @@ namespace {
 	template<size_t ALPHABET_SIZE, size_t WORD_SIZE, size_t NUM_WORDS>
 	class Dictionary {
 		
-		typedef typename SmallestUint<ALPHABET_SIZE-1>::type TSymbol;
-
-/*
-		struct Word : cx::vector<uint16_t, WS> {
-			
-			double probability;
-		};
+		typedef typename SmallestUint<  ALPHABET_SIZE-1>::type SymbolIdx;
+		typedef cx::vector<SymbolIdx, WORD_SIZE> Word;
 		
-		struct AllWords : cx::vector<Word, NW> {
-		};
+		class Encoder {
+			
+			typedef typename SmallestUint<2*NUM_WORDS-1>::type NodeIdx;
+			typedef typename SmallestUint<  NUM_WORDS-1>::type WordIdx;
+			
+			struct Node {
+				cx::array<NodeIdx,ALPHABET_SIZE> child;
+				WordIdx code;
+			};            
+			cx::vector<Node, 2*NUM_WORDS> nodes = {};
+		public:
 		
-		
-		struct EncoderNode {
-			cx::array<uint16_t,N> child;
-			uint16_t code;
-		};            
-		cv:array<EncoderNode, 2*Words::capacity()> nodes = {};
-			
-		constexpr void prepareEncoder(const Words &words) {
-			
-			Node blank;
-			blank.code = 0;
-			blank.increment = 0;
-			for (size_t i=0; i<N; i++)
-				blank.child[i] = i;
-
-			for (size_t i=0; i<N; i++)
-				nodes.push_back(blank);
-			
-			for (size_t i=0; i<words.size(); ++i) {
+			constexpr Encoder(const cx::vector<Word,NUM_WORDS> words) {
 				
-				auto &&w = words[i];
-				// No word should be empty
-				uint32_t nodeId = uint8_t(w[0]);
+				Node blank;
+				blank.code = 0;
+				blank.increment = 0;
+				for (size_t i=0; i<ALPHABET_SIZE; i++)
+					blank.child[i] = i;
+
+				for (size_t i=0; i<ALPHABET_SIZE; i++)
+					nodes.push_back(blank);
 				
-				for (size_t j=1; j<w.size(); ++j) {
+				for (size_t i=0; i<words.size(); ++i) {
 					
-					uint8_t c = w[j];
-					if (nodeId and nodes[nodeId].child[c] == c) {
-						nodes[nodeId].child[c] = nodes.size();
-						nodes.push_back(blank);
-					}
-					nodeId = nodes[nodeId].child[c];
-				}
-				nodes[nodeId].code = i;
-			}
-		}
-			
-		size_t encode(uint8_t* dst, const uint8_t* src, size_t srcSize) const { 
-				
-			uint8_t* dst0 = dst;
-			
-			const uint8_t *end = src+srcSize;
-			if (src == end) return;
-
-			uint32_t nodeId = *src++, oldNodeId = 0;
-			uint64_t v64 = 0;
-			while (src + 4*Word::capacity() < end) {
-				
-				do { 
-					oldNodeId = nodeId;
-					nodeId = nodes[nodeId].child[*src++]; 
-				} while (nodeId < N);
-				v64 = nodes[oldNodeId].code;
-				do { 
-					oldNodeId = nodeId;
-					nodeId = nodes[nodeId].child[*src++]; 
-				} while (nodeId < N);
-				v64 += nodes[oldNodeId].code << 12;
-				do { 
-					oldNodeId = nodeId;
-					nodeId = nodes[nodeId].child[*src++]; 
-				} while (nodeId < N);
-				v64 += nodes[oldNodeId].code << 24;
-				do { 
-					oldNodeId = nodeId;
-					nodeId = nodes[nodeId].child[*src++]; 
-				} while (nodeId < N);
-				v64 += nodes[oldNodeId].code << 36;
-
-				*(uint64_t *)dst = v64;
-				dst += 6;
-			}
-			
-			v64 = 0;
-			uint32_t c = 0;
-			while (src < end) {
-				oldNodeId = nodeId;
-				nodeId = nodes[nodeId].child[*src++]; 
-				if (nodeId < N) {
-					v64 += nodes[oldNodeId].code << c;
-					c += 12;
-					if (c==48) {
-						*(uint64_t *)dst = v64;
-						dst += 6;
-						c    =  0;                            
-					}
-				}
-			}
-
-			do {
-				oldNodeId = nodeId;
-				nodeId = nodes[nodeId].child[0]; 
-			} while (not (nodeId < N));
-			v64 += nodes[oldNodeId].code << c;
-			c += 12;
-			*(uint64_t *)dst = v64;
-			dst += (c+7)/8;
-			
-			return dst - dst0;
-		}
-			
-		cx::array<cx::array<uint8_t,8>> decodeData;
-
-		void decode(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) const { 
-							
-			uint8_t* dst0 = dst;
-			
-			const uint8_t *end = src+srcSize;
-			if (src == end) return;
-			
-			while (src + 6 <= end) {
-				
-				uint64_t v64=0;
-				v64 = *(const uint64_t *)src;
-				src+=6;
-				
-				{
-					uint64_t v = data[(v64>>0 ) & 0xFFF];
-					*((uint64_t *)dst) = v;
-					dst += v >> ((sizeof(uint64_t)-1)*8);
-				}
-				{				
-					uint64_t v = data[(v64>>0 ) & 0xFFF];
-					*((uint64_t *)dst) = v;
-					dst += v >> ((sizeof(uint64_t)-1)*8);
-				}
-				{				
-					uint64_t v = data[(v64>>0 ) & 0xFFF];
-					*((uint64_t *)dst) = v;
-					dst += v >> ((sizeof(uint64_t)-1)*8);
-				}
-				{				
-					uint64_t v = data[(v64>>0 ) & 0xFFF];
-					*((uint64_t *)dst) = v;
-					dst += v >> ((sizeof(uint64_t)-1)*8);
-				}
-			}
-
-			uint64_t v64=0, c=0;
-			while (src < end) {
-				while (c<12) {
-					v64 += *src++ << c;
-					c+= 8;
-				}
-				
-				{
-					const uint8_t *v = (const uint8_t *)&data[(v64>>0 ) & 0xFFF];
-					size_t sz = v[sizeof(uint64_t)-1];
-					for (size_t i=0; i<sz and dst<dstEnd; i++)
-						*dst++ = *v++;
-				}
-				
-				v64 = v64 >> 12;
-				c-= 12;
-			}
-		}
-
-		constexpr prepareDecoder(const Dictionary &dict, const std::array<std::pair<double, uint8_t>,256> &distSorted) 
-			: maxWordSize(dict.maxWordSize), dictSize2(dict.dictSize2) {
-			
-			data.resize(dict.W.size()*maxWordSize);
-			for (size_t i=0; i<dict.W.size(); i++) {
-
-				uint8_t *d = &data[i*maxWordSize];
-				d[maxWordSize-1] = dict.W[i].size();
-				for (auto c : dict.W[i])
-					*d++ = distSorted[c].second;
-			}
-		}
-		
-		
-		cx::array<N> meanLengthPerSymbol = {};
-		*/
-		
-		
-		
-		struct SymbolWithProbability {
-			double p;
-			TSymbol symbol;
-			constexpr bool operator>(const SymbolWithProbability& rhs) const { return p > rhs.p; }
-		};
-
-		
-		
-		struct Word {
-			cx::vector<TSymbol,WORD_SIZE> symbolIndexes; //Not symbols but symbol idn
-			int nChildren;
-			double p;
-			constexpr bool operator>(const Word& rhs) const {
-				return ((symbolIndexes.size() == WORD_SIZE) xor (rhs.symbolIndexes.size() == WORD_SIZE)) ?
-					p > rhs.p  : symbolIndexes.size() != WORD_SIZE;
-			}
-		};
-		
-
-		constexpr static cx::array<double,ALPHABET_SIZE> squareLine(
-				size_t i,
-				cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T) {
-
-			cx::array<double,ALPHABET_SIZE> ret = {};
-			for (size_t state = 0; state < ALPHABET_SIZE; ++state)
-				for (size_t k=0; k<ALPHABET_SIZE; ++k)
-					ret[state] += T[i][k] * T[k][state];
-			return ret;
-		}
-		
-		constexpr static cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> square(
-				cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T) {
-
-			cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> ret = {};
-			for (size_t i=0; i<ALPHABET_SIZE; ++i)
-				ret[i] = squareLine(i, T);
-			
-			return ret;
-		}
-		
-		constexpr static cx::vector<Word,NUM_WORDS> buildDictionary(
-				const cx::array<double,ALPHABET_SIZE> Pstate, 
-				const cx::array<double,ALPHABET_SIZE> PN, 
-				const cx::array<double,ALPHABET_SIZE> Pchild, 
-				const cx::array<SymbolWithProbability,ALPHABET_SIZE> symbols ) {
-
-			cx::priority_queue<Word,NUM_WORDS,std::greater<Word>> pq;
-
-			// DICTIONARY INITIALIZATION
-			for (size_t c=0; c<ALPHABET_SIZE; ++c) {
-				
-				double sum = 0;
-				for (size_t t = 0; t<=c; ++t) sum += Pstate[t]/PN[t];
-				
-				Word node = {};
-				node.symbolIndexes.push_back(c);
-				node.nChildren = 0;
-				node.p = sum * symbols[c].p;
-				
-				pq.push(node);
-			}
-			
-			// GROW THE DICTIONARY
-			while (pq.size() < NUM_WORDS and pq.top().symbolIndexes.size() < WORD_SIZE) {
-				
-				Word node = pq.top();
-				pq.pop();
-				
-				Word newNode = {};
-				newNode.symbolIndexes = node.symbolIndexes;
-				newNode.symbolIndexes.push_back(node.nChildren);
-				
-				newNode.nChildren = 0;
-				
-				newNode.p = node.p * Pchild[node.nChildren];
-				pq.push(newNode);
-				
-				node.p -= newNode.p;
-				node.nChildren++;
-				
-				if (node.nChildren == ALPHABET_SIZE-1) {
-
-					node.symbolIndexes.push_back(node.nChildren);
-					node.p = node.p * Pchild[node.nChildren];
-					node.nChildren = 0;
-				}					
-				pq.push(node);
-			}
-			
-			cx::vector<Word,NUM_WORDS> words = {};
-			for (auto && n : pq)
-				words.push_back(n);
-				
-			return words;
-		}
-		
-		constexpr static cx::array<double,ALPHABET_SIZE> updatePstate(
-				const cx::array<double,ALPHABET_SIZE> Pstate, 
-				const cx::array<double,ALPHABET_SIZE> PN, 
-				const cx::vector<Word,NUM_WORDS> words ) {
-				
-			double sums[ALPHABET_SIZE] = {};
-			{
-				double sum = 0.0;
-				for (size_t state = 0; state < ALPHABET_SIZE; ++state)
-					sums[state] = sum = sum + Pstate[state]/PN[state];
-			}
-			
-			double I[ALPHABET_SIZE][ALPHABET_SIZE] = {};
-			for (size_t i=0; i<ALPHABET_SIZE; i++)
-				for (size_t j=0; j<ALPHABET_SIZE; j++)
-					I[i][j] = 1./(sums[i] * PN[j]);
-
-//			double T[ALPHABET_SIZE][ALPHABET_SIZE] = {};
-			cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T = {};
-			for (auto &&node : words) {
-				TSymbol front = node.symbolIndexes.front();
-				for (size_t state=0; state<=front; ++state)
-					 T[state][node.nChildren] += node.p * I[front][state];
-			}
-			
-			// T*T is too slow for constexpr... 
-			
-			// Solving Maxwell
-			//for (size_t MaxwellIterations = 1; MaxwellIterations; --MaxwellIterations)
-			//	T = T * T;
-			//	
-			//for (size_t state = 0; state < ALPHABET_SIZE; ++state)
-			//	Pstate[state] = T[0][state];
-			
-			T = square(T);
-			
-			cx::array<double,ALPHABET_SIZE> newPstate = {};
-			for (size_t state = 0; state < ALPHABET_SIZE; ++state)
-				for (size_t k=0; k<ALPHABET_SIZE; ++k)
-					newPstate[state] += T[0][k] * T[k][state];
+					auto &&w = words[i];
+					// No word should be empty
+					NodeIdx nodeId = SymbolIdx(w[0]);
 					
-			return newPstate;
-		}
+					for (size_t j=1; j<w.size(); ++j) {
+						
+						SymbolIdx c = w[j];
+						if (nodeId and nodes[nodeId].child[c] == c) {
+							nodes[nodeId].child[c] = nodes.size();
+							nodes.push_back(blank);
+						}
+						nodeId = nodes[nodeId].child[c];
+					}
+					nodes[nodeId].code = i;
+				}
+			}
 
+			constexpr void operator()(ibitstream &src, obitstream &dst) const {
+
+				constexpr size_t IN  = RequiredBits<ALPHABET_SIZE-1>::value;
+				constexpr size_t OUT = RequiredBits<NUM_WORDS-1>::value;
+				NodeIdx nodeId = src.read(IN);
+				do {
+					NodeIdx oldNodeId = 0;
+					do { 
+						oldNodeId = nodeId;
+						nodeId = nodes[nodeId].child[src.read(IN)]; 
+					} while (nodeId < ALPHABET_SIZE);
+					dst.write(OUT, nodes[oldNodeId].code);
+				} while (src);
+			}			
+		};
+			
+		class Decoder {
+			
+			typedef typename SmallestUint<   NUM_WORDS-1>::type WordIdx;
+			
+			typedef typename SmallestUint<0, WORD_SIZE*RequiredBits<ALPHABET_SIZE-1> + RequiredBits<WORD_SIZE> >::type Entry;
+			
+			constexpr const size_t sizeShift = sizeof(Entry)*8 - RequiredBits<WORD_SIZE>;
+			
+			cx::array<Entry, NUM_WORDS> table = {};
+			
+		public:
 		
+			constexpr Decoder(const cx::vector<Word,NUM_WORDS> words) {
+				
+				for (size_t i=0; i<words.size(); ++i) {
+					
+					for (size_t j=0; j<words[i].size(); ++j) {
+						table[i] += uint64_t(words[i][j]) << (j * RequiredBits<ALPHABET_SIZE-1>);
+					
+					table[i] +=  words[i].size() << sizeShift;
+				}
+			}
+
+			constexpr void operator()(ibitstream &src, obitstream &dst) const {
+				
+				constexpr size_t IN  = RequiredBits<NUM_WORDS    -1>::value;
+				constexpr size_t OUT = RequiredBits<ALPHABET_SIZE-1>::value;
+				while (src) {
+					Entry e = table[src.read(IN)];
+					dst.write((e >> sizeShift)*OUT,e);
+				};
+				
+				
+				/*
+				while (src + 6 <= end) {
+					
+					uint64_t v64=0;
+					v64 = *(const uint64_t *)src;
+					src+=6;
+					
+					{
+						uint64_t v = data[(v64>>0 ) & 0xFFF];
+						*((uint64_t *)dst) = v;
+						dst += v >> ((sizeof(uint64_t)-1)*8);
+					}
+					{				
+						uint64_t v = data[(v64>>0 ) & 0xFFF];
+						*((uint64_t *)dst) = v;
+						dst += v >> ((sizeof(uint64_t)-1)*8);
+					}
+					{				
+						uint64_t v = data[(v64>>0 ) & 0xFFF];
+						*((uint64_t *)dst) = v;
+						dst += v >> ((sizeof(uint64_t)-1)*8);
+					}
+					{				
+						uint64_t v = data[(v64>>0 ) & 0xFFF];
+						*((uint64_t *)dst) = v;
+						dst += v >> ((sizeof(uint64_t)-1)*8);
+					}
+				}
+
+				uint64_t v64=0, c=0;
+				while (src < end) {
+					while (c<12) {
+						v64 += *src++ << c;
+						c+= 8;
+					}
+					
+					{
+						const uint8_t *v = (const uint8_t *)&data[(v64>>0 ) & 0xFFF];
+						size_t sz = v[sizeof(uint64_t)-1];
+						for (size_t i=0; i<sz and dst<dstEnd; i++)
+							*dst++ = *v++;
+					}
+					
+					v64 = v64 >> 12;
+					c-= 12;
+				}*/
+			}			
+		};
+			
+		Encoder encoder;
+		
+		Decoder decoder;
 		
 	public:
-			
-		constexpr Dictionary(cx::array<double,ALPHABET_SIZE> Punsorted) {
-			
-		cx::array<double,ALPHABET_SIZE> Pstate = {}; 
-		cx::array<double,ALPHABET_SIZE> PN = {};
-		cx::array<double,ALPHABET_SIZE> Pchild = {};
-		cx::array<SymbolWithProbability,ALPHABET_SIZE> symbols = {};
-		cx::vector<Word,NUM_WORDS> words = cx::vector<Word,NUM_WORDS>();
-
-						
-			// Sort symbols by probability
-			for (size_t i=0; i<symbols.size(); i++)
-				symbols[i] = { Punsorted[i] , TSymbol(i) };
-			
-			cx::sort(symbols.begin(), symbols.end(), std::greater<SymbolWithProbability>());
-			
-			// Initial State Probability
-			Pstate.front() = 1.;
-			
-			// Reverse cummulative symbol probability
-			PN[ALPHABET_SIZE-1] = symbols[ALPHABET_SIZE-1].p;
-			for (size_t i=ALPHABET_SIZE-1; i; i--)
-				PN[i-1] = PN[i] + symbols[i-1].p;
-
-			// Probability of a given child
-			for (size_t i=0; i<ALPHABET_SIZE; i++)
-				Pchild[i] = symbols[i].p / PN[i];
-				
-			for (size_t StateUpdateIterations = 1; StateUpdateIterations; --StateUpdateIterations) {
-
-				words = buildDictionary(Pstate, PN, Pchild, symbols);
-				
-				Pstate = updatePstate(Pstate, PN, words);
-								
-				
-				/*{
-					W.clear();
-					for (auto &&node : pq) {
-						W.push_back(pq.word);
-						for (auto &&c: W.back().word)
-							c = symbols[c].symbol;
-					}					
-				}*/
-			}		
-		}
-		
-		
-				
-		/*constexpr double expectedLength(const std::array<size_t, N> &hist) const {
-			
-			double ret = 0;
-			for (size_t i=0; i<N; i++)
-				ret += meanLengthPerSymbol[i]*hist[i];
-			return ret;
-		}*/
-	};
-	/*
-	Dictionary<256> dictionaries[] = {};
-
-	void encode(const Block *begin, const Block *end, uint8_t *&dst) {
-		
-		
-	}
-		
 	
-	class Block {
-		uint8_t  dictIndex = 0;
-		uint16_t uncompressedSize = 0;
-		double expectedLength = 0;
-		bool delta = false;
-	};*/
-	
-	constexpr Dictionary dictionaries[] = {
-#include "dictionaries.inc"
+		constexpr Dictionary(const cx::vector<Word,NUM_WORDS> words) : 
+			encoder(words), decoder(words) {}
+		
+		
+		size_t decode(const void* src, void* dst, size_t dstSize) const {
+		}		
+		
+		size_t encode(const void* src, size_t srcSize, void* dst) const {
+		}		
 	};
 	
-
+	
+	
 }
 
 int main() {
