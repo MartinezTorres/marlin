@@ -206,7 +206,7 @@ namespace {
 				
 				for (size_t i=0; i<words.size(); ++i) {
 					
-					for (size_t j=0; j<words[i].size(); ++j) {
+					for (size_t j=0; j<words[i].size(); ++j)
 						table[i] += uint64_t(words[i][j]) << (j * RequiredBits<ALPHABET_SIZE-1>);
 					
 					table[i] +=  words[i].size() << sizeShift;
