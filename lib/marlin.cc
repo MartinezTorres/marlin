@@ -129,8 +129,8 @@ namespace {
 	template<size_t ALPHABET_SIZE, size_t WORD_SIZE, size_t NUM_WORDS>
 	class Dictionary {
 		
-		typedef typename SmallestUint<  ALPHABET_SIZE-1>::type SymbolIdx;
-		typedef cx::vector<SymbolIdx, WORD_SIZE> Word;
+		typedef typename SmallestUint<  ALPHABET_SIZE-1>::type Symbol;
+		typedef cx::vector<Symbol, WORD_SIZE> Word;
 		
 		class Encoder {
 			
@@ -159,11 +159,11 @@ namespace {
 					
 					auto &&w = words[i];
 					// No word should be empty
-					NodeIdx nodeId = SymbolIdx(w[0]);
+					NodeIdx nodeId = Symbol(w[0]);
 					
 					for (size_t j=1; j<w.size(); ++j) {
 						
-						SymbolIdx c = w[j];
+						Symbol c = w[j];
 						if (nodeId and nodes[nodeId].child[c] == c) {
 							nodes[nodeId].child[c] = nodes.size();
 							nodes.push_back(blank);
@@ -194,9 +194,11 @@ namespace {
 			
 			typedef typename SmallestUint<   NUM_WORDS-1>::type WordIdx;
 			
-			typedef typename SmallestUint<0, WORD_SIZE*RequiredBits<ALPHABET_SIZE-1> + RequiredBits<WORD_SIZE> >::type Entry;
+			typedef typename SmallestUint<0, 
+				   WORD_SIZE*RequiredBits<ALPHABET_SIZE-1>::value
+				 + RequiredBits<WORD_SIZE>::value >::type Entry;
 			
-			constexpr const size_t sizeShift = sizeof(Entry)*8 - RequiredBits<WORD_SIZE>;
+			constexpr static const size_t sizeShift = sizeof(Entry)*8 - RequiredBits<WORD_SIZE>::value;
 			
 			cx::array<Entry, NUM_WORDS> table = {};
 			
@@ -207,7 +209,7 @@ namespace {
 				for (size_t i=0; i<words.size(); ++i) {
 					
 					for (size_t j=0; j<words[i].size(); ++j)
-						table[i] += uint64_t(words[i][j]) << (j * RequiredBits<ALPHABET_SIZE-1>);
+						table[i] += uint64_t(words[i][j]) << (j * RequiredBits<ALPHABET_SIZE-1>::value);
 					
 					table[i] +=  words[i].size() << sizeShift;
 				}
@@ -276,11 +278,198 @@ namespace {
 		
 		Decoder decoder;
 		
+		cx::vector<Word,NUM_WORDS> words;
+		
+		double averageBitsPerSymbol() const {
+			
+			double meanLength = 0;
+			for (auto &w : W) 
+				meanLength += prob(w)*w.size();
+
+			return dictSize2/meanLength;		
+		}
+		
+		double averageBitsPerSymbolEmpirically() const {
+			
+			static const size_t TEST_SIZE = 1<<16;
+			
+			std::vector<uint8_t> testData(TEST_SIZE);
+			// create data
+			{
+				size_t i=0;
+				double ap=0;
+				for (size_t j=0; j<P.size(); j++) {
+					while (i<(ap+P[j])*testData.size())
+						testData[i++]=j;
+					ap += P[j];
+				}
+			}
+			std::random_shuffle(testData.begin(), testData.end());
+			
+			// pad with 0s
+			for (size_t i=0; i<maxWordSize; i++)
+				testData.push_back(0);
+
+			double meanLengthE = 0;
+			size_t nWords = 0;
+			for (size_t i=0, longest=0; i<TEST_SIZE; i+=longest) {
+				
+				Word const* lw = nullptr;
+				for (auto &w : W)
+					if (w[0] == testData[i])
+						if (w[w.size()-1] == testData[i+w.size()-1])
+							if (w==std::vector<uint8_t>(&testData[i], &testData[i+w.size()]))
+								if (lw == nullptr or w.size()>lw->size())
+									lw = &w;
+									
+				longest = lw->size();
+				meanLengthE += lw->size();
+				nWords++;
+			}
+			
+			double meanLength = 0;
+			for (auto &w : W) 
+				meanLength += prob(w)*w.size();
+
+			printf("Empirical Meanlength: %3.2lf\n", (meanLengthE/nWords)/meanLength);
+
+			return double(nWords*dictSize2)/TEST_SIZE;
+		}
+		
+		
+		static cx::vector<Word,NUM_WORDS> getWords(const cx::array<double,ALPHABET_SIZE> &P) {
+			// The formulas on the paper expect the alphabet to consist of symbols with decreasing order of probability.
+			struct A {
+				double p;
+				Symbol symbol;
+				constexpr bool operator>(const A& rhs) const { return p > rhs.p; }
+			};
+			
+			// States sorted by state number (most probable state first)
+			cx::array<A,ALPHABET_SIZE> a = {}; 
+			for (size_t i=0; i<ALPHABET_SIZE; ++i)
+				a[i] = { P[i] , Symbol(i) };
+
+			cx::sort(a.begin(), a.end(), std::greater<A>());
+
+			// Initial State Probability (Ps_i)
+			cx::array<double,ALPHABET_SIZE> Ps = {}; 
+			Ps.front() = 1.;
+			
+			// 1st Preprocessing
+			// Reverse cumulative symbol probability (divisor of the first term in Eq1)
+			cx::array<double,ALPHABET_SIZE> P1 = {};
+			P1[ALPHABET_SIZE-1] = a[ALPHABET_SIZE-1].p;
+			for (size_t i=ALPHABET_SIZE-1; i; i--)
+				P1[i-1] = P1[i] + a[i-1].p;
+
+			cx::vector<Word,NUM_WORDS> words;
+
+			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
+
+				// 2nd Preprocessing
+				// Parts of eq2 that depend on the state
+				cx::array<double,ALPHABET_SIZE> P2 = {};
+				{
+					double sum = 0.0;
+					for (size_t i=0; i<ALPHABET_SIZE; ++i)
+						P2[i] = sum = sum + Ps[i]/P1[i];
+				}
+
+				struct Node {
+					
+					cx::vector<Symbol, WORD_SIZE> symbols;
+					int state;
+					double p;
+					constexpr bool operator>(const Node& rhs) const {
+						return ((symbols.size() == WORD_SIZE) xor (rhs.symbols.size() == WORD_SIZE)) ?
+							p > rhs.p  : symbols.size() != WORD_SIZE;
+					}
+				};
+
+				// Build the Dictionary
+				cx::priority_queue<Node,NUM_WORDS,std::greater<Node>> pq;
+				{
+					// DICTIONARY INITIALIZATION
+					for (size_t n=0; n<ALPHABET_SIZE; ++n) {
+						
+						Node node = {};
+						node.symbols.push_back(n);
+						node.state = 0;
+						node.p = P2[n] * a[n].p;
+						
+						pq.push(node);
+					}
+					
+					// GROW THE DICTIONARY
+					while (pq.size() < NUM_WORDS and pq.top().symbols.size() < WORD_SIZE) {
+						
+						Node node = pq.top();
+						pq.pop();
+						
+						Node newNode = {};
+						newNode.symbols = node.symbols;
+						newNode.symbols.push_back(node.state);
+	
+						newNode.state = 0;
+						
+						newNode.p = node.p * a[node.state] / P1[node.state];
+						pq.push(newNode);
+						
+						node.p -= newNode.p;
+						node.state++;
+						
+						if (node.state == ALPHABET_SIZE-1) {
+							node.symbols.push_back(node.state);
+							node.state = 0;
+						}					
+						pq.push(node);
+					}
+				}
+				
+				words.clear();
+				for (auto &&node : pq) {
+					Word word;
+					for (auto &&s : node.symbols)
+						word.push_back(a[s].symbol);
+					words.push_back(pq);
+				}
+				
+				// Update probability state
+				{
+					cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T = {};
+					for (auto &&node : pq) 
+						for (size_t state=0, w0 = node.symbolIndexes.front(); state<=w0; ++state)
+							 T[state][node.state] += node.p /(P2[w0] * P1[state]);
+
+					for (size_t MaxwellIt = 1; MaxwellIt; --MaxwellIt) {
+						
+						auto T2 = T;
+						for (size_t i=0; i<ALPHABET_SIZE; ++i)
+							for (size_t j = 0; j<ALPHABET_SIZE; ++j)
+								for (size_t k=0; k<ALPHABET_SIZE; ++k)
+									T[j] += T2[i][k] * T2[k][j];
+						
+					}
+					
+					Ps = T[0];
+				}
+			}
+			
+			
+			
+			
+			return words;
+		}
+		
 	public:
 	
-		constexpr Dictionary(const cx::vector<Word,NUM_WORDS> words) : 
-			encoder(words), decoder(words) {}
-		
+		constexpr Dictionary(const cx::vector<Word,NUM_WORDS> words) :
+			words(words), encoder(words), decoder(words) {}
+		 
+		// It could be constexpr but then it takes forever to compile
+		Dictionary(const cx::array<double,ALPHABET_SIZE> &P) :
+			words(getWords(P)), encoder(words), decoder(words) {}	
 		
 		size_t decode(const void* src, void* dst, size_t dstSize) const {
 		}		
