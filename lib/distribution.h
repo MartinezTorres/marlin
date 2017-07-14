@@ -80,7 +80,7 @@ namespace Distribution {
     }
 
     template<typename F>
-	auto getWithEntropy(const F &pmf, double h) -> decltype(F(0.0)) {
+	auto getWithEntropy(const F &pmf, double h) {
 
         h = std::min(std::max(h,1e-5),1.-1e-5);
 		double bMax = 1<<1, bMin = 1./(1<<30);
@@ -108,29 +108,6 @@ namespace Distribution {
 
 		return pmf((bMax+bMin)/2);
 	}
-/*
-	template<typename T, typename F>
-	std::vector<uint8_t> getResiduals(const F &pmf, size_t S) {
-
-		int8_t cdf[0x100000];
-		uint j=0;
-		double lim=0;
-		for (uint i=0; i<pmf.size(); i++) {
-			lim += pmf[i]*0x100000;
-			uint ilim = round(lim);
-			while (j<ilim)
-				cdf[j++]=i;
-		}
-
-		std::vector<uint8_t> ret;
-		uint32_t rnd =  135154;
-		for (size_t i=0; i<S; i++) {
-			rnd = 36969 * (rnd & 65535) + (rnd >> 16);
-			ret.push_back(cdf[rnd&0xFFFF]);
-		}
-
-		return ret;
-	}*/
 }
 }
 

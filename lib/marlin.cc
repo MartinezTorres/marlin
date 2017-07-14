@@ -60,6 +60,10 @@ namespace {
 			}
 		}
 		
+		constexpr void sync() {}
+		
+		constexpr size_t size() { return end-start; }
+		
 		constexpr void writeBytes(size_t bytes, uint64_t data) {
 			
 			*(uint64_t *)p = data;
@@ -112,6 +116,8 @@ namespace {
 			return not roll or p != end;
 		}
 		
+		constexpr void sync() {}
+		
 		constexpr size_t bytesLeft() const {
 			return end - p;
 		}
@@ -129,216 +135,86 @@ namespace {
 	template<size_t ALPHABET_SIZE, size_t WORD_SIZE, size_t NUM_WORDS>
 	class Dictionary {
 		
+		// Generic
 		typedef typename SmallestUint<  ALPHABET_SIZE-1>::type Symbol;
 		typedef cx::vector<Symbol, WORD_SIZE> Word;
 		
-		class Encoder {
-			
-			typedef typename SmallestUint<2*NUM_WORDS-1>::type NodeIdx;
-			typedef typename SmallestUint<  NUM_WORDS-1>::type WordIdx;
-			
-			struct Node {
-				cx::array<NodeIdx,ALPHABET_SIZE> child;
-				WordIdx code;
-			};            
-			cx::vector<Node, 2*NUM_WORDS> nodes = {};
-		public:
-		
-			constexpr Encoder(const cx::vector<Word,NUM_WORDS> words) {
-				
-				Node blank;
-				blank.code = 0;
-				blank.increment = 0;
-				for (size_t i=0; i<ALPHABET_SIZE; i++)
-					blank.child[i] = i;
-
-				for (size_t i=0; i<ALPHABET_SIZE; i++)
-					nodes.push_back(blank);
-				
-				for (size_t i=0; i<words.size(); ++i) {
-					
-					auto &&w = words[i];
-					// No word should be empty
-					NodeIdx nodeId = Symbol(w[0]);
-					
-					for (size_t j=1; j<w.size(); ++j) {
-						
-						Symbol c = w[j];
-						if (nodeId and nodes[nodeId].child[c] == c) {
-							nodes[nodeId].child[c] = nodes.size();
-							nodes.push_back(blank);
-						}
-						nodeId = nodes[nodeId].child[c];
-					}
-					nodes[nodeId].code = i;
-				}
-			}
-
-			constexpr void operator()(ibitstream &src, obitstream &dst) const {
-
-				constexpr size_t IN  = RequiredBits<ALPHABET_SIZE-1>::value;
-				constexpr size_t OUT = RequiredBits<NUM_WORDS-1>::value;
-				NodeIdx nodeId = src.read(IN);
-				do {
-					NodeIdx oldNodeId = 0;
-					do { 
-						oldNodeId = nodeId;
-						nodeId = nodes[nodeId].child[src.read(IN)]; 
-					} while (nodeId < ALPHABET_SIZE);
-					dst.write(OUT, nodes[oldNodeId].code);
-				} while (src);
-			}			
-		};
-			
-		class Decoder {
-			
-			typedef typename SmallestUint<   NUM_WORDS-1>::type WordIdx;
-			
-			typedef typename SmallestUint<0, 
-				   WORD_SIZE*RequiredBits<ALPHABET_SIZE-1>::value
-				 + RequiredBits<WORD_SIZE>::value >::type Entry;
-			
-			constexpr static const size_t sizeShift = sizeof(Entry)*8 - RequiredBits<WORD_SIZE>::value;
-			
-			cx::array<Entry, NUM_WORDS> table = {};
-			
-		public:
-		
-			constexpr Decoder(const cx::vector<Word,NUM_WORDS> words) {
-				
-				for (size_t i=0; i<words.size(); ++i) {
-					
-					for (size_t j=0; j<words[i].size(); ++j)
-						table[i] += uint64_t(words[i][j]) << (j * RequiredBits<ALPHABET_SIZE-1>::value);
-					
-					table[i] +=  words[i].size() << sizeShift;
-				}
-			}
-
-			constexpr void operator()(ibitstream &src, obitstream &dst) const {
-				
-				constexpr size_t IN  = RequiredBits<NUM_WORDS    -1>::value;
-				constexpr size_t OUT = RequiredBits<ALPHABET_SIZE-1>::value;
-				while (src) {
-					Entry e = table[src.read(IN)];
-					dst.write((e >> sizeShift)*OUT,e);
-				};
-				
-				
-				/*
-				while (src + 6 <= end) {
-					
-					uint64_t v64=0;
-					v64 = *(const uint64_t *)src;
-					src+=6;
-					
-					{
-						uint64_t v = data[(v64>>0 ) & 0xFFF];
-						*((uint64_t *)dst) = v;
-						dst += v >> ((sizeof(uint64_t)-1)*8);
-					}
-					{				
-						uint64_t v = data[(v64>>0 ) & 0xFFF];
-						*((uint64_t *)dst) = v;
-						dst += v >> ((sizeof(uint64_t)-1)*8);
-					}
-					{				
-						uint64_t v = data[(v64>>0 ) & 0xFFF];
-						*((uint64_t *)dst) = v;
-						dst += v >> ((sizeof(uint64_t)-1)*8);
-					}
-					{				
-						uint64_t v = data[(v64>>0 ) & 0xFFF];
-						*((uint64_t *)dst) = v;
-						dst += v >> ((sizeof(uint64_t)-1)*8);
-					}
-				}
-
-				uint64_t v64=0, c=0;
-				while (src < end) {
-					while (c<12) {
-						v64 += *src++ << c;
-						c+= 8;
-					}
-					
-					{
-						const uint8_t *v = (const uint8_t *)&data[(v64>>0 ) & 0xFFF];
-						size_t sz = v[sizeof(uint64_t)-1];
-						for (size_t i=0; i<sz and dst<dstEnd; i++)
-							*dst++ = *v++;
-					}
-					
-					v64 = v64 >> 12;
-					c-= 12;
-				}*/
-			}			
-		};
-			
-		Encoder encoder;
-		
-		Decoder decoder;
-		
 		cx::vector<Word,NUM_WORDS> words;
 		
-		double averageBitsPerSymbol() const {
-			
-			double meanLength = 0;
-			for (auto &w : W) 
-				meanLength += prob(w)*w.size();
-
-			return dictSize2/meanLength;		
-		}
 		
-		double averageBitsPerSymbolEmpirically() const {
+		// Encoder
+		typedef typename SmallestUint<2*NUM_WORDS-1>::type NodeIdx;
+		typedef typename SmallestUint<  NUM_WORDS-1>::type WordIdx;
+		
+		struct Node {
+			cx::array<NodeIdx,ALPHABET_SIZE> child = {};
+			WordIdx code = {};
+		};            
+		cx::vector<Node, 2*NUM_WORDS> nodes = {};
+		
+		constexpr void initEncoder() {
 			
-			static const size_t TEST_SIZE = 1<<16;
-			
-			std::vector<uint8_t> testData(TEST_SIZE);
-			// create data
-			{
-				size_t i=0;
-				double ap=0;
-				for (size_t j=0; j<P.size(); j++) {
-					while (i<(ap+P[j])*testData.size())
-						testData[i++]=j;
-					ap += P[j];
-				}
-			}
-			std::random_shuffle(testData.begin(), testData.end());
-			
-			// pad with 0s
-			for (size_t i=0; i<maxWordSize; i++)
-				testData.push_back(0);
+			Node blank = {};
+			blank.code = 0;
 
-			double meanLengthE = 0;
-			size_t nWords = 0;
-			for (size_t i=0, longest=0; i<TEST_SIZE; i+=longest) {
+			for (size_t i=0; i<ALPHABET_SIZE; i++)
+				blank.child[i] = i;
+
+			for (size_t i=0; i<ALPHABET_SIZE; i++)
+				nodes.push_back(blank);
+			
+			for (size_t i=0; i<words.size(); ++i) {
 				
-				Word const* lw = nullptr;
-				for (auto &w : W)
-					if (w[0] == testData[i])
-						if (w[w.size()-1] == testData[i+w.size()-1])
-							if (w==std::vector<uint8_t>(&testData[i], &testData[i+w.size()]))
-								if (lw == nullptr or w.size()>lw->size())
-									lw = &w;
-									
-				longest = lw->size();
-				meanLengthE += lw->size();
-				nWords++;
+				auto &&w = words[i];
+				// No word should be empty
+				NodeIdx nodeId = Symbol(w[0]);
+				
+				for (size_t j=1; j<w.size(); ++j) {
+					
+					Symbol c = w[j];
+					if (nodeId and nodes[nodeId].child[c] == c) {
+						nodes[nodeId].child[c] = nodes.size();
+						nodes.push_back(blank);
+					}
+					nodeId = nodes[nodeId].child[c];
+				}
+				nodes[nodeId].code = i;
 			}
+		}
+
+		
+		// Decoder
+		typedef typename SmallestUint<0, 
+			   WORD_SIZE*RequiredBits<ALPHABET_SIZE-1>::value
+			 + RequiredBits<WORD_SIZE>::value >::type Entry;
+		
+		constexpr static const size_t sizeShift = sizeof(Entry)*8 - RequiredBits<WORD_SIZE>::value;
+		
+		cx::array<Entry, NUM_WORDS> table = {};
+
+		constexpr void initDecoder() {
 			
-			double meanLength = 0;
-			for (auto &w : W) 
-				meanLength += prob(w)*w.size();
-
-			printf("Empirical Meanlength: %3.2lf\n", (meanLengthE/nWords)/meanLength);
-
-			return double(nWords*dictSize2)/TEST_SIZE;
+			for (size_t i=0; i<words.size(); ++i) {
+				
+				for (size_t j=0; j<words[i].size(); ++j)
+					table[i] += uint64_t(words[i][j]) << (j * RequiredBits<ALPHABET_SIZE-1>::value);
+				
+				table[i] +=  words[i].size() << sizeShift;
+			}
 		}
 		
+	public:
+	
+		constexpr Dictionary(const cx::vector<Word,NUM_WORDS> words) : words(words) { 
 		
-		static cx::vector<Word,NUM_WORDS> getWords(const cx::array<double,ALPHABET_SIZE> &P) {
-			// The formulas on the paper expect the alphabet to consist of symbols with decreasing order of probability.
+			initEncoder(); 
+			initDecoder(); 
+		}
+		 
+		// It could be constexpr but then it takes forever to compile
+		Dictionary(const cx::array<double,ALPHABET_SIZE> &P) {
+				
+						// The formulas on the paper expect the alphabet to consist of symbols with decreasing order of probability.
 			struct A {
 				double p;
 				Symbol symbol;
@@ -362,8 +238,6 @@ namespace {
 			P1[ALPHABET_SIZE-1] = a[ALPHABET_SIZE-1].p;
 			for (size_t i=ALPHABET_SIZE-1; i; i--)
 				P1[i-1] = P1[i] + a[i-1].p;
-
-			cx::vector<Word,NUM_WORDS> words;
 
 			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
 
@@ -413,7 +287,7 @@ namespace {
 	
 						newNode.state = 0;
 						
-						newNode.p = node.p * a[node.state] / P1[node.state];
+						newNode.p = node.p * a[node.state].p / P1[node.state];
 						pq.push(newNode);
 						
 						node.p -= newNode.p;
@@ -428,18 +302,19 @@ namespace {
 				}
 				
 				words.clear();
-				for (auto &&node : pq) {
+				for (auto&& node : pq) {
+					std::cout << "node" << " " << node.symbols.size() << std::endl;
 					Word word;
-					for (auto &&s : node.symbols)
+					for (auto&& s : node.symbols)
 						word.push_back(a[s].symbol);
-					words.push_back(pq);
+					words.push_back(word);
 				}
 				
 				// Update probability state
 				{
 					cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T = {};
 					for (auto &&node : pq) 
-						for (size_t state=0, w0 = node.symbolIndexes.front(); state<=w0; ++state)
+						for (size_t state=0, w0 = node.symbols.front(); state<=w0; ++state)
 							 T[state][node.state] += node.p /(P2[w0] * P1[state]);
 
 					for (size_t MaxwellIt = 1; MaxwellIt; --MaxwellIt) {
@@ -448,7 +323,7 @@ namespace {
 						for (size_t i=0; i<ALPHABET_SIZE; ++i)
 							for (size_t j = 0; j<ALPHABET_SIZE; ++j)
 								for (size_t k=0; k<ALPHABET_SIZE; ++k)
-									T[j] += T2[i][k] * T2[k][j];
+									T[i][j] += T2[i][k] * T2[k][j];
 						
 					}
 					
@@ -456,36 +331,90 @@ namespace {
 				}
 			}
 			
+			initEncoder(); 
+			initDecoder();
+		}	
+
+
+		constexpr void decode(ibitstream &src, obitstream &dst) const {
+			
+			constexpr size_t IN  = RequiredBits<NUM_WORDS    -1>::value;
+			constexpr size_t OUT = RequiredBits<ALPHABET_SIZE-1>::value;
+			while (src) {
+				Entry e = table[src.read(IN)];
+				dst.write((e >> sizeShift)*OUT,e);
+			};
 			
 			
-			
-			return words;
+			/*
+			while (src + 6 <= end) {
+				
+				uint64_t v64=0;
+				v64 = *(const uint64_t *)src;
+				src+=6;
+				
+				{
+					uint64_t v = data[(v64>>0 ) & 0xFFF];
+					*((uint64_t *)dst) = v;
+					dst += v >> ((sizeof(uint64_t)-1)*8);
+				}
+				{				
+					uint64_t v = data[(v64>>0 ) & 0xFFF];
+					*((uint64_t *)dst) = v;
+					dst += v >> ((sizeof(uint64_t)-1)*8);
+				}
+				{				
+					uint64_t v = data[(v64>>0 ) & 0xFFF];
+					*((uint64_t *)dst) = v;
+					dst += v >> ((sizeof(uint64_t)-1)*8);
+				}
+				{				
+					uint64_t v = data[(v64>>0 ) & 0xFFF];
+					*((uint64_t *)dst) = v;
+					dst += v >> ((sizeof(uint64_t)-1)*8);
+				}
+			}
+
+			uint64_t v64=0, c=0;
+			while (src < end) {
+				while (c<12) {
+					v64 += *src++ << c;
+					c+= 8;
+				}
+				
+				{
+					const uint8_t *v = (const uint8_t *)&data[(v64>>0 ) & 0xFFF];
+					size_t sz = v[sizeof(uint64_t)-1];
+					for (size_t i=0; i<sz and dst<dstEnd; i++)
+						*dst++ = *v++;
+				}
+				
+				v64 = v64 >> 12;
+				c-= 12;
+			}*/
+		}				
+
+		constexpr void encode(ibitstream &src, obitstream &dst) const {
+
+			constexpr size_t IN  = RequiredBits<ALPHABET_SIZE-1>::value;
+			constexpr size_t OUT = RequiredBits<NUM_WORDS-1>::value;
+			NodeIdx nodeId = src.read(IN);
+			do {
+				NodeIdx oldNodeId = 0;
+				do { 
+					oldNodeId = nodeId;
+					nodeId = nodes[nodeId].child[src.read(IN)]; 
+				} while (nodeId < ALPHABET_SIZE);
+				dst.write(OUT, nodes[oldNodeId].code);
+			} while (src);
 		}
-		
-	public:
-	
-		constexpr Dictionary(const cx::vector<Word,NUM_WORDS> words) :
-			words(words), encoder(words), decoder(words) {}
-		 
-		// It could be constexpr but then it takes forever to compile
-		Dictionary(const cx::array<double,ALPHABET_SIZE> &P) :
-			words(getWords(P)), encoder(words), decoder(words) {}	
-		
-		size_t decode(const void* src, void* dst, size_t dstSize) const {
-		}		
-		
-		size_t encode(const void* src, size_t srcSize, void* dst) const {
-		}		
 	};
 	
 	
 	
 }
 
-int main() {
-	
-	//constexpr auto dictionary  = Dictionary<256,7,4096>( Distribution::getWithEntropy(Distribution::Gaussian<256>,.5) );
-}
+
 
 /*
 size_t Marlin_compress  (uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize, size_t bs = 4096) {

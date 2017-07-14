@@ -6,13 +6,13 @@
 namespace {
 namespace cx {
 	
-//	using std::array; // Can be used when array is finally constexpr compliant
+	using std::array; // Can be used when array is finally constexpr compliant
 	
 	// ARRAY
 	template<typename T, size_t N> 
-	class array {
+	class arrayCx {
 	public:
-		T arr[N];
+		T arr[N] = {};
 	public:
 
 		constexpr void fill( const T& value ) { for (auto &a : arr) a = value; }
@@ -36,8 +36,8 @@ namespace cx {
 	template<typename T, size_t C> 
 	class vector {
 	protected:
-		T arr[C];
-        size_t sz;
+		T arr[C] = {};
+        size_t sz = 0;
 	public:
     		
 		constexpr T &operator[](size_t i)       { return arr[i]; }
@@ -60,7 +60,7 @@ namespace cx {
 		constexpr       T& back()         { return  arr[sz-1]; }
 		constexpr const T& back()   const { return  arr[sz-1]; }
         
-        constexpr void push_back(const T &item) { arr[sz++] = item; }
+        void push_back(const T &item) { std::cout << C << " " << sz << std::endl; arr[sz++] = item; }
         constexpr void pop_back() { if (sz!=C) arr[sz] = T(); sz--; }
 	};
     
