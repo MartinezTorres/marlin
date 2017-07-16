@@ -2,6 +2,8 @@
 #include <util.h>
 #include <distribution.h>
 
+#include <set>
+
 
 namespace {
 	
@@ -51,7 +53,7 @@ namespace {
 				*(uint64_t *)p = val + (data << roll);
 				p += sizeof(uint64_t);
 				val = (data >> (64-roll));
-				roll = 0;
+				roll = bits + roll - 64;
 				
 			} else {
 				
@@ -62,7 +64,7 @@ namespace {
 		
 		constexpr void sync() {}
 		
-		constexpr size_t size() { return end-start; }
+		constexpr size_t size() { return p-start; }
 		
 		constexpr void writeBytes(size_t bytes, uint64_t data) {
 			
@@ -91,11 +93,11 @@ namespace {
 				if (p + 4 < end) {
 					val += ( (*(uint32_t *)p) << roll);
 					p += sizeof(uint32_t);
-					roll += 32;
-				} else while (p!= end) {
+					roll += sizeof(uint32_t)*8;
+				} else while (p < end) {
 					val += ( (*(uint8_t *)p) << roll);
 					p += sizeof(uint8_t);
-					roll += 8;
+					roll += sizeof(uint8_t)*8;
 				}
 			}
 
@@ -113,7 +115,7 @@ namespace {
 		}
 		
 		constexpr operator bool() const {
-			return not roll or p != end;
+			return not roll or p < end;
 		}
 		
 		constexpr void sync() {}
@@ -157,10 +159,10 @@ namespace {
 			Node blank = {};
 			blank.code = 0;
 
-			for (size_t i=0; i<ALPHABET_SIZE; i++)
+			for (size_t i=0; i<ALPHABET_SIZE; ++i)
 				blank.child[i] = i;
 
-			for (size_t i=0; i<ALPHABET_SIZE; i++)
+			for (size_t i=0; i<ALPHABET_SIZE; ++i)
 				nodes.push_back(blank);
 			
 			for (size_t i=0; i<words.size(); ++i) {
@@ -172,7 +174,7 @@ namespace {
 				for (size_t j=1; j<w.size(); ++j) {
 					
 					Symbol c = w[j];
-					if (nodeId and nodes[nodeId].child[c] == c) {
+					if (nodes[nodeId].child[c] == c) {
 						nodes[nodeId].child[c] = nodes.size();
 						nodes.push_back(blank);
 					}
@@ -211,10 +213,10 @@ namespace {
 			initDecoder(); 
 		}
 		 
-		// It could be constexpr but then it takes forever to compile
-		Dictionary(const cx::array<double,ALPHABET_SIZE> &P) {
+		// It takes forever to compile as constexpr. Hardly recommended.
+		constexpr Dictionary(const cx::array<double,ALPHABET_SIZE> &P) {
 				
-						// The formulas on the paper expect the alphabet to consist of symbols with decreasing order of probability.
+			// The formulas on the paper expect the alphabet to consist of symbols with decreasing order of probability.
 			struct A {
 				double p;
 				Symbol symbol;
@@ -224,9 +226,17 @@ namespace {
 			// States sorted by state number (most probable state first)
 			cx::array<A,ALPHABET_SIZE> a = {}; 
 			for (size_t i=0; i<ALPHABET_SIZE; ++i)
-				a[i] = { P[i] , Symbol(i) };
+				a[i] = { P[i]+1e-100 , Symbol(i) };
 
 			cx::sort(a.begin(), a.end(), std::greater<A>());
+			//cx::priority_queue<A,ALPHABET_SIZE,std::greater<A>> pq1;
+			//for (size_t i=0; i<ALPHABET_SIZE; ++i) pq1.push(a[i]);
+			//for (size_t i=0; i<ALPHABET_SIZE; ++i) { a[i] = pq1.top(); pq1.pop(); }
+			
+			
+			
+			//for (size_t i=0; i<ALPHABET_SIZE; ++i)
+			//	std::cout << i << ": " << a[i].p << " " << uint32_t(a[i].symbol) << std::endl;
 
 			// Initial State Probability (Ps_i)
 			cx::array<double,ALPHABET_SIZE> Ps = {}; 
@@ -236,10 +246,11 @@ namespace {
 			// Reverse cumulative symbol probability (divisor of the first term in Eq1)
 			cx::array<double,ALPHABET_SIZE> P1 = {};
 			P1[ALPHABET_SIZE-1] = a[ALPHABET_SIZE-1].p;
-			for (size_t i=ALPHABET_SIZE-1; i; i--)
+			for (size_t i=ALPHABET_SIZE; i; i--)
 				P1[i-1] = P1[i] + a[i-1].p;
 
-			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
+
+			for (size_t StateUpdateIterations = 10; StateUpdateIterations; --StateUpdateIterations) {
 
 				// 2nd Preprocessing
 				// Parts of eq2 that depend on the state
@@ -249,15 +260,22 @@ namespace {
 					for (size_t i=0; i<ALPHABET_SIZE; ++i)
 						P2[i] = sum = sum + Ps[i]/P1[i];
 				}
+				
+				//for (size_t i=0; i<10; ++i)
+				//	std::cout << i << ": " << Ps[i] << " " <<  std::endl;
+
 
 				struct Node {
 					
-					cx::vector<Symbol, WORD_SIZE> symbols;
-					int state;
-					double p;
+					cx::vector<Symbol, WORD_SIZE> symbols = {};
+					int state = 0;
+					double p = 0.0;
 					constexpr bool operator>(const Node& rhs) const {
-						return ((symbols.size() == WORD_SIZE) xor (rhs.symbols.size() == WORD_SIZE)) ?
-							p > rhs.p  : symbols.size() != WORD_SIZE;
+						
+						if (symbols.size() == rhs.symbols.size()) return p > rhs.p;
+						if (symbols.size() == WORD_SIZE) return false;
+						if (rhs.symbols.size() == WORD_SIZE) return true;
+						return p > rhs.p;
 					}
 				};
 
@@ -296,19 +314,27 @@ namespace {
 						if (node.state == ALPHABET_SIZE-1) {
 							node.symbols.push_back(node.state);
 							node.state = 0;
-						}					
+						}
 						pq.push(node);
 					}
+					std::cout << "pq.size" << pq.size() <<  std::endl;
 				}
 				
+				double meanLength = 0, meanLengthApprox = 0, sump=0;
+
 				words.clear();
 				for (auto&& node : pq) {
-					std::cout << "node" << " " << node.symbols.size() << std::endl;
-					Word word;
+					Word word = {};
 					for (auto&& s : node.symbols)
 						word.push_back(a[s].symbol);
 					words.push_back(word);
+					meanLength += node.p*node.symbols.size();
+					meanLengthApprox += node.symbols.size()/double(NUM_WORDS);
+					sump += node.p;
+					//std::cout << "kk " << node.p << std::endl;
 				}
+				std::cout << "Mean length: " << RequiredBits<NUM_WORDS-1>::value / meanLength << " " <<  RequiredBits<NUM_WORDS-1>::value / meanLengthApprox << " " << sump << std::endl;
+				
 				
 				// Update probability state
 				{
@@ -317,17 +343,19 @@ namespace {
 						for (size_t state=0, w0 = node.symbols.front(); state<=w0; ++state)
 							 T[state][node.state] += node.p /(P2[w0] * P1[state]);
 
-					for (size_t MaxwellIt = 1; MaxwellIt; --MaxwellIt) {
+					for (size_t MaxwellIt = 3; MaxwellIt; --MaxwellIt) {
 						
-						auto T2 = T;
+						cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T2 = {};
+								
 						for (size_t i=0; i<ALPHABET_SIZE; ++i)
 							for (size_t j = 0; j<ALPHABET_SIZE; ++j)
 								for (size_t k=0; k<ALPHABET_SIZE; ++k)
-									T[i][j] += T2[i][k] * T2[k][j];
+									T2[i][j] += T[i][k] * T[k][j];
 						
+						T = T2;
 					}
-					
 					Ps = T[0];
+					
 				}
 			}
 			
@@ -398,13 +426,16 @@ namespace {
 
 			constexpr size_t IN  = RequiredBits<ALPHABET_SIZE-1>::value;
 			constexpr size_t OUT = RequiredBits<NUM_WORDS-1>::value;
+			
+			std::cout << "IN  " << IN << std::endl;
+			std::cout << "OUT " << OUT << std::endl;
 			NodeIdx nodeId = src.read(IN);
 			do {
 				NodeIdx oldNodeId = 0;
 				do { 
 					oldNodeId = nodeId;
 					nodeId = nodes[nodeId].child[src.read(IN)]; 
-				} while (nodeId < ALPHABET_SIZE);
+				} while (nodeId >= ALPHABET_SIZE);
 				dst.write(OUT, nodes[oldNodeId].code);
 			} while (src);
 		}

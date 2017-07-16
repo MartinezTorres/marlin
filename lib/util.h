@@ -8,6 +8,9 @@ namespace cx {
 	
 	using std::array; // Can be used when array is finally constexpr compliant
 	
+	template<typename T>
+	constexpr inline void swap(T &a, T &b) { T c = std::move(a); a = std::move(b); b = std::move(c); }
+	
 	// ARRAY
 	template<typename T, size_t N> 
 	class arrayCx {
@@ -60,44 +63,11 @@ namespace cx {
 		constexpr       T& back()         { return  arr[sz-1]; }
 		constexpr const T& back()   const { return  arr[sz-1]; }
         
-        void push_back(const T &item) { std::cout << C << " " << sz << std::endl; arr[sz++] = item; }
+        void push_back2(const T &item) { std::cout << C << " " << sz << std::endl; arr[sz++] = item; }
+        constexpr void push_back(const T &item) { arr[sz++] = item; }
         constexpr void pop_back() { if (sz!=C) arr[sz] = T(); sz--; }
 	};
     
-    // MATRIX
-	template<typename T, size_t N1, size_t N2> 
-	class matrix {
-	protected:
-		T arr[N1][N2];
-
-		template<size_t N3>
-		constexpr static double vecmul(size_t i, size_t j, const matrix<T,N2,N3> lhs, const matrix<T,N2,N3> rhs) {
-
-			double ret = 0.0;
-			for (size_t k=0; k<N2; ++k)
-				ret += lhs.arr[i][k] * rhs.arr[k][j];
-			return ret;
-		}	
-
-	public:
-
-//		constexpr void fill( const T& value ) { for (auto &a : arr) a = value; }
-		
-		constexpr       T* operator[](size_t i)       { return arr[i]; }
-		constexpr const T* operator[](size_t i) const { return arr[i]; }
-		
-		
-		template<size_t N3>
-		constexpr matrix<T,N1,N3> operator*(matrix<T,N2,N3> rhs) const {
-			
-			matrix<T,N1,N3> ret = {};
-			for (size_t i=0; i<N1; ++i)
-				for (size_t j=0; j<N3; ++j)
-					ret.arr[i][j] = vecmul(i,j,*this,rhs);
-			return ret;
-		}
-    };
-        
     // PRIORITY_QUEUE
     template<typename T, size_t C, typename Compare = std::less<T>>
     class priority_queue {
@@ -108,41 +78,30 @@ namespace cx {
     
         constexpr void push(const T&  item) {
 
-            size_t pos = container.size();
-            container.resize(pos + 1);
-            
-            size_t parent = (pos-1)>>1;
-            while (pos and Compare()(container[parent], item)) {
-                container[pos] = std::move(container[parent]);
+			container.push_back(item);
+
+            size_t pos = container.size()-1, parent = (pos-1)>>1;
+            while (pos and Compare()(container[pos],container[parent])) {
+				
+				swap(container[pos], container[parent]);
                 pos = parent;
                 parent = (pos-1)>>1;
             }
-            container[pos] = std::move(item);
         }
         
         constexpr void pop() {
             
             if (container.empty()) return;
-            
-            auto && item = container[size()-1];
-            size_t pos = 0;
-            while (true) {
-                size_t l = (pos<<1)+1;
-                if (l < size()-1 and not Compare()(container[l], item)) {
-                    container[pos] = std::move(container[l]);
-                    pos = l;
-                    continue;
-                }
-                
-                size_t r = (pos<<1)+2;
-                if (r < size()-1 and not Compare()(container[r], item)) {
-                    container[pos] = std::move(container[r]);
-                    pos = r;
-                    continue;
-                }
-                break;
-            }
-            container[pos] = std::move(item);
+
+            size_t pos = container.size()-1, newPos = 0;            
+            while (pos!=newPos) {
+
+				swap(container[pos], container[newPos]);
+				pos = newPos;				
+                size_t l = (pos<<1)+1, r = (pos<<1)+2;
+                if (l < size()-1 and Compare()(container[l], container[newPos])) newPos = l;
+                if (r < size()-1 and Compare()(container[r], container[newPos])) newPos = r;
+			}
             container.pop_back();
         }
 
@@ -162,46 +121,32 @@ namespace cx {
         RandomAccessIterator last,
         Compare compare = Compare()) {
         
-        // Create heap
-        size_t sz = 0;
-        while (first + sz != last) {
+        for (size_t sz = 0; first + sz != last; sz++) {
 
+			auto item = std::move(first[sz]);
             size_t pos = sz;
             size_t parent = (pos-1)>>1;
-            while (pos and compare(first[parent], first[sz])) {
+            while (pos and compare(first[parent], item)) {
+				
                 first[pos] = std::move(first[parent]);
                 pos = parent;
                 parent = (pos-1)>>1;
             }
-            first[pos] = first[sz];
-            sz++;
+            first[pos] = item;
         }
-            
+                    
         // Empty heap
-        while (sz) {
+        for (size_t sz = last - first; sz>1; sz--) {
 
-            auto larger = std::move(first[0]);
-            auto && item = first[sz-1];
-            size_t pos = 0;
-            while (true) {
-                size_t l = (pos<<1)+1;
-                if (l < sz-1 and not compare(first[l], item)) {
-                    first[pos] = std::move(first[l]);
-                    pos = l;
-                    continue;
-                }
-                
-                size_t r = (pos<<1)+2;
-                if (r < sz-1 and not compare(first[r], item)) {
-                    first[pos] = std::move(first[r]);
-                    pos = r;
-                    continue;
-                }
-                break;
-            }
-            first[pos] = std::move(item);
-            first[sz-1] = std::move(larger);
-            sz--;
+			size_t pos = sz-1, newPos = 0;            
+            while (pos!=newPos) {
+
+				swap(first[pos], first[newPos]);
+				pos = newPos;				
+                size_t l = (pos<<1)+1, r = (pos<<1)+2;
+                if (l < sz-2 and Compare()(first[newPos], first[l])) newPos = l;
+                if (r < sz-2 and Compare()(first[newPos], first[r])) newPos = r;
+			}
         } 
     }
     
