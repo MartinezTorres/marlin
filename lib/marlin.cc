@@ -197,7 +197,7 @@ namespace {
 		constexpr void initDecoder() {
 			
 			std::cout << (WORD_SIZE*RequiredBits<ALPHABET_SIZE-1>::value
-			 + RequiredBits<WORD_SIZE) << " " << sizeof(Entry) << std::endl;
+			 + RequiredBits<WORD_SIZE>::value ) << " " << sizeof(Entry) << " " << sizeShift << std::endl;
 			
 			for (size_t i=0; i<words.size(); ++i) {
 				
