@@ -8,11 +8,11 @@
 template<typename F>
 inline std::vector<uint8_t> getResiduals(const F &pmf, size_t S) {
 
-	int8_t cdf[0x100000];
+	int8_t cdf[0x10000];
 	uint j=0;
 	double lim=0;
 	for (uint i=0; i<pmf.size(); i++) {
-		lim += pmf[i]*0x100000;
+		lim += pmf[i]*0x10000;
 		uint ilim = round(lim);
 		while (j<ilim)
 			cdf[j++]=i;
@@ -28,14 +28,22 @@ inline std::vector<uint8_t> getResiduals(const F &pmf, size_t S) {
 	return ret;
 }
 
-int main() {
-    
-    auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,.5);
+    auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,.005);
 	
 	auto dictionary  = Dictionary<256,7,4096>( dist );
+
+int main() {
+    
 	
 	auto in = getResiduals( dist, 1<<20);
 	ibitstream ibs1(in.data(), in.size());
+	
+/*	for (size_t i = 0; i<in.size(); ++i) {
+		if (ibs1.read(8) != in[i])
+			std::cerr << "ii " << i << std::endl;		
+	}*/
+		
+	
 	
 	std::vector<uint8_t> compressed, decompressed;
 	compressed.resize(in.size()*2);
@@ -43,10 +51,10 @@ int main() {
 	
 	dictionary.encode(ibs1, obs1);
 
-	std::cout << in.size() << " " << obs1.size() << std::endl;
+	std::cout << in.size() << " " << obs1.size() << " " << obs1.size()*8./in.size() << std::endl;
     
     obs1.sync();
-    compressed.resize(compressed.size());
+    compressed.resize(obs1.size());
     ibitstream ibs2(compressed.data(), compressed.size());
 
 	decompressed.resize(in.size()*2);
@@ -56,7 +64,13 @@ int main() {
     
 	std::cout << in.size() << " " << obs2.size() << std::endl;
     
-    
-    
-	
+    for (size_t i = 0; i<30; ++i) {
+		if (in[i] != decompressed[i])
+			std::cout << "ii " << i << std::endl;		
+	}
+
+    for (size_t i = 0; i<30; ++i) {
+//		if (in[i] != decompressed[i])
+			std::cerr << "i6 " << uint64_t(in[i]) << " " << uint64_t(decompressed[i]) << std::endl;		
+	}
 }

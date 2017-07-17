@@ -30,6 +30,8 @@ namespace {
 		
 		constexpr void write(size_t bits, uint64_t data) {
 			
+			data = data & uint64_t((1<<bits)-1);
+			
 			if (p + 16 > end) { // End is near
 				
 				while (roll >= 8 and p!= end) { 
@@ -91,20 +93,22 @@ namespace {
 
 			if (roll < bits) {
 				if (p + 4 < end) {
-					val += ( (*(uint32_t *)p) << roll);
+					
+					val += ( uint64_t(*(uint32_t *)p) << roll);
 					p += sizeof(uint32_t);
 					roll += sizeof(uint32_t)*8;
 				} else while (p < end) {
-					val += ( (*(uint8_t *)p) << roll);
+					
+					val += ( uint64_t(*(uint8_t *)p) << roll);
 					p += sizeof(uint8_t);
 					roll += sizeof(uint8_t)*8;
 				}
 			}
-
-			uint64_t ret = val;
+ 
+			uint64_t ret = val & uint64_t((1<<bits)-1);
 			roll -= bits;
 			val = (val >> bits);
-			return ret & ((1<<bits)-1);
+			return ret;
 		}
 		
 		constexpr uint64_t readBytes(size_t bytes) {
@@ -168,7 +172,8 @@ namespace {
 			for (size_t i=0; i<words.size(); ++i) {
 				
 				auto &&w = words[i];
-				// No word should be empty
+				// No word should ever be empty
+				
 				NodeIdx nodeId = Symbol(w[0]);
 				
 				for (size_t j=1; j<w.size(); ++j) {
@@ -195,10 +200,7 @@ namespace {
 		cx::array<Entry, NUM_WORDS> table = {};
 
 		constexpr void initDecoder() {
-			
-			std::cout << (WORD_SIZE*RequiredBits<ALPHABET_SIZE-1>::value
-			 + RequiredBits<WORD_SIZE>::value ) << " " << sizeof(Entry) << " " << sizeShift << std::endl;
-			
+
 			for (size_t i=0; i<words.size(); ++i) {
 				
 				for (size_t j=0; j<words[i].size(); ++j)
@@ -253,7 +255,7 @@ namespace {
 				P1[i-1] = P1[i] + a[i-1].p;
 
 
-			for (size_t StateUpdateIterations = 10; StateUpdateIterations; --StateUpdateIterations) {
+			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
 
 				// 2nd Preprocessing
 				// Parts of eq2 that depend on the state
@@ -320,7 +322,6 @@ namespace {
 						}
 						pq.push(node);
 					}
-					std::cout << "pq.size" << pq.size() <<  std::endl;
 				}
 				
 				double meanLength = 0, meanLengthApprox = 0, sump=0;
@@ -334,7 +335,6 @@ namespace {
 					meanLength += node.p*node.symbols.size();
 					meanLengthApprox += node.symbols.size()/double(NUM_WORDS);
 					sump += node.p;
-					//std::cout << "kk " << node.p << std::endl;
 				}
 				std::cout << "Mean length: " << RequiredBits<NUM_WORDS-1>::value / meanLength << " " <<  RequiredBits<NUM_WORDS-1>::value / meanLengthApprox << " " << sump << std::endl;
 				
@@ -346,7 +346,7 @@ namespace {
 						for (size_t state=0, w0 = node.symbols.front(); state<=w0; ++state)
 							 T[state][node.state] += node.p /(P2[w0] * P1[state]);
 
-					for (size_t MaxwellIt = 3; MaxwellIt; --MaxwellIt) {
+					for (size_t MaxwellIt = 5; MaxwellIt; --MaxwellIt) {
 						
 						cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T2 = {};
 								
@@ -375,54 +375,6 @@ namespace {
 				Entry e = table[src.read(IN)];
 				dst.write((e >> sizeShift)*OUT,e);
 			};
-			
-			
-			/*
-			while (src + 6 <= end) {
-				
-				uint64_t v64=0;
-				v64 = *(const uint64_t *)src;
-				src+=6;
-				
-				{
-					uint64_t v = data[(v64>>0 ) & 0xFFF];
-					*((uint64_t *)dst) = v;
-					dst += v >> ((sizeof(uint64_t)-1)*8);
-				}
-				{				
-					uint64_t v = data[(v64>>0 ) & 0xFFF];
-					*((uint64_t *)dst) = v;
-					dst += v >> ((sizeof(uint64_t)-1)*8);
-				}
-				{				
-					uint64_t v = data[(v64>>0 ) & 0xFFF];
-					*((uint64_t *)dst) = v;
-					dst += v >> ((sizeof(uint64_t)-1)*8);
-				}
-				{				
-					uint64_t v = data[(v64>>0 ) & 0xFFF];
-					*((uint64_t *)dst) = v;
-					dst += v >> ((sizeof(uint64_t)-1)*8);
-				}
-			}
-
-			uint64_t v64=0, c=0;
-			while (src < end) {
-				while (c<12) {
-					v64 += *src++ << c;
-					c+= 8;
-				}
-				
-				{
-					const uint8_t *v = (const uint8_t *)&data[(v64>>0 ) & 0xFFF];
-					size_t sz = v[sizeof(uint64_t)-1];
-					for (size_t i=0; i<sz and dst<dstEnd; i++)
-						*dst++ = *v++;
-				}
-				
-				v64 = v64 >> 12;
-				c-= 12;
-			}*/
 		}				
 
 		constexpr void encode(ibitstream &src, obitstream &dst) const {
@@ -430,22 +382,17 @@ namespace {
 			constexpr size_t IN  = RequiredBits<ALPHABET_SIZE-1>::value;
 			constexpr size_t OUT = RequiredBits<NUM_WORDS-1>::value;
 			
-			std::cout << "IN  " << IN << std::endl;
-			std::cout << "OUT " << OUT << std::endl;
 			NodeIdx nodeId = src.read(IN);
 			do {
 				NodeIdx oldNodeId = 0;
 				do { 
 					oldNodeId = nodeId;
 					nodeId = nodes[nodeId].child[src.read(IN)]; 
-				} while (nodeId >= ALPHABET_SIZE);
+				} while (nodeId > ALPHABET_SIZE - 1);
 				dst.write(OUT, nodes[oldNodeId].code);
 			} while (src);
 		}
 	};
-	
-	
-	
 }
 
 

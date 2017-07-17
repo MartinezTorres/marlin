@@ -90,31 +90,20 @@ namespace Distribution {
     template<typename F>
 	auto getWithEntropy(const F &pmf, double h) {
 
-        h = std::min(std::max(h,1e-5),1.-1e-5);
-		double bMax = 1<<1, bMin = 1./(1<<30);
-        double hMax = entropy(pmf(bMax)), hMin = entropy(pmf(bMin));
-        double hGoal = h * std::log2(pmf(bMax).size());
-        
-        while (hMax<hGoal) {
-            bMax *= 2;
-            hMax = entropy(pmf(bMax));
-        }
-        
-        while (hMax-hMin>(1e-6)) {
+        h = std::min(std::max(h,1e-5),1.-1e-5) * std::log2(pmf(0.0).size());
 
-            double bHinge = bMin+(bMax-bMin)*( .95*((hGoal-hMin)/(hMax-hMin)) + .025);
-            double hHinge = entropy(pmf(bHinge));
+		double b=1<<16;
+		// Estimate parameter b from p using dicotomic search
+		double stepSize = 1<<15;
+		while (stepSize>1E-12) {
+			if (h > entropy(pmf(b))) b+=stepSize;
+			else b-=stepSize;
+			stepSize/=2.;
+		}
 
-            if ( (hGoal-hHinge)/(hMax-hHinge) >=0. ) {
-                hMin = hHinge;
-                bMin = bHinge;
-            } else {
-                hMax = hHinge;
-                bMax = bHinge;
-            } 
-        }
+		//std::cerr << "b: " << b << std::endl;
 
-		return pmf((bMax+bMin)/2);
+		return pmf(b);
 	}
 }
 }
