@@ -28,9 +28,9 @@ inline std::vector<uint8_t> getResiduals(const F &pmf, size_t S) {
 	return ret;
 }
 
-    auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,.005);
+    auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,.5/8);
 	
-	auto dictionary  = Dictionary<256,7,4096>( dist );
+	auto dictionary  = Dictionary<256,7,4096*2>( dist );
 
 int main() {
     
@@ -49,7 +49,7 @@ int main() {
 	compressed.resize(in.size()*2);
 	obitstream obs1(compressed.data(), compressed.size());
 	
-	dictionary.encode(ibs1, obs1);
+	dictionary.encode(ibs1, obs1); obs1.sync();
 
 	std::cout << in.size() << " " << obs1.size() << " " << obs1.size()*8./in.size() << std::endl;
     
@@ -60,17 +60,16 @@ int main() {
 	decompressed.resize(in.size()*2);
 	obitstream obs2(decompressed.data(), decompressed.size());
     
-    dictionary.decode(ibs2, obs2);
+    dictionary.decode(ibs2, obs2); obs2.sync();
     
 	std::cout << in.size() << " " << obs2.size() << std::endl;
     
-    for (size_t i = 0; i<30; ++i) {
-		if (in[i] != decompressed[i])
-			std::cout << "ii " << i << std::endl;		
-	}
+    
 
-    for (size_t i = 0; i<30; ++i) {
-//		if (in[i] != decompressed[i])
-			std::cerr << "i6 " << uint64_t(in[i]) << " " << uint64_t(decompressed[i]) << std::endl;		
+    for (size_t i = 0, count = 10; i<in.size() and count; ++i) {
+		if (in[i] != decompressed[i]) {
+			std::cerr << "i6 " << i << " " << uint64_t(in[i]) << " " << uint64_t(decompressed[i]) << std::endl;
+            count--;
+        }
 	}
 }

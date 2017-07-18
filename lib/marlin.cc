@@ -24,59 +24,52 @@ namespace {
 		uint8_t *p;
 		uint8_t *end;
 		uint64_t val = 0;
-		uint64_t roll = 0;
+		int16_t roll = 0;
+		
+		constexpr 
+		void emitByte() {
+			
+		//	std::cout << "B " << roll << std::endl;
+
+			*p++ = (val & 0xFF);
+			val = (val >> 8);
+			roll -= 8;
+		}
 		
 		constexpr obitstream(uint8_t *p, size_t sz) : start(p), p(p), end(p+sz) {}
 		
-		constexpr void write(size_t bits, uint64_t data) {
+		template<typename T>		
+		constexpr 
+		void write(size_t bits, const T& data) {
 			
-			data = data & uint64_t((1<<bits)-1);
-			
-			if (p + 16 > end) { // End is near
-				
-				while (roll >= 8 and p!= end) { 
-					*(uint8_t *)p = val + (data << roll);
-					p += sizeof(uint8_t);
-					roll -= 8;
-				}
-				
-				val += (data << roll);
-				roll += bits;
-				
-				while (roll >= 8 and p!= end) { 
-					*(uint8_t *)p = val + (data << roll);
-					p += sizeof(uint8_t);
-					roll -= 8;
-				}
-				
-				
-			} else if (roll >= 64 - bits ) {
-				
-				*(uint64_t *)p = val + (data << roll);
-				p += sizeof(uint64_t);
-				val = (data >> (64-roll));
-				roll = bits + roll - 64;
-				
-			} else {
-				
-				val += (data << roll);
-				roll += bits;
+			for (size_t b = 0, c = 0; b < bits; b+=8, ++c) {
+				//std::cout << "B " << b << " " << bits << " " << data << " " << uint32_t(((const uint8_t *)&data)[c]) << " " << int(bits-b) << std::endl;
+				write8(std::min(8,int(bits-b)), ((const uint8_t *)&data)[c]);
 			}
 		}
 		
-		constexpr void sync() {}
+		constexpr 
+		void write8(size_t bits, uint8_t data) {
+
+			
+			data = (data & ((1<<bits)-1));
+//			std::cout << "K1 " << data << " " << val << std::endl;
+//			std::cout << "e " << bits <<  " " << roll << std::endl;
+			val += (uint64_t(data) << roll);
+//			std::cout << "K2 " << val << std::endl;
+			roll += bits;
+
+			while (roll >= 8 and p!= end) 
+				emitByte();
+		}
+		
+		constexpr void sync() {
+			
+			while (roll+7 >= 8 and p!= end) 
+				emitByte();
+		}
 		
 		constexpr size_t size() { return p-start; }
-		
-		constexpr void writeBytes(size_t bytes, uint64_t data) {
-			
-			*(uint64_t *)p = data;
-			p += bytes;
-		}
-		
-		constexpr size_t bytesLeft() const {
-			return end - p;
-		}
 	};
 
 	struct ibitstream {
@@ -85,13 +78,13 @@ namespace {
 		const uint8_t *p;
 		const uint8_t *end;
 		uint64_t val = 0;
-		uint64_t roll = 0;
+		int64_t roll = 0;
 		
 		constexpr ibitstream(const uint8_t *p, size_t sz) : start(p), p(p), end(p+sz) {}
 		
 		constexpr uint64_t read(size_t bits) {
 
-			if (roll < bits) {
+			if (roll < int(bits)) {
 				if (p + 4 < end) {
 					
 					val += ( uint64_t(*(uint32_t *)p) << roll);
@@ -119,7 +112,7 @@ namespace {
 		}
 		
 		constexpr operator bool() const {
-			return not roll or p < end;
+			return (roll>0) or (p!=end);
 		}
 		
 		constexpr void sync() {}
@@ -191,11 +184,9 @@ namespace {
 
 		
 		// Decoder
-		typedef typename SmallestUint<0, 
-			   WORD_SIZE*RequiredBits<ALPHABET_SIZE-1>::value
-			 + RequiredBits<WORD_SIZE>::value >::type Entry;
+		typedef cx::array<uint8_t, (WORD_SIZE*RequiredBits<ALPHABET_SIZE-1>::value + 7)/8  + 1 > Entry;
 		
-		constexpr static const size_t sizeShift = sizeof(Entry)*8 - RequiredBits<WORD_SIZE>::value;
+		//constexpr static const size_t sizeShift = sizeof(Entry)*8 - RequiredBits<WORD_SIZE>::value;
 		
 		cx::array<Entry, NUM_WORDS> table = {};
 
@@ -203,10 +194,15 @@ namespace {
 
 			for (size_t i=0; i<words.size(); ++i) {
 				
+				obitstream obs(&table[i][0], sizeof(Entry));
 				for (size_t j=0; j<words[i].size(); ++j)
-					table[i] += uint64_t(words[i][j]) << (j * RequiredBits<ALPHABET_SIZE-1>::value);
+					obs.write(RequiredBits<ALPHABET_SIZE-1>::value, words[i][j]);
 				
-				table[i] +=  words[i].size() << sizeShift;
+				obs.sync();
+				table[i].back() = words[i].size();
+					
+//					table[i] += uint64_t(words[i][j]) << (j * RequiredBits<ALPHABET_SIZE-1>::value);
+//				table[i] +=  words[i].size() << sizeShift;
 			}
 		}
 		
@@ -255,7 +251,7 @@ namespace {
 				P1[i-1] = P1[i] + a[i-1].p;
 
 
-			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
+			for (size_t StateUpdateIterations = 10; StateUpdateIterations; --StateUpdateIterations) {
 
 				// 2nd Preprocessing
 				// Parts of eq2 that depend on the state
@@ -277,9 +273,8 @@ namespace {
 					double p = 0.0;
 					constexpr bool operator>(const Node& rhs) const {
 						
-						if (symbols.size() == rhs.symbols.size()) return p > rhs.p;
-						if (symbols.size() == WORD_SIZE) return false;
-						if (rhs.symbols.size() == WORD_SIZE) return true;
+						if (symbols.size() == WORD_SIZE and rhs.symbols.size() != WORD_SIZE ) return false;
+						if (symbols.size() != WORD_SIZE and rhs.symbols.size() == WORD_SIZE ) return true;
 						return p > rhs.p;
 					}
 				};
@@ -333,7 +328,7 @@ namespace {
 						word.push_back(a[s].symbol);
 					words.push_back(word);
 					meanLength += node.p*node.symbols.size();
-					meanLengthApprox += node.symbols.size()/double(NUM_WORDS);
+					meanLengthApprox += (1./NUM_WORDS)*node.symbols.size();
 					sump += node.p;
 				}
 				std::cout << "Mean length: " << RequiredBits<NUM_WORDS-1>::value / meanLength << " " <<  RequiredBits<NUM_WORDS-1>::value / meanLengthApprox << " " << sump << std::endl;
@@ -373,7 +368,8 @@ namespace {
 			constexpr size_t OUT = RequiredBits<ALPHABET_SIZE-1>::value;
 			while (src) {
 				Entry e = table[src.read(IN)];
-				dst.write((e >> sizeShift)*OUT,e);
+//				dst.write((e >> sizeShift)*OUT,e);
+				dst.write(e.back()*OUT,e);
 			};
 		}				
 
@@ -391,6 +387,8 @@ namespace {
 				} while (nodeId > ALPHABET_SIZE - 1);
 				dst.write(OUT, nodes[oldNodeId].code);
 			} while (src);
+			dst.write(OUT, nodes[nodeId].code);
+			
 		}
 	};
 }
