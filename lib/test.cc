@@ -30,9 +30,9 @@ inline std::vector<uint8_t> getResiduals(const F &pmf, size_t S) {
 	return ret;
 }
 
-    auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,2./8);
+    auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,1.5/8);
 	
-	auto dictionary  = Dictionary<256,15,4096>( dist );
+	auto dictionary  = Dictionary<256,15,4096*2>( dist );
 
 int main() {
     

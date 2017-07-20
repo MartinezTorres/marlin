@@ -1,11 +1,25 @@
 #include <marlin.h>
-#include <util.h>
+#include <bitstream.h>
+#include <cx.h>
 #include <distribution.h>
 
 #include <set>
 
 
 namespace {
+	
+	// Required Bits Template
+	template<uint64_t N> struct RequiredBits    { enum { value = 1 + RequiredBits<(N>>1)>::value }; };
+	template<>           struct RequiredBits<0> { enum { value = 0 }; };
+	template<>           struct RequiredBits<1> { enum { value = 1 }; };
+
+	template<uint64_t Max, uint8_t requiredBits = RequiredBits<Max>::value>
+	struct SmallestUint {typedef typename SmallestUint<Max, requiredBits+1>::type type; };	
+	template<uint64_t Max> struct SmallestUint<Max, 8> { typedef uint8_t  type; };
+	template<uint64_t Max> struct SmallestUint<Max,16> { typedef uint16_t type; };
+	template<uint64_t Max> struct SmallestUint<Max,32> { typedef uint32_t type; };
+	template<uint64_t Max> struct SmallestUint<Max,64> { typedef uint64_t type; };
+
 	
 	// Template parameters:
 	// ALPHABET_SIZE  -> number of symbols in the alphabet
@@ -241,8 +255,10 @@ namespace {
 					
 					double p = node.p/P2[node.symbols.front()]*P3[node.symbols.front()];
 					for (auto&& s : node.symbols) {
-						symbolLength[a[s].symbol] += p/node.symbols.size();
-						symbolP     [a[s].symbol] += p;
+//						symbolLength[a[s].symbol] += p/node.symbols.size();
+//						symbolP     [a[s].symbol] += p;
+						symbolLength[a[s].symbol] += (1./NUM_WORDS)/node.symbols.size();
+						symbolP     [a[s].symbol] += (1./NUM_WORDS);
 					}
 					
 					meanLength += p*node.symbols.size();
@@ -252,13 +268,9 @@ namespace {
 				
 				for (size_t i=0; i<ALPHABET_SIZE; ++i)
 					craz += P[i]*symbolLength[i]/symbolP[i];
-					
-				{
-					std::ofstream off("out");
-					for (auto&& node : pq) {
-						double p = node.p/P2[node.symbols.front()]*P3[node.symbols.front()];
-						off << p << " " << node.symbols.size() << std::endl;
-					}
+
+				for (size_t i=0; i<10; ++i) {
+					std::cout << "i " << P[i] << " " << symbolLength[i] << " " << symbolP[i] << std::endl;
 				}
 					
 				std::cout << "Mean length: " << RequiredBits<NUM_WORDS-1>::value / meanLength << " " <<  RequiredBits<NUM_WORDS-1>::value / meanLengthApprox << " " << RequiredBits<NUM_WORDS-1>::value * craz << std::endl;
@@ -269,27 +281,20 @@ namespace {
 		}	
 
 
-		template<class... Args> // Args are phony parameters to lower the order of the function
-		constexpr void decode(ibitstream &src, obitstream &dst, Args...) const {
-		//constexpr void decode(ibitstream &src, obitstream &dst) const {
-			
-			constexpr size_t IN  = RequiredBits<NUM_WORDS    -1>::value;
-			constexpr size_t OUT = RequiredBits<ALPHABET_SIZE-1>::value;
-			while (src) {
-				Entry e = table[src.read(IN)];
-				dst.write(e.back()*OUT,e);
-			};
-		}				
-
-		template<typename = std::enable_if_t<ALPHABET_SIZE==256 and NUM_WORDS==4096> >
 		constexpr void decode(ibitstream &src, obitstream &dst) const {
-			
+
 			constexpr size_t IN  = RequiredBits<NUM_WORDS    -1>::value;
 			constexpr size_t OUT = RequiredBits<ALPHABET_SIZE-1>::value;
-			while (src) {
-				Entry e = table[src.read(IN)];
-				//dst.write(e.back()*OUT,e);
-			};
+			
+			if (ALPHABET_SIZE == 256 and NUM_WORDS == 4096 and WORD_SIZE <= 7) {
+				
+			} else {
+			
+				while (src) {
+					Entry e = table[src.read(IN)];
+					dst.write(e.back()*OUT,e);
+				}
+			}
 		}				
 
 		constexpr void encode(ibitstream &src, obitstream &dst) const {
