@@ -245,7 +245,7 @@ namespace {
 				cx::array<double,ALPHABET_SIZE> symbolLength = {};
 				cx::array<double,ALPHABET_SIZE> symbolP = {};
 				
-				double meanLength = 0, meanLengthApprox = 0, sump=0, craz = 0;
+				double meanLength = 0, meanLengthApprox = 0, sump=0, craz = 0, craz2=0;
 				words.clear();
 				for (auto&& node : pq) {
 					Word word = {};
@@ -266,14 +266,16 @@ namespace {
 					sump += p;
 				}
 				
-				for (size_t i=0; i<ALPHABET_SIZE; ++i)
+				for (size_t i=0; i<ALPHABET_SIZE; ++i) {
 					craz += P[i]*symbolLength[i]/symbolP[i];
+					craz2 += -std::log2(P[i])*P[i];
+				}
 
 				for (size_t i=0; i<10; ++i) {
-					std::cout << "i " << P[i] << " " << symbolLength[i] << " " << symbolP[i] << std::endl;
+					std::cout << "i " << P[i] << " " << symbolLength[i] << " " << symbolP[i] <<  " " << -std::log2(P[i]) << std::endl;
 				}
 					
-				std::cout << "Mean length: " << RequiredBits<NUM_WORDS-1>::value / meanLength << " " <<  RequiredBits<NUM_WORDS-1>::value / meanLengthApprox << " " << RequiredBits<NUM_WORDS-1>::value * craz << std::endl;
+				std::cout << "Mean length: " << RequiredBits<NUM_WORDS-1>::value / meanLength << " " <<  RequiredBits<NUM_WORDS-1>::value / meanLengthApprox << " " << RequiredBits<NUM_WORDS-1>::value * craz << " " << craz2 << std::endl;
 			}
 			
 			initEncoder(); 
