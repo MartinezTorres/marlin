@@ -26,7 +26,7 @@ namespace {
 	// WORD_SIZE -> maximum number of symbols in a word
 	// NUM_WORDS -> maximum number of words in the dictionary
 	template<size_t ALPHABET_SIZE, size_t WORD_SIZE, size_t NUM_WORDS>
-	class Dictionary {
+	class Marlinv1 {
 		
 		// Generic Types
 		typedef typename SmallestUint<  ALPHABET_SIZE-1>::type Symbol;
@@ -102,14 +102,14 @@ namespace {
 		
 	public:
 	
-		constexpr Dictionary(const cx::vector<Word,NUM_WORDS> words) : words(words) { 
+		constexpr Marlinv1(const cx::vector<Word,NUM_WORDS> words) : words(words) { 
 		
 			initEncoder(); 
 			initDecoder(); 
 		}
 		 
 		// It takes forever to compile as constexpr. Hardly recommended.
-		Dictionary(const cx::array<double,ALPHABET_SIZE> &P) {
+		Marlinv1(const cx::array<double,ALPHABET_SIZE> &P) {
 				
 			// The formulas on the paper expect the alphabet to consist of symbols with decreasing order of probability.
 			struct A {
@@ -164,16 +164,16 @@ namespace {
 					cx::vector<Symbol, WORD_SIZE> symbols = {};
 					int state = 0;
 					double p = 0.0;
-					constexpr bool operator>(const Node& rhs) const {
+					constexpr bool operator<(const Node& rhs) const {
 						
-						if (symbols.size() == WORD_SIZE and rhs.symbols.size() != WORD_SIZE ) return false;
-						if (symbols.size() != WORD_SIZE and rhs.symbols.size() == WORD_SIZE ) return true;
-						return p > rhs.p;
+						if (symbols.size() == WORD_SIZE and rhs.symbols.size() != WORD_SIZE ) return true;
+						if (symbols.size() != WORD_SIZE and rhs.symbols.size() == WORD_SIZE ) return false;
+						return p < rhs.p;
 					}
 				};
 
 				// Build the Dictionary
-				cx::priority_queue<Node,NUM_WORDS,std::greater<Node>> pq;
+				cx::minmaxHeap<Node,NUM_WORDS,std::less<Node>> pq;
 				{
 					// DICTIONARY INITIALIZATION
 					for (size_t n=0; n<ALPHABET_SIZE; ++n) {
@@ -187,10 +187,10 @@ namespace {
 					}
 					
 					// GROW THE DICTIONARY
-					while (pq.size() < NUM_WORDS and pq.top().symbols.size() < WORD_SIZE) {
+					while (pq.size() < NUM_WORDS and pq.max().symbols.size() < WORD_SIZE) {
 						
-						Node node = pq.top();
-						pq.pop();
+						Node node = pq.max();
+						pq.popMax();
 						
 						Node newNode = {};
 						newNode.symbols = node.symbols;
@@ -283,12 +283,16 @@ namespace {
 		}	
 
 
+		constexpr void predictPerformance() {
+			
+		}
+
 		constexpr void decode(ibitstream &src, obitstream &dst) const {
 
 			constexpr size_t IN  = RequiredBits<NUM_WORDS    -1>::value;
 			constexpr size_t OUT = RequiredBits<ALPHABET_SIZE-1>::value;
 			
-			if (ALPHABET_SIZE == 256 and NUM_WORDS == 4096 and WORD_SIZE <= 7) {
+			if ( false and ALPHABET_SIZE == 256 and NUM_WORDS == 4096 and WORD_SIZE <= 7) {
 				
 			} else {
 			

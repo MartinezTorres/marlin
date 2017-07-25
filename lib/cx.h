@@ -70,42 +70,106 @@ namespace cx {
     
     // PRIORITY_QUEUE
     template<typename T, size_t C, typename Compare = std::less<T>>
-    class priority_queue {
+    class minmaxHeap {
     protected:
         vector<T,C> container = {};
+        
+        constexpr size_t parent(size_t pos) { return (pos-1)>>1; };
+        constexpr size_t left  (size_t pos) { return (pos<<1)+1; };
+        constexpr size_t right (size_t pos) { return (pos<<1)+2; };
+
+        constexpr size_t level (size_t pos) { return  pos?1+level(parent(pos)):0; };
+        
+        
+        constexpr bool test(size_t a, size_t b, bool reverse) {
+			if (reverse) swap(a,b);
+			return a < size() and b<size() and Compare()(container[a], container[b]);
+		}
+        
+		constexpr void sink(size_t pos) { 
+			
+			bool found = true;
+            while (found) {
+
+				found = false;
+				size_t newPos = pos, testPos = 0;
+               
+				testPos = left (pos);        if (test(testPos, newPos, level(testPos) & 1)) newPos=testPos;
+                testPos = right(pos);        if (test(testPos, newPos, level(testPos) & 1)) newPos=testPos;
+                testPos = left (left (pos)); if (test(testPos, newPos, level(testPos) & 1)) newPos=testPos;
+                testPos = left (right(pos)); if (test(testPos, newPos, level(testPos) & 1)) newPos=testPos;
+                testPos = right(left (pos)); if (test(testPos, newPos, level(testPos) & 1)) newPos=testPos;
+                testPos = right(right(pos)); if (test(testPos, newPos, level(testPos) & 1)) newPos=testPos;
+
+				if (newPos != pos) {
+					swap(container[pos], container[newPos]);
+					pos = newPos;				
+					found = true;
+				}
+			}
+        }
+        
+        constexpr void bubble(size_t pos) {
+			
+            for ( size_t p = pos; p;  p = parent(p) ) {
+				
+				if ( test(p,pos, level(p) & 1) ) {
+					
+					swap(container[pos], container[p]);
+					pos = p;
+				}
+            }
+		}
+
 
     public:
     
         constexpr void push(const T&  item) {
 
 			container.push_back(item);
-
-            size_t pos = container.size()-1, parent = (pos-1)>>1;
-            while (pos and Compare()(container[pos],container[parent])) {
-				
-				swap(container[pos], container[parent]);
-                pos = parent;
-                parent = (pos-1)>>1;
-            }
+			bubble(container.size()-1);
         }
         
-        constexpr void pop() {
+        constexpr void popMin() {
             
             if (container.empty()) return;
-
-            size_t pos = container.size()-1, newPos = 0;            
-            while (pos!=newPos) {
-
-				swap(container[pos], container[newPos]);
-				pos = newPos;				
-                size_t l = (pos<<1)+1, r = (pos<<1)+2;
-                if (l < size()-1 and Compare()(container[l], container[newPos])) newPos = l;
-                if (r < size()-1 and Compare()(container[r], container[newPos])) newPos = r;
-			}
+            
+            swap(container.back(), container.front());
             container.pop_back();
+            sink(0);
+		}
+
+
+        constexpr void popMax() {
+            
+            if (container.empty()) return;
+            
+            if (size()<2) {
+				container.pop_back();
+			} else if (Compare()(container[1], container[2])) {
+				
+				swap(container.back(), container[1]);
+				container.pop_back();
+				sink(1);
+			} else {
+				swap(container.back(), container[2]);
+				container.pop_back();
+				sink(2);
+			}
         }
 
-        constexpr const T& top()   const { return container.front(); }
+        constexpr const T min()   const { return container.front(); }
+        constexpr const T max()   const { 
+			
+			if (size()<2) return container.back();
+			if (Compare()(container[1], container[2])) {
+				return container[1];
+			} else {
+				return container[2];
+			}
+		}
+				
+
         constexpr size_t   size()  const { return container.size();  }
         constexpr const T* begin() const { return container.begin(); }
 		constexpr const T* end()   const { return container.end();   }       

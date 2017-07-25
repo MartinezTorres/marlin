@@ -32,7 +32,7 @@ inline std::vector<uint8_t> getResiduals(const F &pmf, size_t S) {
 
     auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,1.5/8);
 	
-	auto dictionary  = Dictionary<256,15,4096*2>( dist );
+	auto dictionary  = Marlinv1<256,15,4096*2>( dist );
 
 int main() {
     
