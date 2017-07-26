@@ -30,9 +30,9 @@ inline std::vector<uint8_t> getResiduals(const F &pmf, size_t S) {
 	return ret;
 }
 
-    auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,1.5/8);
+    auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,1./8);
 	
-	auto dictionary  = Marlinv1<256,15,4096*2>( dist );
+	auto dictionary  = Marlinv1<256,63,4096>( dist );
 
 int main() {
     
@@ -74,4 +74,11 @@ int main() {
             count--;
         }
 	}
+	
+	
+	depq<int> pq;
+	for (auto &&e : {1,2,234,32,1,2,3}) pq.insert(e);
+	for (auto && e: pq) std::cout << e << " ";
+	std::cout << std::endl;
+	
 }

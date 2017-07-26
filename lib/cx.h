@@ -68,11 +68,12 @@ namespace cx {
         constexpr void pop_back() { if (sz!=C) arr[sz] = T(); sz--; }
 	};
     
-    // PRIORITY_QUEUE
+/*    // Double Ended Priority Queue
     template<typename T, size_t C, typename Compare = std::less<T>>
-    class minmaxHeap {
+    class intervalHeap {
     protected:
         vector<T,C> container = {};
+        vector<size_t,C> indexes = {};
         
         constexpr size_t parent(size_t pos) { return (pos-1)>>1; };
         constexpr size_t left  (size_t pos) { return (pos<<1)+1; };
@@ -81,13 +82,27 @@ namespace cx {
         constexpr size_t level (size_t pos) { return  pos?1+level(parent(pos)):0; };
         
         
-        constexpr bool test(size_t a, size_t b, bool reverse) {
+        // A is always above B
+        // If the heap property does not comply between those two, swap them.
+        // Returns true in case of swap;
+        constexpr bool testAndSwap(size_t a, size_t b) {
 			
-			if (a==b or a >= size() or b >= size()) return false;
-			return reverse?Compare()(container[b], container[a]):Compare()(container[a], container[b]);
+			if (a==b or b >= size()) return false;
+			bool isHeap = false;
+			if (not (level(a) & 1)) {
+				isHeap = Compare()(container[a], container[b]);
+			} else {
+				isHeap = Compare()(container[b], container[a]);
+			}
+			if (not ok) {
+				swap(container[a], container[b]);
+			}
+			return not ok;
 		}
         
-		constexpr void sink(size_t pos) { 
+		constexpr void sink(size_t pos) {
+			
+			
 			
 			bool found = true;
             while (found) {
@@ -112,14 +127,15 @@ namespace cx {
         
         constexpr void bubble(size_t pos) {
 			
-            for (size_t p = pos; p;  p = parent(p)) {
-				
-				if (test(pos,p,level(p) & 1)) {
-					
-					swap(container[pos], container[p]);
-					pos = p;
-				}
-            }
+			if (pos==0) return;
+			if (pos==1) { testAndSwap(0,1); return; }
+			if (pos==2) { testAndSwap(0,2); return; }
+
+			if (testAndSwap(parent(pos),pos))
+				pos = parent(pos);  
+
+			while (pos and testAndSwap(parent(parent(pos)),pos))
+				pos = parent(parent(pos));  
 		}
 
 
@@ -174,7 +190,7 @@ namespace cx {
         constexpr size_t   size()  const { return container.size();  }
         constexpr const T* begin() const { return container.begin(); }
 		constexpr const T* end()   const { return container.end();   }       
-    };
+    };*/
     
     // SORT ALGORITHM
     template<
