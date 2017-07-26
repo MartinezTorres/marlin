@@ -464,9 +464,6 @@ namespace {
 					for (size_t i=0; i<ALPHABET_SIZE; ++i)
 						P2[i] = sum = sum + Ps[i]/P1[i];
 				}
-				
-				//for (size_t i=0; i<10; ++i)
-				//	std::cout << i << ": " << Ps[i] << " " <<  std::endl;
 
 
 				struct Node {
@@ -483,6 +480,7 @@ namespace {
 				};
 
 				// Build the Dictionary
+				words.clear();
 				depq<Node> depqNodes;
 				{
 					// DICTIONARY INITIALIZATION
@@ -495,99 +493,103 @@ namespace {
 						
 						depqNodes.push(node);
 					}
-					
-					// GROW THE DICTIONARY
-					while (depqNodes.size() < NUM_WORDS and depqNodes.max().symbols.size() < WORD_SIZE) {
 						
-						Node node = depqNodes.max();
-						depqNodes.removeMax();
-						
-						Node newNode = {};
-						newNode.symbols = node.symbols;
-						newNode.symbols.push_back(node.state);
-	
-						newNode.state = 0;
-						
-						newNode.p = node.p * a[node.state].p / P1[node.state];
-						depqNodes.push(newNode);
-						
-						node.p -= newNode.p;
-						node.state++;
-						
-						if (node.state == ALPHABET_SIZE-1) {
-							node.symbols.push_back(node.state);
-							node.state = 0;
+					for (size_t startSymbol = 0; startSymbol<ALPHABET_SIZE; startSymbol++) {
+
+
+						// GROW THE DICTIONARY
+						while (depqNodes.size() < NUM_WORDS and depqNodes.max().symbols.size() < WORD_SIZE) {
+							
+							Node node = depqNodes.max();
+							depqNodes.removeMax();
+							
+							Node newNode = {};
+							newNode.symbols = node.symbols;
+							newNode.symbols.push_back(node.state);
+		
+							newNode.state = 0;
+							
+							newNode.p = node.p * a[node.state].p / P1[node.state];
+							depqNodes.push(newNode);
+							
+							node.p -= newNode.p;
+							node.state++;
+							
+							if (node.state == ALPHABET_SIZE-1) {
+								node.symbols.push_back(node.state);
+								node.state = 0;
+							}
+							depqNodes.push(node);
+							
+							//while (depqNodes.min().p<.02/NUM_WORDS) depqNodes.removeMin();
 						}
-						depqNodes.push(node);
-						
-						//while (depqNodes.min().p<.02/NUM_WORDS) depqNodes.removeMin();
 					}
-				}
-				
-				// Update probability state
-				{
-					cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T = {};
-					for (auto &&node : depqNodes) 
-						for (size_t state=0, w0 = node.symbols.front(); state<=w0; ++state)
-							 T[state][node.state] += node.p /(P2[w0] * P1[state]);
+					
+					// Update probability state
+					{
+						cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T = {};
+						for (auto &&node : depqNodes) 
+							for (size_t state=0, w0 = node.symbols.front(); state<=w0; ++state)
+								 T[state][node.state] += node.p /(P2[w0] * P1[state]);
 
-					for (size_t MaxwellIt = 5; MaxwellIt; --MaxwellIt) {
-						
-						cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T2 = {};
-								
+						for (size_t MaxwellIt = 5; MaxwellIt; --MaxwellIt) {
+							
+							cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T2 = {};
+									
+							for (size_t i=0; i<ALPHABET_SIZE; ++i)
+								for (size_t j = 0; j<ALPHABET_SIZE; ++j)
+									for (size_t k=0; k<ALPHABET_SIZE; ++k)
+										T2[i][j] += T[i][k] * T[k][j];
+							
+							T = T2;
+						}
+						Ps = T[0];					
+					}
+					
+					cx::array<double,ALPHABET_SIZE> P3 = {};
+					{
+						double sum = 0.0;
 						for (size_t i=0; i<ALPHABET_SIZE; ++i)
-							for (size_t j = 0; j<ALPHABET_SIZE; ++j)
-								for (size_t k=0; k<ALPHABET_SIZE; ++k)
-									T2[i][j] += T[i][k] * T[k][j];
+							P3[i] = sum = sum + Ps[i]/P1[i];
+					}				
+
+					
+
+					cx::array<double,ALPHABET_SIZE> symbolLength = {};
+					cx::array<double,ALPHABET_SIZE> symbolP = {};
+					
+					double meanLength = 0, meanLengthApprox = 0, sump=0, craz = 0, craz2=0;
+					words.clear();
+					for (auto&& node : depqNodes) {
+						Word word = {};
+						for (auto&& s : node.symbols)
+							word.push_back(a[s].symbol);
+						words.push_back(word);
 						
-						T = T2;
-					}
-					Ps = T[0];					
-				}
-				
-				cx::array<double,ALPHABET_SIZE> P3 = {};
-				{
-					double sum = 0.0;
-					for (size_t i=0; i<ALPHABET_SIZE; ++i)
-						P3[i] = sum = sum + Ps[i]/P1[i];
-				}				
-
-				
-
-				cx::array<double,ALPHABET_SIZE> symbolLength = {};
-				cx::array<double,ALPHABET_SIZE> symbolP = {};
-				
-				double meanLength = 0, meanLengthApprox = 0, sump=0, craz = 0, craz2=0;
-				words.clear();
-				for (auto&& node : depqNodes) {
-					Word word = {};
-					for (auto&& s : node.symbols)
-						word.push_back(a[s].symbol);
-					words.push_back(word);
-					
-					double p = node.p/P2[node.symbols.front()]*P3[node.symbols.front()];
-					for (auto&& s : node.symbols) {
-//						symbolLength[a[s].symbol] += p/node.symbols.size();
-//						symbolP     [a[s].symbol] += p;
-						symbolLength[a[s].symbol] += (1./NUM_WORDS)/node.symbols.size();
-						symbolP     [a[s].symbol] += (1./NUM_WORDS);
+						double p = node.p/P2[node.symbols.front()]*P3[node.symbols.front()];
+						for (auto&& s : node.symbols) {
+	//						symbolLength[a[s].symbol] += p/node.symbols.size();
+	//						symbolP     [a[s].symbol] += p;
+							symbolLength[a[s].symbol] += (1./NUM_WORDS)/node.symbols.size();
+							symbolP     [a[s].symbol] += (1./NUM_WORDS);
+						}
+						
+						meanLength += p*node.symbols.size();
+						meanLengthApprox += (1./NUM_WORDS)*node.symbols.size();
+						sump += p;
 					}
 					
-					meanLength += p*node.symbols.size();
-					meanLengthApprox += (1./NUM_WORDS)*node.symbols.size();
-					sump += p;
-				}
-				
-				for (size_t i=0; i<ALPHABET_SIZE; ++i) {
-					craz += P[i]*symbolLength[i]/symbolP[i];
-					craz2 += -std::log2(P[i])*P[i];
-				}
+					for (size_t i=0; i<ALPHABET_SIZE; ++i) {
+						craz += P[i]*symbolLength[i]/symbolP[i];
+						craz2 += -std::log2(P[i])*P[i];
+					}
 
-				for (size_t i=0; i<10; ++i) {
-					std::cout << "i " << P[i] << " " << symbolLength[i] << " " << symbolP[i] <<  " " << -std::log2(P[i]) << std::endl;
+					for (size_t i=0; i<10; ++i) {
+						std::cout << "i " << P[i] << " " << symbolLength[i] << " " << symbolP[i] <<  " " << -std::log2(P[i]) << std::endl;
+					}
+						
+					std::cout << "Mean length: " << RequiredBits<NUM_WORDS-1>::value / meanLength << " " <<  RequiredBits<NUM_WORDS-1>::value / meanLengthApprox << " " << RequiredBits<NUM_WORDS-1>::value * craz << " " << craz2 << std::endl;
 				}
-					
-				std::cout << "Mean length: " << RequiredBits<NUM_WORDS-1>::value / meanLength << " " <<  RequiredBits<NUM_WORDS-1>::value / meanLengthApprox << " " << RequiredBits<NUM_WORDS-1>::value * craz << " " << craz2 << std::endl;
 			}
 			
 			initEncoder(); 
