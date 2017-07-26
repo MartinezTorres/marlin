@@ -82,8 +82,9 @@ namespace cx {
         
         
         constexpr bool test(size_t a, size_t b, bool reverse) {
-			if (reverse) swap(a,b);
-			return a < size() and b<size() and Compare()(container[a], container[b]);
+			
+			if (a==b or a >= size() or b >= size()) return false;
+			return reverse?Compare()(container[b], container[a]):Compare()(container[a], container[b]);
 		}
         
 		constexpr void sink(size_t pos) { 
@@ -111,9 +112,9 @@ namespace cx {
         
         constexpr void bubble(size_t pos) {
 			
-            for ( size_t p = pos; p;  p = parent(p) ) {
+            for (size_t p = pos; p;  p = parent(p)) {
 				
-				if ( test(p,pos, level(p) & 1) ) {
+				if (test(pos,p,level(p) & 1)) {
 					
 					swap(container[pos], container[p]);
 					pos = p;
@@ -148,13 +149,13 @@ namespace cx {
 				container.pop_back();
 			} else if (Compare()(container[1], container[2])) {
 				
-				swap(container.back(), container[1]);
-				container.pop_back();
-				sink(1);
-			} else {
 				swap(container.back(), container[2]);
 				container.pop_back();
 				sink(2);
+			} else {
+				swap(container.back(), container[1]);
+				container.pop_back();
+				sink(1);
 			}
         }
 
@@ -163,9 +164,9 @@ namespace cx {
 			
 			if (size()<2) return container.back();
 			if (Compare()(container[1], container[2])) {
-				return container[1];
-			} else {
 				return container[2];
+			} else {
+				return container[1];
 			}
 		}
 				
