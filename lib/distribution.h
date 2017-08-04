@@ -67,7 +67,7 @@ namespace Distribution {
         for (auto&& v : arr) v = std::numeric_limits<double>::min();
 
         double lp=0,kf=0;
-        for (int64_t k=0; k<10*N and kf>k*std::numeric_limits<double>::min(); k++) {
+        for (int64_t k=0; k<10*int(N) and kf>k*std::numeric_limits<double>::min(); k++) {
             kf = (k?kf*k:1);
             lp = (k?lp*l:1);
             arr[      k  % N] += lp*std::exp(-l)/kf;

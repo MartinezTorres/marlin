@@ -6,35 +6,24 @@
 namespace {
 namespace cx {
 	
-	using std::array; // Can be used when array is finally constexpr compliant
+	using std::array;
 	
 	template<typename T>
 	constexpr inline void swap(T &a, T &b) { T c = std::move(a); a = std::move(b); b = std::move(c); }
 	
-	// ARRAY
-	template<typename T, size_t N> 
-	class arrayCx {
-	public:
-		T arr[N] = {};
-	public:
-
-		constexpr void fill( const T& value ) { for (auto &a : arr) a = value; }
+	template<size_t CAPACITY, typename T = uint32_t>
+	class Storage {
 		
-		constexpr T &operator[](size_t i)       { return arr[i]; }
-		constexpr T  operator[](size_t i) const { return arr[i]; }
-
-		static constexpr size_t size() { return N; }
+		T data[CAPACITY] = {};
+		uint32_t bitmap[(sizeof(T)*CAPACITY+31)/32] = {};
 		
-		constexpr       T* begin()       { return &arr[0]; }
-		constexpr const T* begin() const { return &arr[0]; }
-		constexpr       T& front()       { return  arr[0]; }
-		constexpr const T& front() const { return  arr[0]; }
-		constexpr       T* end()         { return &arr[N]; }
-		constexpr const T* end()   const { return &arr[N]; }
-		constexpr       T& back()        { return  arr[N-1]; }
-		constexpr const T& back()  const { return  arr[N-1]; }
-    };
-    
+		template<typename T2>
+		constexpr T2 *get(size_t) { return (T2 *)&data[0]; }
+		
+		template<typename T2>
+		constexpr void free(T2 *, size_t) {}
+	};
+	
 	// VECTOR
 	template<typename T, size_t C> 
 	class vector {

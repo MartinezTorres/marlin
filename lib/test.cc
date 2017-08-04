@@ -32,9 +32,14 @@ inline std::vector<uint8_t> getResiduals(const F &pmf, size_t S) {
 
     auto dist = Distribution::getWithEntropy(Distribution::Gaussian<256>,1./8);
 	
-	auto dictionary  = Marlinv1<256,63,4096>( dist );
+	auto marlinV1  = MarlinV1<256,7,4096>( dist );
+    
+
+using namespace std;
 
 int main() {
+    
+    cout << "SIZE: " << sizeof(marlinV1) << " " << sizeof(marlinV1) << endl;
     
 	
 	auto in = getResiduals( dist, 1<<20);
@@ -51,7 +56,7 @@ int main() {
 	compressed.resize(in.size()*2);
 	obitstream obs1(compressed.data(), compressed.size());
 	
-	dictionary.encode(ibs1, obs1); obs1.sync();
+	marlinV1.encode(ibs1, obs1); obs1.sync();
 
 	std::cout << in.size() << " " << obs1.size() << " " << obs1.size()*8./in.size() << std::endl;
     
@@ -62,7 +67,7 @@ int main() {
 	decompressed.resize(in.size()*2);
 	obitstream obs2(decompressed.data(), decompressed.size());
     
-    dictionary.decode(ibs2, obs2); obs2.sync();
+    marlinV1.decode(ibs2, obs2); obs2.sync();
     
 	std::cout << in.size() << " " << obs2.size() << std::endl;
     
