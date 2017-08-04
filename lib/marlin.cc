@@ -3,6 +3,8 @@
 #include <cx.h>
 #include <distribution.h>
 
+#include <algorithm>
+#include <vector>
 #include <set>
 
 
@@ -347,7 +349,7 @@ namespace {
 		return ret;
 	}
 		
-	auto dictionariesMarlinV1 = getDictionaries<MarlinV1<256,7,4096>>();
+	const auto dictionariesMarlinV1 = getDictionaries<MarlinV1<256,7,4096>>();
 	
 }
 
@@ -356,30 +358,59 @@ constexpr const static size_t NB = 16;
 
 size_t Marlin_compress_8  (uint8_t*& dst, size_t dstCapacity, const uint8_t*& src, size_t srcSize) {
 	
-	cx::array<cx::array<uint8_t,BS>,NB> buffs;
-	cx::vector<std::pair<uint8_t,uint8_t>,NB> blockIds;
+	
+	struct Block {
+		cx::array<uint8_t,BS> buffer;
+		std::array<uint16_t, 256> hist;
+		const uint8_t *src;
+		size_t sizeUncompressed;
+		uint8_t *dst;
+		size_t sizeCompressed;
+		size_t dictionaryIdx;
+		double expectedSize;
+		bool inUse;
+	};
+	
+	cx::array<Block, NB> blocks = {};
 	
 	const uint8_t* dst0 = dst;
 	const uint8_t* src0 = src;
 	
-	while (srcSize and dstCapacity>srcSize or dstCapacity>BS*NB) { // We have buffer to reorder
+	while (true) {
 		
-		while (not blockIds.size() == NB) {
+		for (auto&& block : blocks) {
 			
-			BlockID blockID;
+			if (block.inUse) continue;
+			if (srcSize) continue;
 			
-			blockID.src = src;
-			blockID.size = std::min(srcSize,BS);
-			blockID.uncompressible = false;
-			blockID.blank = false;
+			block.src = src;
+			block.sizeUncompressed = std::min(srcSize,BS);
 			
-		
-		
-			srcSize -= blockID.size;
-			src += blockID.size;
+			block.hist.fill(0);
+			for (size_t i=0; i<block.sizeUncompressed; i++) block.hist[src[i]]++;
+			
+			block.dictionaryIdx = 0;
+			block.expectedSize = 1e10;
+
+			for (size_t i=0; i<dictionariesMarlinV1.size(); i++) {
+				
+				double expected = dictionariesMarlinV1[i].predict(block.hist);
+				if (expected < block.expectedSize) {
+					block.expectedSize = expected;
+					block.dictionaryIdx = i;
+				}
+			}
+			
+			block.inUse = true;
+			
+			srcSize -= block.sizeUncompressed;
+			src += block.sizeUncompressed;
 		}
-	}
 	
+		
+		
+	}
+	/*
 	while (srcSize) {
 
 	}
@@ -451,7 +482,7 @@ size_t Marlin_compress_8  (uint8_t*& dst, size_t dstCapacity, const uint8_t*& sr
 		outSize += dictionaries[it1->dictIndex].encode(it1, it2, &dst);
 	}
 
-	return outSize;
+	return outSize;*/
 }
 
 /*
