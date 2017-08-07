@@ -62,15 +62,18 @@ namespace Distribution {
 
     template<size_t N>
     std::array<double,N> Poisson(double l) {
-        
+		
+		l = std::min(l, 200.);
+		l = std::max(l,1./200.);
+		        
         std::array<double,N> arr = {}; 
         for (auto&& v : arr) v = std::numeric_limits<double>::min();
 
-        double lp=0,kf=0;
-        for (int64_t k=0; k<10*int(N) and kf>k*std::numeric_limits<double>::min(); k++) {
-            kf = (k?kf*k:1);
-            lp = (k?lp*l:1);
-            arr[      k  % N] += lp*std::exp(-l)/kf;
+        double lp=1;
+        for (int64_t k=0; k<10*int(N); k++) {
+            lp = (k?lp*l/k:1);
+            if (lp > 1e100 or lp < 1e-100) break;
+            arr[      k  % N] += lp*std::exp(-l);
         }
         return norm1(arr);
     }
@@ -100,9 +103,6 @@ namespace Distribution {
 			else b-=stepSize;
 			stepSize/=2.;
 		}
-
-		//std::cerr << "b: " << b << std::endl;
-
 		return pmf(b);
 	}
 }

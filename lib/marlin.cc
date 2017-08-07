@@ -4,31 +4,22 @@
 #include <distribution.h>
 
 #include <algorithm>
+#include <cassert>
+#include <memory>
+#include <cstring>
 #include <vector>
 #include <set>
 
 
 namespace {
 	
-	// Template parameters:
-	// ALPHABET_SIZE  -> number of symbols in the alphabet
-	// ENTRY_SIZE_2   -> number of bits in a dictionary entry
-	// WORD_SIZE      -> maximum number of symbols in a word
-	// NUM_WORDS      -> maximum number of words in the dictionary
+	// Drop it, only 8 bit, 4096 dictionary, 8 byte entry length.
 	
+	constexpr const size_t ALPHABET_SIZE = 256;
+	constexpr const size_t NUM_WORDS = 4096; // Word 0 is reserved to be size 0
+	constexpr const size_t WORD_SIZE = 7;
+	typedef uint8_t Symbol;
 	
-	// Required Bits Template
-	template<uint64_t N> struct RequiredBits    { enum { value = 1 + RequiredBits<(N>>1)>::value }; };
-	template<>           struct RequiredBits<0> { enum { value = 0 }; };
-	template<>           struct RequiredBits<1> { enum { value = 1 }; };
-
-	template<uint64_t Max, uint8_t requiredBits = RequiredBits<Max>::value>
-	struct SmallestUint {typedef typename SmallestUint<Max, requiredBits+1>::type type; };	
-	template<uint64_t Max> struct SmallestUint<Max, 8> { typedef uint8_t  type; };
-	template<uint64_t Max> struct SmallestUint<Max,16> { typedef uint16_t type; };
-	template<uint64_t Max> struct SmallestUint<Max,32> { typedef uint32_t type; };
-	template<uint64_t Max> struct SmallestUint<Max,64> { typedef uint64_t type; };
-
 	template<class Key, class Compare = std::less<Key>, class Allocator = std::allocator<Key>>
 	struct depq : public std::multiset<Key,Compare,Allocator> {
 		
@@ -39,14 +30,8 @@ namespace {
 		void removeMax() { this->erase(std::prev(this->end())); }
 	};
 	
-	
-	template<size_t ALPHABET_SIZE, size_t WORD_SIZE>
-	struct Word : public cx::vector<typename SmallestUint<  ALPHABET_SIZE-1>::type, WORD_SIZE> {
+	struct Word : public cx::vector<Symbol,WORD_SIZE> {
 
-		
-
-		typedef typename SmallestUint<  ALPHABET_SIZE-1>::type Symbol;
-		
 		int state = 0; // Target State
 		double p = 0.0; // Probability
 		
@@ -58,21 +43,19 @@ namespace {
 		}
 	};
 	
-	
-	template<size_t ALPHABET_SIZE, size_t WORD_SIZE, size_t NUM_WORDS>
 	struct SingleDictionaryEncoder {
 		
-		
-		typedef typename SmallestUint<2*NUM_WORDS-1>::type NodeIdx;
-		typedef typename SmallestUint<  NUM_WORDS-1>::type WordIdx;
+		typedef uint16_t WordIdx;
+		typedef uint16_t NodeIdx;
 		
 		struct Node {
 			std::array<NodeIdx,ALPHABET_SIZE> child = {};
 			WordIdx code = {};
 		};            
 		cx::vector<Node, 2*NUM_WORDS> nodes = {};
-		
-		constexpr SingleDictionaryEncoder(const cx::vector<Word<ALPHABET_SIZE, WORD_SIZE> ,NUM_WORDS> &words) {
+
+		// Words[0] is empty
+		constexpr SingleDictionaryEncoder(cx::vector<Word,NUM_WORDS> words) {
 			
 			Node blank = {};
 			blank.code = 0;
@@ -83,10 +66,9 @@ namespace {
 			for (size_t i=0; i<ALPHABET_SIZE; ++i)
 				nodes.push_back(blank);
 			
-			for (size_t i=0; i<words.size(); ++i) {
+			for (size_t i=1; i<words.size(); ++i) {
 				
 				auto &&w = words[i];
-				// No word should ever be empty
 				
 				NodeIdx nodeId = w[0];
 				
@@ -103,81 +85,142 @@ namespace {
 			}
 		}
 		
-		constexpr void operator()(ibitstream &src, obitstream &dst) const {
+		size_t encode(const uint8_t *src, size_t srcSize, uint8_t *dst) const {
 
-			constexpr size_t IN  = RequiredBits<ALPHABET_SIZE-1>::value;
-			constexpr size_t OUT = RequiredBits<NUM_WORDS-1>::value;
+			uint8_t *dst0 = dst;
 			
-			NodeIdx nodeId = src.read(IN);
-			do {
-				NodeIdx oldNodeId = 0;
+			while (srcSize and src[srcSize-1]==0) srcSize--;
+			const uint8_t *srcEnd = src + srcSize;
+			
+			if (srcSize==0) return dst0-dst;
+						
+			NodeIdx nodeId = *src++;
+			if (srcSize > 16*WORD_SIZE+2) while (src < srcEnd-16*WORD_SIZE+2) {
+
+				NodeIdx oldNodeId1 = 0;
 				do { 
-					oldNodeId = nodeId;
-					nodeId = nodes[nodeId].child[src.read(IN)]; 
+					oldNodeId1 = nodeId;
+					nodeId = nodes[nodeId].child[*src++]; 
 				} while (nodeId > ALPHABET_SIZE - 1);
-				dst.write(OUT, nodes[oldNodeId].code);
-			} while (src);
-			dst.write(OUT, nodes[nodeId].code);			
+				
+				//printf("NN %ld\n", nodeId);
+				
+				NodeIdx oldNodeId2 = 0;
+				do { 
+					oldNodeId2 = nodeId;
+					nodeId = nodes[nodeId].child[*src++]; 
+				} while (nodeId > ALPHABET_SIZE - 1);
+				
+				*((uint32_t *)dst) = nodes[oldNodeId1].code + (nodes[oldNodeId2].code << 12);
+				dst += 3;
+			}
+			while (true) {
+				// nodeId must be encoded.
+				NodeIdx oldNodeId1 = 0;
+				do { 
+					if (src==srcEnd) {
+						*((uint32_t *)dst) = nodes[nodeId].code;
+						dst += 3;
+						return dst-dst0;
+					}					
+					oldNodeId1 = nodeId;
+					nodeId = nodes[nodeId].child[*src++]; 
+				} while (nodeId > ALPHABET_SIZE - 1);
+				
+				NodeIdx oldNodeId2 = 0;
+				do { 
+
+					if (src==srcEnd) {
+						*((uint32_t *)dst) = nodes[oldNodeId1].code + (nodes[nodeId].code << 12);
+						dst += 3;
+						return dst-dst0;
+					}
+
+					oldNodeId2 = nodeId;
+					nodeId = nodes[nodeId].child[*src++]; 
+				} while (nodeId > ALPHABET_SIZE - 1);
+				
+				*((uint32_t *)dst) = nodes[oldNodeId1].code + (nodes[oldNodeId2].code << 12);
+				dst += 3;
+			}
+			assert(false);
 		}
 	};
-	
-	
-	template<size_t ALPHABET_SIZE, size_t WORD_SIZE, size_t NUM_WORDS>
+		
 	struct SingleDictionaryDecoder {
 		
-		typedef cx::array<uint8_t, (WORD_SIZE*RequiredBits<ALPHABET_SIZE-1>::value + 7)/8  + 1 > Entry;
-		
-		//constexpr static const size_t sizeShift = sizeof(Entry)*8 - RequiredBits<WORD_SIZE>::value;
-		
-		cx::array<Entry, NUM_WORDS> table = {};
+		typedef cx::array<uint8_t, WORD_SIZE+1>  Entry;
+		cx::vector<Entry, NUM_WORDS> decoderTable = {};
 
-		constexpr SingleDictionaryDecoder(
-			const cx::vector<Word<ALPHABET_SIZE, WORD_SIZE> ,NUM_WORDS> &words) {
-
+		constexpr SingleDictionaryDecoder(const cx::vector<Word ,NUM_WORDS> &words) {
+			
+			decoderTable.resize(words.size());
 			for (size_t i=0; i<words.size(); ++i) {
-				
-				obitstream obs(&table[i][0], sizeof(Entry));
 				for (size_t j=0; j<words[i].size(); ++j)
-					obs.write(RequiredBits<ALPHABET_SIZE-1>::value, words[i][j]);
+					decoderTable[i][j] = words[i][j];
 				
-				obs.sync();
-				table[i].back() = words[i].size();
-					
-//					table[i] += uint64_t(words[i][j]) << (j * RequiredBits<ALPHABET_SIZE-1>::value);
-//				table[i] +=  words[i].size() << sizeShift;
+				decoderTable[i].back() = words[i].size();
 			}
 		}
 		
-		constexpr void operator()(ibitstream &src, obitstream &dst) const {
-
-			constexpr size_t IN  = RequiredBits<NUM_WORDS    -1>::value;
-			constexpr size_t OUT = RequiredBits<ALPHABET_SIZE-1>::value;
+		size_t decode(const uint8_t *src, size_t srcSize, uint8_t *dst, size_t dstSize) const {
 			
-			if ( false and ALPHABET_SIZE == 256 and NUM_WORDS == 4096 and WORD_SIZE <= 7) {
+			memset(dst, 0, dstSize);
+			assert(srcSize%3 == 0);
+			
+			uint8_t *dst0 = dst;		
+			
+			while (srcSize) {
 				
-			} else {
-			
-				while (src) {
-					Entry e = table[src.read(IN)];
-					dst.write(e.back()*OUT,e);
+				uint32_t v32=0;
+				v32 = *(const uint32_t *)src;
+				src+=3;
+				srcSize-=3;
+				
+				{				
+					Entry v = decoderTable[(v32>>0 ) & 0xFFF];
+					*((Entry *)dst) = v;
+					dst += v.back();
+				}
+				{				
+					Entry v = decoderTable[(v32>>12) & 0xFFF];
+					*((Entry *)dst) = v;
+					dst += v.back();
 				}
 			}
+			return dst-dst0;
 		}
 	};
 
-	template<size_t ALPHABET_SIZE, size_t WORD_SIZE, size_t NUM_WORDS>
-	struct MarlinV1 {
+	struct Codec {
+		virtual ~Codec() {}
+		virtual size_t encode(const uint8_t *src, size_t srcSize, uint8_t *dst) const = 0;
+		virtual size_t decode(const uint8_t *src, size_t srcSize, uint8_t *dst, size_t dstSize) const = 0;
+		virtual double predict(const std::array<uint16_t, ALPHABET_SIZE>&, size_t) const = 0;
+	};
+
+	struct MarlinV1 : public Codec {
 		
-		cx::vector<Word<ALPHABET_SIZE, WORD_SIZE> ,NUM_WORDS> words;
 		
-		SingleDictionaryEncoder<ALPHABET_SIZE,WORD_SIZE,NUM_WORDS> encode;
-		SingleDictionaryDecoder<ALPHABET_SIZE,WORD_SIZE,NUM_WORDS> decode;
-		
-		cx::vector<Word<ALPHABET_SIZE, WORD_SIZE> ,NUM_WORDS> getWords(const cx::array<double, ALPHABET_SIZE> &P) {
-				
-			using Word = Word<ALPHABET_SIZE, WORD_SIZE>;
-			using Symbol = typename Word::Symbol;
+		const cx::array<double, ALPHABET_SIZE> P;
+		const cx::vector<Word,NUM_WORDS> words;
+		const SingleDictionaryEncoder encoder;
+		const SingleDictionaryDecoder decoder;
+		virtual size_t encode(const uint8_t *src, size_t srcSize, uint8_t *dst                ) const { return encoder.encode(src, srcSize, dst);          }
+		virtual size_t decode(const uint8_t *src, size_t srcSize, uint8_t *dst, size_t dstSize) const { return decoder.decode(src, srcSize, dst, dstSize); }
+		virtual double predict(const std::array<uint16_t, ALPHABET_SIZE>& hist, size_t) const {
 			
+			double ret = 0.0;
+			for (size_t i=0; i<ALPHABET_SIZE; i++)
+				ret += -std::log2(P[i])*hist[i];
+		
+			return ret/8;
+		}
+		
+		static cx::vector<Word,NUM_WORDS> getWords(const cx::array<double, ALPHABET_SIZE> &P) {
+			
+			printf("DD %lf\n", Distribution::entropy(P));
+				
 			cx::vector<Word ,NUM_WORDS> words;
 			
 			// The formulas on the paper expect the alphabet to consist of symbols with decreasing order of probability.
@@ -203,7 +246,7 @@ namespace {
 			// Reverse cumulative symbol probability (divisor of the first term in Eq1)
 			cx::array<double,ALPHABET_SIZE> P1 = {};
 			P1[ALPHABET_SIZE-1] = a[ALPHABET_SIZE-1].p;
-			for (size_t i=ALPHABET_SIZE; i; i--)
+			for (size_t i=ALPHABET_SIZE-1; i; i--)
 				P1[i-1] = P1[i] + a[i-1].p;
 
 			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
@@ -233,7 +276,7 @@ namespace {
 					}
 					
 					// GROW THE DICTIONARY
-					while (depqNodes.size() < NUM_WORDS and depqNodes.max().size() < WORD_SIZE) {
+					while (depqNodes.size() < NUM_WORDS-1 and depqNodes.max().size() < WORD_SIZE) {
 						
 						Word node = depqNodes.max();
 						depqNodes.removeMax();
@@ -250,12 +293,16 @@ namespace {
 						node.p -= newNode.p;
 						node.state++;
 						
+						// We drop this optimization to ease the encoding process.. almost never happened anyways.
 						if (node.state == ALPHABET_SIZE-1) {
+							printf(". %ld ", depqNodes.size());
 							node.push_back(node.state);
 							node.state = 0;
 						}
+						
 						depqNodes.push(node);
 						
+						/// Test if removing a few improbable words would affect performance... minimally.
 						//while (depqNodes.min().p<.02/NUM_WORDS) depqNodes.removeMin();
 					}
 				}
@@ -295,6 +342,7 @@ namespace {
 				
 //				double meanLength = 0, meanLengthApprox = 0, sump=0, craz = 0, craz2=0;
 				words.clear();
+				words.push_back(Word());
 				for (auto&& node : depqNodes) {
 					Word word = {};
 					for (auto&& s : node)
@@ -326,201 +374,342 @@ namespace {
 				std::cout << "Mean length: " << RequiredBits<NUM_WORDS-1>::value / meanLength << " " <<  RequiredBits<NUM_WORDS-1>::value / meanLengthApprox << " " << RequiredBits<NUM_WORDS-1>::value * craz << " " << craz2 << std::endl;*/
 			}
 			
+			
+/*			struct Compare {
+				constexpr bool operator()(const Word &lhs, const Word &rhs) {
+					
+					if (lhs.size()==rhs.size()) 
+						return lhs.size()<rhs.size();
+						
+					for (size_t i=0; i<lhs.size(); ++i)
+						if (lhs[i]!=rhs[i])
+							return lhs[i]<rhs[i];
+						
+					return false;
+				}
+			};
+			sort(words.begin(), words.end());*/
+			
+			
+			printf("WW %ld\n", words.size());
 			return words;
 		}	
 
 		MarlinV1(const cx::array<double, ALPHABET_SIZE> &P) :
-			words(getWords(P)), encode(words), decode(words) {};
+			P(P), words(getWords(P)),
+			encoder(words), decoder(words) {}
+	};
+	
+	struct CopyCodec : public Codec {
+		
+		virtual size_t encode(const uint8_t *src, size_t srcSize, uint8_t *dst) const {
+			memcpy(dst, src, srcSize);
+			return srcSize;
+		}
+		virtual size_t decode(const uint8_t *src, size_t srcSize, uint8_t *dst, size_t dstSize) const {
+			assert(srcSize == dstSize);
+			memcpy(dst, src, srcSize);
+			return srcSize;
+		}
+		virtual double predict(const std::array<uint16_t, ALPHABET_SIZE>&, size_t sz) const { return sz; }
+	};
 
+	struct SkipCodec : public Codec {
+		
+		virtual size_t encode(const uint8_t *, size_t, uint8_t *) const { return 0; }
+		virtual size_t decode(const uint8_t *, size_t, uint8_t *dst, size_t dstSize) const {
+			memset(dst,0,dstSize);
+			return dstSize;
+		}
+		virtual double predict(const std::array<uint16_t, ALPHABET_SIZE>& hist, size_t sz) const {
+			return hist[0]==sz?0.0:1E100;
+		}
 	};
 	
 	template<typename T>
-	inline std::vector<T> getDictionaries() {
+	static inline std::vector<std::shared_ptr<Codec>> getDictionaries() {
 		
-		std::vector<T> ret;
+		std::vector<std::shared_ptr<Codec>> ret;
+		ret.emplace_back( std::make_shared<CopyCodec>() );
+		ret.emplace_back( std::make_shared<SkipCodec>() );
+		
+		//return ret;
 		double e = 0.9;
 		for (size_t i=0; i<6; i++) {
-			ret.emplace_back( Distribution::getWithEntropy(Distribution::Gaussian<256>,e) );
-			ret.emplace_back( Distribution::getWithEntropy(Distribution::Laplace<256>,e) );
-			ret.emplace_back( Distribution::getWithEntropy(Distribution::Exponential<256>,e) );
-			ret.emplace_back( Distribution::getWithEntropy(Distribution::Poisson<256>,e) );
+			printf("G %lf", e); ret.emplace_back( std::make_shared<T>(Distribution::getWithEntropy(Distribution::Gaussian<256>,e) ) );
+			printf("L %lf", e); ret.emplace_back( std::make_shared<T>(Distribution::getWithEntropy(Distribution::Laplace<256>,e) ) );
+			printf("E %lf", e); ret.emplace_back( std::make_shared<T>(Distribution::getWithEntropy(Distribution::Exponential<256>,e) ) );
+			printf("P %lf", e); ret.emplace_back( std::make_shared<T>(Distribution::getWithEntropy(Distribution::Poisson<256>,e) ) );
 			e*=0.8;
 		}
 		return ret;
 	}
 		
-	const auto dictionariesMarlinV1 = getDictionaries<MarlinV1<256,7,4096>>();
+	const auto dictionariesMarlin = getDictionaries<MarlinV1>();
 	
 }
 
 constexpr const static size_t BS = 4096;
 constexpr const static size_t NB = 16;
 
-size_t Marlin_compress_8  (uint8_t*& dst, size_t dstCapacity, const uint8_t*& src, size_t srcSize) {
+// Streaming is important...
+// In compression: 
+// If dstCapacity > srcSize -> rearrange and send
+// If dstCapacity < srcSize -> do not rearrange
+
+// Always ENCODE blocks in order anyways.
+// Header: isBlockSize(1) isPredicted(1) size(14) {if isBlockSize, uncompSize(16)} dict(8) data(size)
+
+
+size_t MarlinEncode(const uint8_t*&& src, size_t srcSize, uint8_t* dst, size_t dstCapacity) {
 	
 	
 	struct Block {
-		cx::array<uint8_t,BS> buffer;
-		std::array<uint16_t, 256> hist;
+		
+		cx::array<uint8_t,BS  > bufferFiltered;
+		cx::array<uint8_t,BS*4> buffer;
 		const uint8_t *src;
 		size_t sizeUncompressed;
-		uint8_t *dst;
+
 		size_t sizeCompressed;
+		
 		size_t dictionaryIdx;
-		double expectedSize;
-		bool inUse;
+		bool isFiltered;
+		bool isCompressed;
 	};
 	
 	cx::array<Block, NB> blocks = {};
-	
-	const uint8_t* dst0 = dst;
-	const uint8_t* src0 = src;
-	
-	while (true) {
+	size_t start=0, end=0;
 		
-		for (auto&& block : blocks) {
+	const uint8_t* dst0 = dst;
+	
+	while (srcSize or start!=end) {
+		
+		// Prepare
+		while (srcSize and end-start<NB) {
 			
-			if (block.inUse) continue;
-			if (srcSize) continue;
+			Block &block = blocks[end % NB]; 
+			end++;
 			
 			block.src = src;
 			block.sizeUncompressed = std::min(srcSize,BS);
-			
-			block.hist.fill(0);
-			for (size_t i=0; i<block.sizeUncompressed; i++) block.hist[src[i]]++;
-			
-			block.dictionaryIdx = 0;
-			block.expectedSize = 1e10;
 
-			for (size_t i=0; i<dictionariesMarlinV1.size(); i++) {
-				
-				double expected = dictionariesMarlinV1[i].predict(block.hist);
-				if (expected < block.expectedSize) {
-					block.expectedSize = expected;
-					block.dictionaryIdx = i;
-				}
-			}
+			block.dictionaryIdx = 0;
+			block.isFiltered = 0;
+			block.isCompressed = 0;
 			
-			block.inUse = true;
+			if (block.sizeUncompressed > 64) {
+
+				double expectedSize = block.sizeUncompressed;
+				
+				std::array<uint16_t, 256> hist = {};
+				for (size_t i=0; i<block.sizeUncompressed; i++) 
+					hist[src[i]]++;
+				
+				// We first try to compress it without prediction
+				for (size_t i=0; i<dictionariesMarlin.size(); i++) {
+					
+					double expected = dictionariesMarlin[i]->predict(hist, block.sizeUncompressed);
+					//printf("%ld %lf\n", i, expected);
+					
+					if (expected < expectedSize) {
+						expectedSize = expected;
+						block.dictionaryIdx = i;
+					}
+				}
+				
+			
+				// Now with filtering
+				hist.fill(0);
+				for (size_t i=16; i<block.sizeUncompressed; i++) 
+					hist[uint8_t(int8_t(src[i])-int8_t(src[i-16]))]++;
+
+				for (size_t i=0; i<dictionariesMarlin.size(); i++) {
+					
+					double expected = 16 + dictionariesMarlin[i]->predict(hist, block.sizeUncompressed);
+					//printf("%ld %lf\n", i, expected);
+						
+					if (expected < expectedSize) {
+						expectedSize = expected;
+						block.dictionaryIdx = i;
+						block.isFiltered = true;
+					}				
+				}
+				//printf("KK %ld %lf\n", block.dictionaryIdx, expectedSize);
+				
+			}
 			
 			srcSize -= block.sizeUncompressed;
 			src += block.sizeUncompressed;
 		}
-	
 		
-		
-	}
-	/*
-	while (srcSize) {
-
-	}
-	
-	
-	
-	
-	
-	typedef cx::array<uint8_t, 
-	
-	std::vector<Block> blocks(1 + srcSize/bs);
-
-	if (not distCapacity < blocks.size()*(bs + 4)) 
-		throw std::runtime_error("Insufficient Output Capacity");
-		
-	for (size_t i=0; i<blocks.size(); i++) block.idx = i;
-	
-	for (auto &&block : blocks) {
-		
-		block.uncompressedSize = std::min(srcSize - src, Block.maxCapacity());
-		block.src = src;
-		src += block.uncompressedSize;
+		// Encode		
+		for (size_t i=start; i<end; i++) {
+			
+			if (blocks[i%NB].dictionaryIdx != blocks[start%NB].dictionaryIdx) 
+				continue;
 				
-		// Skip compression of very small blocks
-		if (sz < 256) continue;
-		
-		// Find the best dictionary
-		block.expectedLength = block.uncompressedSize*.99;		
-		std::array<size_t, 256> hist; 
-		
-		hist.fill(0);
-		for (size_t j = 0; j<sz; j++) hist[src[j]]++;
-		
-		for (size_t j = 0; j<dictionaries.size(); j++) {
-			double el = dictionaries[j].expectedLength(hist);
-			if (el < block.expectedLength) {
-				block.expectedLength = el;
-				block.dictIndex = j;
+			Block &block = blocks[i % NB]; 
+			
+			if (block.isFiltered) {
+				
+				memcpy(&block.buffer[0], block.src, 16);
+				for (size_t i=0; i<block.sizeUncompressed-16; i++)
+					block.bufferFiltered[i] = uint8_t(int8_t(src[i+16])-int8_t(src[i]));
+					
+				block.sizeCompressed = 16 + dictionariesMarlin[block.dictionaryIdx]->encode(block.src+16, block.sizeUncompressed-16, &block.buffer[16]);
+			} else {
+				
+				block.sizeCompressed =      dictionariesMarlin[block.dictionaryIdx]->encode(block.src, block.sizeUncompressed, &block.buffer[0]);
 			}
-		}
+			
+			printf("KK %ld %ld\n", block.dictionaryIdx, block.sizeCompressed);
+			
+			if (block.sizeCompressed > 0.98*block.sizeUncompressed) {
 
-		hist.fill(0);
-		for (size_t j = 1; j<sz and j<16; j++) hist[uint8_t(int8_t(src[j])-int8_t(src[j-1]))]++;
-		for (size_t j = 16; j<sz; j++) hist[uint8_t(int8_t(src[j])-int8_t(src[j-16]))]++;
-		
-		for (size_t j = 0; j<dictionaries.size(); j++) {
-			double el = dictionaries[j].expectedLength(hist);
-			if (el < block.expectedLength) {
-				block.expectedLength = el;
-				block.delta = true;
-				block.dictIndex = j;
+				block.dictionaryIdx = 0;
+				block.isFiltered = false;
+
+				block.sizeCompressed =      dictionariesMarlin[block.dictionaryIdx]->encode(block.src, block.sizeUncompressed, &block.buffer[0]);
 			}
+			
+			block.isCompressed = true;
 		}
-	}
-	
-	std::sort(
-		blocks.begin(), blocks.end(), 
-		[](const Block &a, const Block &b) { 
-			return a.dictIndex == b.dictIndex ? a.delta < b.delta : a.dictIndex < b.dictIndex; 
-		}
-	);
-	
-	size_t outSize = 0;
-	for (auto  it1 = blocks.begin(); i != blocks.end();) {
-		auto it2 = it1;
-		while (it2 != blocks.end() and it1->dictIndex == it2->dictIndex and it1->delta == it2->delta) 
-			it2++;
 		
-		outSize += dictionaries[it1->dictIndex].encode(it1, it2, &dst);
-	}
+		//Write
+		while (start<end and blocks[start%NB].isCompressed) {
+			
+			Block &block = blocks[start%NB]; start++;
+			if (dstCapacity < block.sizeCompressed+3) {
+				src = block.src;
+				return dst-dst0;
+			}
+			
+			if (block.sizeUncompressed==BS) { // Normal header
+				*((uint16_t *)dst) =  0x8000*0 + 0x4000*block.isFiltered + block.sizeCompressed;
+				dst += sizeof(uint16_t);
+				*((uint8_t *)dst) =  block.dictionaryIdx;
+				dst += sizeof(uint8_t);
+				dstCapacity -= sizeof(uint16_t) + sizeof(uint8_t);
+			} else {
+				*((uint16_t *)dst) =  0x8000*1 + 0x4000*block.isFiltered + block.sizeCompressed;
+				dst += sizeof(uint16_t);
+				*((uint8_t *)dst) =  block.dictionaryIdx;
+				dst += sizeof(uint8_t);
+				*((uint16_t *)dst) =  block.sizeUncompressed;
+				dst += sizeof(uint16_t);
+				dstCapacity -= sizeof(uint16_t) + sizeof(uint16_t)+ sizeof(uint8_t);
+			}
+			
+			std::memcpy(dst, block.buffer.data(), block.sizeCompressed);
 
-	return outSize;*/
+			dstCapacity -= block.sizeCompressed;
+			dst += block.sizeCompressed;
+		}
+	}	
+	return dst-dst0;
 }
 
-/*
-size_t Marlin_decompress(int8_t* dst, size_t dstCapacity, const int8_t* Src, size_t SrcSize) {
+
+size_t MarlinDecode(const uint8_t*&& src, size_t srcSize, uint8_t* dst, size_t dstCapacity) {
 	
-	out.resize(in.size()-1);
-		assert(in.back().size()==out.size());
-		uint8_t *head = in.back().begin();
+	
+	struct Block {
 		
-		std::vector<std::pair<std::pair<int64_t, int64_t>, size_t>> packets;
-		for (size_t i=0; i<out.size(); i++) {
+		const uint8_t *src;
+		size_t sizeCompressed;
 
-			if        (head[i] == 255) {
+		uint8_t *dst;
+		size_t sizeUncompressed;
+		
+		
+		size_t dictionaryIdx;
+		bool isFiltered;
+		bool isProcessed;
+	};
+	
+	cx::array<Block, NB> blocks = {};
+	size_t start=0, end=0;
+	
+	const uint8_t *dst0 = dst, *dstEnd = dst+dstCapacity;
+	
+	while (srcSize > 5 or start!=end) {
+		
+		// Prepare
+		while (srcSize and end-start<NB) {
 			
-				out[i] = in[i];
-			} else if (head[i] == 0  ) {
-				
-				memset(out[i].begin(), 0, out[i].size());
-				out[i][0] = in[i][0];
-			} else  {
+			Block &block = blocks[end % NB]; 
 			
-				packets.emplace_back(std::make_pair(head[i], -out[i].size()), i);
+			block.src = src;
+			
+			bool isShort = !!(*((const uint16_t *)block.src) & 0x8000);
+			block.isFiltered = !!(*((const uint16_t *)block.src) & 0x4000);
+			block.sizeCompressed = *((const uint16_t *)block.src) & 0x3FFF;
+			block.src += sizeof(uint16_t);
+			block.dictionaryIdx = *((const uint8_t *)block.src);
+			block.src += sizeof(uint8_t);
+
+			if (srcSize < block.sizeCompressed + 3 + (isShort?2:0)) break;
+
+			if (isShort) {
+				block.sizeUncompressed = *((const uint16_t *)block.src);
+				block.src += sizeof(uint16_t);
+			} else {
+				block.sizeUncompressed = BS;
 			}
-		}
-		std::sort(packets.begin(), packets.end());
-		
-		std::vector<std::reference_wrapper<const AlignedArray8>> rIn;
-		std::vector<std::reference_wrapper<      AlignedArray8>> rOut;
-		std::vector<std::reference_wrapper<const uint8_t      >> zeroCounts;
-
-		for (size_t i=0; i<packets.size(); i++) {
-			rIn       .emplace_back(std::cref(in  [packets[i].second]));
-			rOut      .emplace_back(std:: ref(out [packets[i].second]));
-			zeroCounts.emplace_back(std:: ref(head[packets[i].second]));
+			
+			block.dst = dst;
+			dst += block.sizeUncompressed;
+			
+			block.isProcessed = false;
+			
+			srcSize -= block.sizeCompressed + 3 + (isShort?2:0);
+			src     += block.sizeCompressed + 3 + (isShort?2:0);
+			end++;
 		}
 		
-		uncompress(rIn, rOut, zeroCounts);
+		// Decode and Write		
+		for (size_t i=start; i<end; i++) {
+			
+			if (blocks[i%NB].dictionaryIdx != blocks[start%NB].dictionaryIdx) 
+				continue;
+				
+			Block &block = blocks[i % NB]; 
+			
+			if (block.isProcessed) continue;
+			
+			if (block.dst + block.sizeUncompressed > dstEnd) {
+				if (i==start) {
+					return block.dst - dst0;
+				} else {
+					break;
+				}
+			}
 
-		return out.nBytes();		
+			std::memset(block.dst, 0, block.sizeUncompressed);
+			if (block.isFiltered) {
+				
+				printf("F");
+				memcpy(block.dst, block.src, 16);
+
+				dictionariesMarlin[block.dictionaryIdx]->decode(block.src+16, block.sizeCompressed-16, block.dst+16, block.sizeUncompressed-16);
+				
+				for (size_t i=16; i<block.sizeUncompressed; i++)
+					block.dst[i] = uint8_t(int8_t(block.dst[i])+int8_t(block.dst[i-16]));
+				
+			} else {
+				printf("N");
+
+				dictionariesMarlin[block.dictionaryIdx]->decode(block.src, block.sizeCompressed, block.dst, block.sizeUncompressed);
+				
+			}
+			
+			block.isProcessed = true;
+			
+			if (i==start) start++;
+		}
+	}
+	return dst - dst0;
 }
-*/
+
+
