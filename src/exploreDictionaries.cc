@@ -317,6 +317,165 @@ struct TunstallDictionary : public Dictionary {
 	}
 };
 
+// NAH! We simply have more states!!! MATH!
+struct Marlin2Dictionary {
+
+	Dictionary buildSingleDictionary(const std::vector<double> &P, const std::vector<double> &Pstates, size_t dictSize, bool allSymbols) {
+
+		Dictionary ret(P,dictSize);
+		
+		std::vector<double> PN = P;
+		for (size_t i=P.size()-1; i; i--)
+			PN[i-1] += PN[i];
+
+		std::vector<double> Pchild = P;
+		for (size_t i=0; i<P.size(); i++)
+			Pchild[i] = P[i]/PN[i];
+	
+		while (tries--) {
+			
+			auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { return lhs->p < rhs->p;};
+			std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
+
+			// DICTIONARY INITIALIZATION
+			ret.root = std::make_shared<Node>();
+
+			for (size_t c=0; c<P.size(); c++) {
+				
+				ret.root->push_back(std::make_shared<Node>());
+
+				double sum = 0;
+				for (size_t t = 0; t<=c; t++) sum += Pstates[t]/PN[t];
+
+				ret.root->back()->p = sum * P[c];
+				
+				pq.push(ret.root->back());
+			}
+			
+			print(root);
+			
+			// DICTIONARY GROWING
+			while (pq.size()<dictSize) {
+				
+				auto node = pq.top();
+				pq.pop();
+				
+				double p = node->p * Pchild[node->size()];
+				node->push_back(std::make_shared<Node>());
+				node->back()->p = p;
+				node->p -= p;
+				pq.push(node->back());
+				
+				if (node->size()<P.size()-1) {
+
+					pq.push(node);
+				} else {
+
+					node->push_back(std::make_shared<Node>());
+					node->back()->p = node->p;
+					node->p = 0;
+					pq.push(node->back());
+				}
+				
+				print(root);
+			}
+
+			
+			
+			auto oldPstate = Pstate;
+			// UPDATING STATE PROBABILITIES
+			{
+				std::vector<std::vector<double>> T(P.size(),std::vector<double>(P.size(),0.));
+		
+				for (size_t w0 = 0; w0<P.size(); w0++) {
+					
+					std::stack<std::shared_ptr<Node>> st;
+					st.push((*root)[w0]);
+
+					double sum = 0;
+					for (size_t t = 0; t<=w0; t++) sum += Pstate[t]/PN[t];
+
+					
+					while (not st.empty()) {
+					
+						auto node = st.top();
+						st.pop();
+						
+						for (auto &c : *node) st.push(c);
+						
+						if (node->size()<P.size())
+							for (size_t s=0; s<=w0; s++)
+								T[s][node->size()] += node->p /(sum * PN[s]);
+					}
+				}
+								
+				int t = 10;
+				double diff = 0;
+				do {
+					
+					auto T2 = T;
+					for (size_t i=0; i<P.size(); i++) {
+						for (size_t j=0; j<P.size(); j++) {
+							T2[i][j]=0;
+							for (size_t k=0; k<P.size(); k++)
+								T2[i][j] += T[i][k] * T[k][j];
+						}
+					}
+					diff = 0;
+					for (size_t i=0; i<P.size(); i++)
+						for (size_t j=0; j<P.size(); j++)
+							diff += std::abs(T[i][j]-T2[i][j]);
+
+					//std::cerr << diff << std::endl;
+					T = T2;
+
+				} while (t-- and diff>.00001);
+				
+				Pstate = T[0];
+			}
+
+			// UPDATE NODE PROBABILITIES
+			{
+				cerr << "ST: "; for (auto ps : Pstate) cerr << ps << " ";
+				cerr  << averageBitsPerSymbol() << " " << meanLength(root) << endl;
+
+				for (size_t w0 = 0; w0<P.size(); w0++) {
+					
+					std::stack<std::shared_ptr<Node>> st;
+					st.push((*root)[w0]);
+
+					double oldsum = 0, newsum = 0;
+					for (size_t t = 0; t<=w0; t++) {
+						oldsum += oldPstate[t]/PN[t];
+						newsum +=    Pstate[t]/PN[t];
+					}
+
+					while (not st.empty()) {
+					
+						auto node = st.top();
+						st.pop();						
+						for (auto &c : *node) st.push(c);
+						
+						if (node->size()<P.size())
+							node->p *= newsum / oldsum;
+					}
+				}
+				cerr << "ST: "; for (auto ps : Pstate) cerr << ps << " ";
+				cerr  << averageBitsPerSymbol() << " " << meanLength(root) << " " << averageBitsPerSymbolEmpirically() << endl;
+
+			}
+		}		
+	}
+
+	Marlin2Dictionary(const std::vector<double> &P, size_t dictSize, size_t tries=3) {
+		
+		std::vector<double> PstatesInit(P.size(), 0.); PstatesInit[0] = 1.;
+		
+		Dictionary dictionaryA = buildSingleDictionary(P, PstatesInit, dictSize/2, true);
+		Dictionary dictionaryB = dictionaryA;
+	}
+};
+
 void usage() {
 	
 	cout << "Usage: testDictionary [options]" << endl;

@@ -39,7 +39,7 @@ CXX = g++
 #CXX = clang++-3.3 -D__extern_always_inline=inline -fslp-vectorize
 #CXX = icpc -fast -auto-ilp32 -xHost -fopenmp
 
-all: data ./bin/dcc2017
+all: data ./bin/dcc2017 ./bin/dcc2018
 
 .PHONY: data ext show prof clean realclean
 

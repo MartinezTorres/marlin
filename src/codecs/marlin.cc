@@ -392,7 +392,7 @@ struct MarlinPimpl : public CODEC8Z {
 						*(((T *)o)+n) = *(((T *)v)+n);
 					o += v[N*sizeof(T)-1];
 				}
-			}		
+			}				
 		}
 		
 		template<typename T>
