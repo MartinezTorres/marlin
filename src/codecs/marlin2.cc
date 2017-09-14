@@ -1,4 +1,4 @@
-#include <codecs/marlin.hpp>
+#include <codecs/marlin2.hpp>
 #include <util/distribution.hpp>
 
 #include <functional>
@@ -475,11 +475,11 @@ struct MarlinPimpl : public CODEC8Z {
 	std::string coderName;
 	std::string name() const { return coderName; }
 	
-	MarlinPimpl(Distribution::Type distType, Marlin::Type dictType, size_t dictSize2, size_t numDict) {
+	MarlinPimpl(Distribution::Type distType, Marlin2::Type dictType, size_t dictSize2, size_t numDict) {
 
 		{
 			std::ostringstream oss;
-			oss << "Marlin " << (distType==Distribution::Laplace?"Lap:":"Exp:") <<  (dictType == Marlin::TUNSTALL?"T":"M") << ":" << dictSize2 << ":" << numDict;
+			oss << "Marlin " << (distType==Distribution::Laplace?"Lap:":"Exp:") <<  (dictType == Marlin2::TUNSTALL?"T":"M") << ":" << dictSize2 << ":" << numDict;
 			coderName = oss.str();
 		}
 
@@ -511,8 +511,8 @@ struct MarlinPimpl : public CODEC8Z {
 			for (int maxWordLength=4; maxWordLength <= 128; maxWordLength*=2) {
 
 				std::shared_ptr<Dictionary> dict;
-				if (dictType == Marlin::TUNSTALL) dict.reset(new TunstallDictionary(P, dictSize2, maxWordLength));
-				if (dictType == Marlin::MARLIN) dict.reset(new MarlinDictionary(P, dictSize2, maxWordLength));
+				if (dictType == Marlin2::TUNSTALL) dict.reset(new TunstallDictionary(P, dictSize2, maxWordLength));
+				if (dictType == Marlin2::MARLIN) dict.reset(new MarlinDictionary(P, dictSize2, maxWordLength));
 
 				dict->tune();
 				double averageBitsPerSymbol = dict->averageBitsPerSymbol();
