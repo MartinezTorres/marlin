@@ -440,8 +440,19 @@ struct Marlin2Dictionary {
 	template<typename T>
 	std::vector<T> concatenate( std::vector<T> A, std::vector<T> B) {
 
+		countEqual(A,B);
 		A.insert(A.end(), B.begin(), B.end());
+		
 		return A;
+	}
+
+	void countEqual( std::vector<Word> A, std::vector<Word> B) {
+		
+		std::vector<std::string> C;
+		for (auto &&a : A) C.push_back(a.symbols);
+		for (auto &&b : B) C.push_back(b.symbols);
+		std::sort(C.begin(), C.end());
+		std::cerr << "Total: " << C.size() << " Unique: " << unique(C.begin(),C.end())-C.begin() << std::endl;
 	}
 
 	void print(std::vector<Word> dictionary) {
@@ -463,7 +474,7 @@ struct Marlin2Dictionary {
 		putchar('\n');
 	}
 
-	Marlin2Dictionary(const std::vector<double> &P, size_t dictSize, size_t tries=4) {
+	Marlin2Dictionary(const std::vector<double> &P, size_t dictSize, size_t tries=7) {
 		
 		std::vector<double> PstatesA(P.size(), 0.); PstatesA[0] = .5;
 		std::vector<double> PstatesB(P.size(), 0.); PstatesB[0] = .5;
