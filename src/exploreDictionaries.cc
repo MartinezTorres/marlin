@@ -232,9 +232,11 @@ struct Marlin2Dictionary {
 			Pstates.push_back(PstatesSingle);
 		}
 		
+		int leastProbable = 0;
+		
 		std::vector<std::vector<Word>> dictionaries;
 		for (auto k=0; k<(1<<overlapping); k++)
-			dictionaries.push_back( arrangeWords( buildWords( buildTree(P, Pstates[k], dictSize/(1<<overlapping), k>0) ) ) );
+			dictionaries.push_back( arrangeWords( buildWords( buildTree(P, Pstates[k], dictSize/(1<<overlapping), k!=leastProbable) ) ) );
 			
 		dictionary = concatenate(dictionaries);
 			
@@ -251,10 +253,22 @@ struct Marlin2Dictionary {
 					Pstates[i%(1<<overlapping)][dictionary[i].state] += dictionary[i].p;
 			}
 			
+			// Find least probable subdictionary
+			{
+				double minP = 1.1;
+				for (size_t i=0; i<Pstates.size(); i++) {
+					double sumProb = 0.;
+					for (auto &&ps : Pstates[i])
+						sumProb += ps;
+					if (sumProb > minP) continue;
+					minP = sumProb;
+					leastProbable = i;
+				}
+			}
 			print(Pstates);
 
 			for (auto k=0; k<(1<<overlapping); k++)
-				dictionaries[k] = arrangeWords( buildWords( buildTree(P, Pstates[k], dictSize/(1<<overlapping), k>0) ) );
+				dictionaries[k] = arrangeWords( buildWords( buildTree(P, Pstates[k], dictSize/(1<<overlapping), k!=leastProbable) ) );
 			
 			dictionary = concatenate(dictionaries);
 			
@@ -279,6 +293,9 @@ struct Marlin2Dictionary {
 
 		//printf("Meanlength: %3.2lf\n", meanLength);
 		printf("Compress Ratio: %3.4lf\n", (std::log2(dictSize)-overlapping)/(meanLength*std::log2(P.size())));
+		printf("Efficiency: %3.4lf\n", 
+			Distribution::entropy(P)/8./
+			((std::log2(dictSize)-overlapping)/(meanLength*std::log2(P.size()))));
 
 		return 0.;
 	}
@@ -490,7 +507,10 @@ int main(int argc, char **argv) {
 	std::cerr << "Marlin2" << std::endl;
 	Marlin2Dictionary(P,options["--size"],options["--tries"]);
 	Marlin2Dictionary(P,options["--size"]*2,options["--tries"],1);
-//	Marlin2Dictionary(P,options["--size"]*4,options["--tries"],2);
+	Marlin2Dictionary(P,options["--size"]*4,options["--tries"],2);
+	Marlin2Dictionary(P,options["--size"]*8,options["--tries"],3);
+	Marlin2Dictionary(P,options["--size"]*16,options["--tries"],4);
+	Marlin2Dictionary(P,options["--size"]*32,options["--tries"],5);
 		
 	return 0;
 }
