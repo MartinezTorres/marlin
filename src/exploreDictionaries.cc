@@ -1,5 +1,6 @@
 #include <queue>
 #include <iostream>
+#include <fstream>
 #include <algorithm>
 #include <memory>
 #include <stack>
@@ -13,313 +14,9 @@ using std::cout;
 using std::cerr;
 using std::endl;
 
-
-class Dictionary {
-protected:
-
-	struct Node;
-	struct Node : std::vector<std::shared_ptr<Node>> {
-		double p=0;
-	};
-
-	std::shared_ptr<Node> root;
-
-public:
-
-	const std::vector<double>  P;
-	const size_t dictSize;
-
-	Dictionary(const std::vector<double> &P, size_t dictSize) :
-		P(P), dictSize(dictSize) {}
-		
-	void print( const std::shared_ptr<Node> &node, const std::string &s = "" ) const {
-		
-		if (node==root) {
-			
-			if (dictSize>9) return;
-			cout << endl;
-		}
-		
-		if (node->size() < P.size())
-			cout << s << " " << node->p << endl;
-
-		for (size_t i=0; i<node->size(); i++)
-			print( (*node)[i], s+char('A'+i) );
-	}
-
-	double meanLength(const std::shared_ptr<Node> &node, size_t length = 0) const {
-
-		double ret = 0;
-		
-		for (auto &c : *node)
-			ret += meanLength(c, length+1);
-		
-		if (node->size() < P.size())
-			ret += node->p * double(length);
-			
-		return ret;		
-	}
-	
-	double averageBitsPerSymbol() const {
-			
-		return std::log2(dictSize)/meanLength(root);		
-	}
-	
-	std::list<std::vector<uint8_t>> getWords(const std::shared_ptr<Node> &node, std::vector<uint8_t> prefix = std::vector<uint8_t>()) const {
-		
-		std::list<std::vector<uint8_t>> ret;
-		if (node->size() < P.size())
-			ret.push_back(prefix);
-		
-		for (size_t i=0; i<node->size(); i++) {
-			prefix.push_back(i);
-			ret.splice(ret.end(), getWords((*node)[i], prefix));
-			prefix.pop_back();
-		}
-		return ret;
-	}
-
-	double averageBitsPerSymbolEmpirically() const {
-		
-		static const size_t TEST_SIZE = 1<<20;
-		
-		std::vector<uint8_t> testData(TEST_SIZE);
-		// create data
-		{
-			size_t i=0;
-			double ap=0;
-			for (size_t j=0; j<P.size(); j++) {
-				while (i<(ap+P[j])*testData.size())
-					testData[i++]=j;
-				ap += P[j];
-			}
-		}
-		std::random_shuffle(testData.begin(), testData.end());
-		
-		// pad with 0s
-		for (size_t i=0; i<10; i++)
-			testData.push_back(0);
-
-		auto W = getWords(root);
-		double meanLengthE = 0;
-		size_t nWords = 0;
-		for (size_t i=0, longest=0; i<TEST_SIZE; i+=longest) {
-			
-			std::vector<uint8_t> const* lw = nullptr;
-			for (auto &w : W)
-				if (w[0] == testData[i])
-					if (w[w.size()-1] == testData[i+w.size()-1])
-						if (w==std::vector<uint8_t>(&testData[i], &testData[i+w.size()]))
-							if (lw == nullptr or w.size()>lw->size())
-								lw = &w;
-								
-			longest = lw->size();
-			meanLengthE += lw->size();
-			nWords++;
-		}
-
-		printf("Empirical Meanlength: %3.2lf\n", meanLengthE/nWords);
-		printf("Empirical Compress Ratio: %3.4lf\n", (nWords*std::log2(dictSize))/(double(TEST_SIZE)*std::log2(P.size())));
-
-		return double(nWords*std::log2(dictSize))/TEST_SIZE;
-	}
-
-};
-
-struct MarlinDictionary : public Dictionary {
-
-	MarlinDictionary(const std::vector<double> &P, size_t dictSize, size_t tries=3) : Dictionary(P, dictSize) {
-
-		std::vector<double> Pstate(P.size(), 0.);
-		Pstate[0] = 1.;
-
-//		std::vector<double> Pstate(P.size(), 1./(P.size()-1));
-//		Pstate.back() = 0.;
-
-		std::vector<double> PN = P;
-		for (size_t i=P.size()-1; i; i--)
-			PN[i-1] += PN[i];
-
-		std::vector<double> Pchild = P;
-		for (size_t i=0; i<P.size(); i++)
-			Pchild[i] = P[i]/PN[i];
-	
-		while (tries--) {
-			
-			auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { return lhs->p < rhs->p;};
-			std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
-
-			// DICTIONARY INITIALIZATION
-			root = std::make_shared<Node>();
-
-			for (size_t c=0; c<P.size(); c++) {
-				
-				root->push_back(std::make_shared<Node>());
-
-				double sum = 0;
-				for (size_t t = 0; t<=c; t++) sum += Pstate[t]/PN[t];
-
-				root->back()->p = sum * P[c];
-				
-				pq.push(root->back());
-			}
-			
-			print(root);
-			
-			// DICTIONARY GROWING
-			while (pq.size()<dictSize) {
-				
-				auto node = pq.top();
-				pq.pop();
-				
-				double p = node->p * Pchild[node->size()];
-				node->push_back(std::make_shared<Node>());
-				node->back()->p = p;
-				node->p -= p;
-				pq.push(node->back());
-				
-				if (node->size()<P.size()-1) {
-
-					pq.push(node);
-				} else {
-
-					node->push_back(std::make_shared<Node>());
-					node->back()->p = node->p;
-					node->p = 0;
-					pq.push(node->back());
-				}
-				
-				print(root);
-			}
-
-			
-			
-			auto oldPstate = Pstate;
-			// UPDATING STATE PROBABILITIES
-			{
-				std::vector<std::vector<double>> T(P.size(),std::vector<double>(P.size(),0.));
-		
-				for (size_t w0 = 0; w0<P.size(); w0++) {
-					
-					std::stack<std::shared_ptr<Node>> st;
-					st.push((*root)[w0]);
-
-					double sum = 0;
-					for (size_t t = 0; t<=w0; t++) sum += Pstate[t]/PN[t];
-
-					
-					while (not st.empty()) {
-					
-						auto node = st.top();
-						st.pop();
-						
-						for (auto &c : *node) st.push(c);
-						
-						if (node->size()<P.size())
-							for (size_t s=0; s<=w0; s++)
-								T[s][node->size()] += node->p /(sum * PN[s]);
-					}
-				}
-								
-				int t = 10;
-				double diff = 0;
-				do {
-					
-					auto T2 = T;
-					for (size_t i=0; i<P.size(); i++) {
-						for (size_t j=0; j<P.size(); j++) {
-							T2[i][j]=0;
-							for (size_t k=0; k<P.size(); k++)
-								T2[i][j] += T[i][k] * T[k][j];
-						}
-					}
-					diff = 0;
-					for (size_t i=0; i<P.size(); i++)
-						for (size_t j=0; j<P.size(); j++)
-							diff += std::abs(T[i][j]-T2[i][j]);
-
-					//std::cerr << diff << std::endl;
-					T = T2;
-
-				} while (t-- and diff>.00001);
-				
-				Pstate = T[0];
-			}
-
-			// UPDATE NODE PROBABILITIES
-			{
-				cerr << "ST: "; for (auto ps : Pstate) cerr << ps << " ";
-				cerr  << averageBitsPerSymbol() << " " << meanLength(root) << endl;
-
-				for (size_t w0 = 0; w0<P.size(); w0++) {
-					
-					std::stack<std::shared_ptr<Node>> st;
-					st.push((*root)[w0]);
-
-					double oldsum = 0, newsum = 0;
-					for (size_t t = 0; t<=w0; t++) {
-						oldsum += oldPstate[t]/PN[t];
-						newsum +=    Pstate[t]/PN[t];
-					}
-
-					while (not st.empty()) {
-					
-						auto node = st.top();
-						st.pop();						
-						for (auto &c : *node) st.push(c);
-						
-						if (node->size()<P.size())
-							node->p *= newsum / oldsum;
-					}
-				}
-				cerr << "ST: "; for (auto ps : Pstate) cerr << ps << " ";
-				cerr  << averageBitsPerSymbol() << " " << meanLength(root) << " " << averageBitsPerSymbolEmpirically() << endl;
-
-			}
-		}
-	}
-};
-
-struct TunstallDictionary : public Dictionary {
-
-	TunstallDictionary(const std::vector<double> &P, size_t dictSize) : Dictionary(P, dictSize) {
-			
-		auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { return lhs->p < rhs->p;};
-		std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
-
-		// DICTIONARY INITIALIZATION
-		root = std::make_shared<Node>();
-
-		for (size_t c=0; c<P.size(); c++) {
-				
-			root->push_back(std::make_shared<Node>());
-			root->back()->p = P[c];
-			pq.push(root->back());
-		}
-			
-		print(root);
-			
-		// DICTIONARY GROWING
-		while (pq.size()+P.size()-1 <= dictSize) {
-			
-			auto node = pq.top();
-			pq.pop();
-			
-			for (size_t c=0; c<P.size(); c++) {
-			
-				node->push_back(std::make_shared<Node>());
-				node->back()->p = node->p * P[c];
-				pq.push(node->back());
-			}
-		}
-
-		print(root);
-		cerr  << averageBitsPerSymbol() << " " << meanLength(root) << endl;
-	}
-};
-
-// NAH! We simply have more states!!! MATH!
 struct Marlin2Dictionary {
+	
+	size_t overlapping = 0;
 
 	struct Word {
 		
@@ -334,10 +31,13 @@ struct Marlin2Dictionary {
 	struct Node : std::vector<std::shared_ptr<Node>> {
 		double p=0;
 		size_t sz=0;
+		size_t erased=0;
 	};
 
-	std::shared_ptr<Node> buildTree(const std::vector<double> &P, const std::vector<double> &Pstates, size_t dictSize) {
+	std::shared_ptr<Node> buildTree(const std::vector<double> &P, const std::vector<double> &Pstates, size_t dictSize, bool prune) {
 
+//		prune = false;
+		
 		std::vector<double> PN = P;
 		for (size_t i=P.size()-1; i; i--)
 			PN[i-1] += PN[i];
@@ -347,20 +47,42 @@ struct Marlin2Dictionary {
 			Pchild[i] = P[i]/PN[i];
 
 
-		auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { return lhs->p < rhs->p;};
+//		auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { return lhs->p < rhs->p;};
+
+		auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { 
+			
+			return lhs->p*(1+std::pow(lhs->sz,1)) < rhs->p*(1+std::pow(rhs->sz,1));
+			//if (std::abs(lhs->p - rhs->p) > 0.0000001)
+			//	return lhs->p < rhs->p;
+			//return lhs->sz < rhs->sz;
+		};
+
 		std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
+		auto pushAndPrune = [&pq,prune](std::shared_ptr<Node> node) {
+			if (not prune or node->p>1e-10)
+				pq.push(node);
+			else
+				node->erased = true;
+		};
 
 		// DICTIONARY INITIALIZATION
 		std::shared_ptr<Node> root = std::make_shared<Node>();
+		
+		// Include empty?
+		if (prune) {
+			pq.push(root);
+		} else {
+			root->erased = true;
+		}
 
-		for (size_t c=0; c<P.size(); c++) {
+		for (size_t c=0; c<P.size(); c++) {			
 				
 			root->push_back(std::make_shared<Node>());
 			double sum = 0;
 			for (size_t t = 0; t<=c; t++) sum += Pstates[t]/PN[t];
 			root->back()->p = sum * P[c];
 			root->back()->sz = 1;
-			pq.push(root->back());
+			pushAndPrune(root->back());
 		}
 			
 		// DICTIONARY GROWING
@@ -374,22 +96,20 @@ struct Marlin2Dictionary {
 			node->back()->p = p;
 			root->back()->sz = node->sz+1;
 			node->p -= p;
-//			if (node->back()->sz==1 or node->back()->p > 1e-5)
-				pq.push(node->back());
+			pushAndPrune(node->back());
 				
 			if (node->size()<P.size()-1) {
 
-//				if (node->sz==1 or node->p > 1e+10)
-					pq.push(node);
+				pushAndPrune(node);
 					
 			} else {
+				node->erased = true;
+				node->p = 0;
 
 				node->push_back(std::make_shared<Node>());
 				node->back()->p = node->p;
 				root->back()->sz = node->sz+1;
-				node->p = 0;
-//				if (node->back()->sz==1 or node->back()->p > 1e-5)
-					pq.push(node->back());
+				pushAndPrune(node->back());
 			}
 		}
 		
@@ -406,7 +126,7 @@ struct Marlin2Dictionary {
 			std::shared_ptr<Node> n = q.top().first;
 			Word w = q.top().second;
 			q.pop();
-			if (n->p > 0.) ret.push_back(w);
+			if (not n->erased) ret.push_back(w);
 			for (size_t i = 0; i<n->size(); i++) {
 				
 				Word w2 = w;
@@ -416,7 +136,7 @@ struct Marlin2Dictionary {
 				q.emplace(n->at(i), w2);
 			}
 		}
-		std::cerr << "NW: " << ret.size() << std::endl;
+		//std::cerr << "NW: " << ret.size() << std::endl;
 		return ret;
 	}
 	
@@ -425,32 +145,49 @@ struct Marlin2Dictionary {
 		std::vector<Word> sortedWords = words;
 		auto cmp = [](const Word &lhs, const Word &rhs) { 
 			if (lhs.state != rhs.state) return lhs.state<rhs.state;
-			return lhs.symbols.size() < rhs.symbols.size();
+			return lhs.p > rhs.p;
 		};
 		std::sort(sortedWords.begin(), sortedWords.end(), cmp);
 		
 		std::vector<Word> ret = sortedWords;
-		for (size_t i=0,j=0; i<sortedWords.size(); i++,j+=2) {
-			if (j>=ret.size()) j=1;
+		for (size_t i=0,j=0,k=0; i<sortedWords.size(); i++,j+=(1<<overlapping)) {
+			if (j>=ret.size()) j=++k;
+			ret[j] = sortedWords[i];
+		}
+		return ret;
+	}
+	
+	std::vector<Word> arrangeWordsAlt(const std::vector<Word> &words) {
+		
+		std::vector<Word> sortedWords = words;
+		auto cmp = [](const Word &lhs, const Word &rhs) { 
+			return lhs.p < rhs.p;
+		};
+		std::sort(sortedWords.begin(), sortedWords.end(), cmp);
+		
+		std::vector<Word> ret = sortedWords;
+		for (size_t i=0,j=0,k=0; i<sortedWords.size(); i++,j+=(1<<overlapping)) {
+			if (j>=ret.size()) j=++k;
 			ret[j] = sortedWords[i];
 		}
 		return ret;
 	}
 	
 	template<typename T>
-	std::vector<T> concatenate( std::vector<T> A, std::vector<T> B) {
+	std::vector<T> concatenate( const std::vector<std::vector<T>> &W) {
 
-		countEqual(A,B);
-		A.insert(A.end(), B.begin(), B.end());
+		std::vector<T> A;
+		for (auto &&w : W)
+			A.insert(A.end(), w.begin(), w.end());
 		
+		countUnique(A);		
 		return A;
 	}
 
-	void countEqual( std::vector<Word> A, std::vector<Word> B) {
+	void countUnique( std::vector<Word> W ) {
 		
 		std::vector<std::string> C;
-		for (auto &&a : A) C.push_back(a.symbols);
-		for (auto &&b : B) C.push_back(b.symbols);
+		for (auto &&w :W) C.push_back(w.symbols);
 		std::sort(C.begin(), C.end());
 		std::cerr << "Total: " << C.size() << " Unique: " << unique(C.begin(),C.end())-C.begin() << std::endl;
 	}
@@ -458,15 +195,13 @@ struct Marlin2Dictionary {
 	void print(std::vector<Word> dictionary) {
 		if (dictionary.size()>40) return;
 
-		for (size_t i=0; i<dictionary.size()/2; i++) { 
-			{
-				auto &&w = dictionary[i]; 
-				printf(" %02lX %01ld %2d %01.3lf ",i,i%2,w.state,w.p);
-				for (size_t j=0; j<16; j++) putchar("0123456789ABCDEF "[j<w.symbols.size()?w.symbols[j]:16]);
-			}
-			{
-				auto &&w = dictionary[i+dictionary.size()/2]; 
-				printf(" %02lX %01ld %2d %01.3lf ",i+dictionary.size()/2,i%2,w.state,w.p);
+		for (size_t i=0; i<dictionary.size()/(1<<overlapping); i++) { 
+			
+			for (size_t k=0; k<(1U<<overlapping); k++) {
+				
+				auto idx = i + (k* (dictionary.size()/(1<<overlapping)));
+				auto &&w = dictionary[idx];
+				printf(" %02lX %01ld %2d %01.3lf ",idx,i%(1<<overlapping),w.state,w.p);
 				for (size_t j=0; j<16; j++) putchar("0123456789ABCDEF "[j<w.symbols.size()?w.symbols[j]:16]);
 			}
 			putchar('\n');
@@ -474,14 +209,34 @@ struct Marlin2Dictionary {
 		putchar('\n');
 	}
 
-	Marlin2Dictionary(const std::vector<double> &P, size_t dictSize, size_t tries=7) {
+	void print(std::vector<std::vector<double>> Pstates) {
 		
-		std::vector<double> PstatesA(P.size(), 0.); PstatesA[0] = .5;
-		std::vector<double> PstatesB(P.size(), 0.); PstatesB[0] = .5;
+		for (size_t i=0; i<Pstates[0].size() and i<4; i++) { 
+			
+			printf("S: %02ld",i);
+			for (size_t k=0; k<Pstates.size(); k++) 
+					 printf(" %01.3lf",Pstates[k][i]);
+			putchar('\n');
+		}		
+		putchar('\n');
+	}
+
+
+	Marlin2Dictionary(const std::vector<double> &P, size_t dictSize, size_t tries=7, size_t overlapping=0) 
+		: overlapping(overlapping) {
 		
-		dictionary = concatenate( 
-			arrangeWords( buildWords( buildTree(P, PstatesA, dictSize/2) ) ),
-			arrangeWords( buildWords( buildTree(P, PstatesB, dictSize/2) ) ) );
+		std::vector<std::vector<double>> Pstates;
+		for (auto k=0; k<(1<<overlapping); k++) {
+			std::vector<double> PstatesSingle(P.size(), 0.);
+			PstatesSingle[0] = 1./(1<<overlapping);
+			Pstates.push_back(PstatesSingle);
+		}
+		
+		std::vector<std::vector<Word>> dictionaries;
+		for (auto k=0; k<(1<<overlapping); k++)
+			dictionaries.push_back( arrangeWords( buildWords( buildTree(P, Pstates[k], dictSize/(1<<overlapping), k>0) ) ) );
+			
+		dictionary = concatenate(dictionaries);
 			
 		print(dictionary);
 			
@@ -489,39 +244,48 @@ struct Marlin2Dictionary {
 
 			// UPDATING STATE PROBABILITIES
 			{
-				PstatesA = std::vector<double>(P.size(), 0.);
-				PstatesB = std::vector<double>(P.size(), 0.);
+				for (auto k=0; k<(1<<overlapping); k++)
+					Pstates[k] = std::vector<double>(P.size(), 0.);
 
-				for (size_t i=0; i<dictionary.size(); i++) {
-					
-					//Last bit, determines next dictionary
-					if (i%2)
-						PstatesB[dictionary[i].state] += dictionary[i].p;
-					else
-						PstatesA[dictionary[i].state] += dictionary[i].p;
-				}
+				for (size_t i=0; i<dictionary.size(); i++)
+					Pstates[i%(1<<overlapping)][dictionary[i].state] += dictionary[i].p;
 			}
 			
-			if (P.size()<16)
-				for (size_t i=0; i<P.size(); i++)
-					printf("S: %02ld %01.3lf %01.3lf\n",i,PstatesA[i],PstatesB[i]);
-			putchar('\n');
+			print(Pstates);
 
+			for (auto k=0; k<(1<<overlapping); k++)
+				dictionaries[k] = arrangeWords( buildWords( buildTree(P, Pstates[k], dictSize/(1<<overlapping), k>0) ) );
 			
-			dictionary = concatenate( 
-				arrangeWords( buildWords( buildTree(P, PstatesA, dictSize/2) ) ),
-				arrangeWords( buildWords( buildTree(P, PstatesB, dictSize/2) ) ) );
-
+			dictionary = concatenate(dictionaries);
+			
 			print(dictionary);
+
+			averageBitsPerSymbol(P,dictSize);
 		}
 		
 		//test(P,dictSize);
-		averageBitsPerSymbolEmpirically(P,dictSize);
+		//averageBitsPerSymbolEmpirically(P,dictSize);
+		
+		std::ofstream off(std::string("probabilities") + "01234"[overlapping] + ".txt");
+		for (auto &&w : dictionary)
+			off << w.p << std::endl;
+	}
+		
+	double averageBitsPerSymbol(const std::vector<double> &P, size_t dictSize) const {
+	
+		double meanLength = 0;
+		for (auto &&w : dictionary)
+			meanLength += w.p * w.symbols.size();
+
+		//printf("Meanlength: %3.2lf\n", meanLength);
+		printf("Compress Ratio: %3.4lf\n", (std::log2(dictSize)-overlapping)/(meanLength*std::log2(P.size())));
+
+		return 0.;
 	}
 	
 	double averageBitsPerSymbolEmpirically(const std::vector<double> &P, size_t dictSize) const {
 		
-		static const size_t TEST_SIZE = 1<<20;
+		static const size_t TEST_SIZE = 1<<18;
 		
 		std::string testData(TEST_SIZE,0);
 		// create data
@@ -540,7 +304,7 @@ struct Marlin2Dictionary {
 		for (size_t i=0; i<10; i++)
 			testData.push_back(0);
 
-		auto W = dictionary;
+		auto &&W = dictionary;
 		double meanLengthE = 0;
 		size_t nWords = 0;
 		size_t lastWord = 0;
@@ -548,10 +312,11 @@ struct Marlin2Dictionary {
 			
 			size_t best = 0;
 			longest = 0;
-			for (size_t j=0; j<W.size()/2; j++) {
-				auto &&w = W[(lastWord%2)*(W.size()/2) + j].symbols;
-				if (w.size()>longest and testData.compare(i,w.size(),w)==0 ) {
-					best = (lastWord%2)*(W.size()/2) + j;
+			for (size_t j=0; j<W.size()/(1<<overlapping); j++) {
+				auto idx = (lastWord%(1<<overlapping))*(W.size()/(1<<overlapping)) + j;
+				auto &&w = W[idx].symbols;
+				if (w.size()>longest and testData[i] == w[0] and testData[i+w.size()-1] == w[w.size()-1] and testData.compare(i,w.size(),w)==0 ) {
+					best = idx;
 					longest = w.size();
 				}
 			}
@@ -562,10 +327,10 @@ struct Marlin2Dictionary {
 
 		printf("Empirical Meanlength: %3.2lf\n", meanLengthE/nWords);
 		printf("Empirical Compress Ratio: %3.4lf\n", 
-			(nWords*(std::log2(dictSize)-1))/(double(TEST_SIZE)*std::log2(P.size())));
+			(nWords*(std::log2(dictSize)-overlapping))/(double(TEST_SIZE)*std::log2(P.size())));
 
 
-		return double(nWords*(std::log2(dictSize)-1))/TEST_SIZE;
+		return 0.;
 	}
 
 	double test(const std::vector<double> &P, size_t dictSize) const {
@@ -657,11 +422,11 @@ int main(int argc, char **argv) {
 
 	if (argc==1) usage();
 	
-	
 	// Parse command line optins
 	std::map<std::string,double> options;
 	options["--tries"]=3;
 	options["--size"]=256;
+//	options["--maxWordSize"]=256;
 
 	std::vector<double> P;
 	for (int i=1; i<argc; i++) {
@@ -719,11 +484,13 @@ int main(int argc, char **argv) {
 	
 	
 	std::cerr << "Marlin" << std::endl;
-	MarlinDictionary(P,options["--size"],options["--tries"]);
+//	MarlinDictionary(P,options["--size"],options["--tries"]);
 	std::cerr << "Tunstall" << std::endl;
 	//TunstallDictionary(P,options["--size"]);
 	std::cerr << "Marlin2" << std::endl;
-	Marlin2Dictionary(P,options["--size"]);
+	Marlin2Dictionary(P,options["--size"],options["--tries"]);
+	Marlin2Dictionary(P,options["--size"]*2,options["--tries"],1);
+//	Marlin2Dictionary(P,options["--size"]*4,options["--tries"],2);
 		
 	return 0;
 }
