@@ -25,6 +25,7 @@
 #include <codecs/lz4.hpp>
 #include <codecs/huf.hpp>
 #include <codecs/marlin.hpp>
+#include <codecs/marlin2018.hpp>
 
 struct TestTimer {
 	timespec c_start, c_end;
@@ -245,6 +246,7 @@ int main( int , char *[] ) {
 		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  16),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL, 9),
 		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,1),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,16),
 		std::make_shared<Rice>(),
 		std::make_shared<RLE>(),

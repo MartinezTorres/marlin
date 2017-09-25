@@ -53,6 +53,7 @@ public:
 
     static constexpr size_t capacity() { return AACapacityBytes/sizeof(T); };
     constexpr T * begin() { return (T *)ptr; };
+    constexpr T * data() const { return (T *)ptr; };
     constexpr T * end() { return ((T *)ptr)+sz; };
 
     constexpr size_t size() { return sz; };
