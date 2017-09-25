@@ -19,7 +19,7 @@ struct Marlin2018Pimpl : public CODEC8Z {
 	class Marlin2018Simple {
 	public:
 
-		// Configuration u		
+		// Configuration		
 		static const constexpr bool enableVictimDictionary = true;
 		static const constexpr double purgeProbabilityThreshold = 1e-10;
 		static const constexpr size_t iterationLimit = 3;
@@ -152,38 +152,33 @@ struct Marlin2018Pimpl : public CODEC8Z {
 				return ret;
 			}
 			
-			std::vector<Word> arrangeWords(const std::vector<Word> &words, int victimIdx) const {
+			std::vector<Word> arrangeAndFuse( const std::vector<std::shared_ptr<Node>> &nodes, size_t victimIndex ) const {
 				
-				std::vector<Word> sortedWords = words;
-				auto cmp = [](const Word &lhs, const Word &rhs) { 
-					if (lhs.state != rhs.state) return lhs.state<rhs.state;
-					return lhs.p > rhs.p;
-				};
-				std::sort(sortedWords.begin(), sortedWords.end(), cmp);
-				
-				std::vector<Word> ret = sortedWords;
-				for (size_t i=0,j=0,k=0; i<sortedWords.size(); j+=(1<<overlap)) {
+				std::vector<Word> ret;
+				for (auto &&node : nodes) {
+
+					std::vector<Word> sortedDictionary = buildWords(node);
+					auto cmp = [](const Word &lhs, const Word &rhs) { 
+						if (lhs.state != rhs.state) return lhs.state<rhs.state;
+						return lhs.p > rhs.p;
+					};
+					std::sort(sortedDictionary.begin(), sortedDictionary.end(), cmp);
 					
-					if (j>=ret.size()) 
-						j=++k;
+					std::vector<Word> w(sortedDictionary.size());
+					for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1<<overlap)) {
 						
-					if (victimIdx==int(j)) {
-						ret[j] = Word();
-					} else {
-						ret[j] = sortedWords[i++];
+						if (j>=ret.size()) 
+							j=++k;
+							
+						if (victimIdx==int(j)) {
+							w[j] = Word();
+						} else {
+							w[j] = sortedDictionary[i++];
+						}
 					}
+					ret.insert(ret.end(), w.begin(), w.end());
 				}
 				return ret;
-			}
-			
-			template<typename T>
-			static std::vector<T> concatenate( const std::vector<std::vector<T>> &dictionaries) {
-
-				std::vector<T> bigDictionary;
-				for (auto &&w : dictionaries)
-					bigDictionary.insert(bigDictionary.end(), w.begin(), w.end());
-
-				return bigDictionary;
 			}
 			
 		public:
@@ -290,45 +285,16 @@ struct Marlin2018Pimpl : public CODEC8Z {
 		
 		struct Encoder {
 
-			typedef std::array<uint32_t,1<<(8*sizeof(Symbol))> Node;
+			const size_t keySize;
 
-			std::vector<Node> nodes;
+			std::vector<uint32_t> jumpTable;
 
-			// Words[0] is empty
-			constexpr Encoder(const Dictionary &dictionary) {
+			Encoder(const Dictionary &dictionary) 
+			: keySize(std::log2(double(dictionary.dictSize)/(1<<overlap))) {
 				
-				nodes.resize(dictionary.size());
+				std::map<std::pair<Word,Symbol>,size_t> positions;
 				
-				for (auto k=0; k<(1<<overlap); k++) {
-					
-					Node blank;
-					blank.child.resize(dictionary.alphabet.size());
-					blank.code = 0;
-
-					for (size_t i=0; i<dictionary.alphabet.size(); ++i)
-						blank.child[i] = i;
-
-					for (size_t i=0; i<dictionary.alphabet.size(); ++i)
-						nodes.push_back(blank);
-					
-					for (size_t i=0; i<(dictionary.size()>>dictionary.overlap); ++i) {
-						
-						auto &&w = dictionary[k * (dictionary.size()>>dictionary.overlap) + i];
-						
-						NodeIdx nodeId = w[0];
-						
-						for (size_t j=1; j<w.size(); ++j) {
-							
-							auto c = w[j];
-							if (nodes[nodeId].child[c] == c) {
-								nodes[nodeId].child[c] = nodes.size();
-								nodes.push_back(blank);
-							}
-							nodeId = nodes[nodeId].child[c];
-						}
-						nodes[nodeId].code = i;
-					}
-				}
+				
 			}
 			
 			size_t encode(const uint8_t *src, size_t srcSize, uint8_t *dst) const {
@@ -391,9 +357,7 @@ struct Marlin2018Pimpl : public CODEC8Z {
 				}
 				assert(false);
 			}			
-				Encoder() {
-					
-				}
+
 
 				template<typename TIN, typename TOUT>
 				void encode(const TIN &in, TOUT &out) const {

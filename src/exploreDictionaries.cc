@@ -214,7 +214,7 @@ struct Marlin2Dictionary {
 		for (size_t i=0; i<Pstates[0].size() and i<4; i++) { 
 			
 			printf("S: %02ld",i);
-			for (size_t k=0; k<Pstates.size(); k++) 
+			for (size_t k=0; k<Pstates.size() and k<8; k++) 
 					 printf(" %01.3lf",Pstates[k][i]);
 			putchar('\n');
 		}		
@@ -511,6 +511,8 @@ int main(int argc, char **argv) {
 	Marlin2Dictionary(P,options["--size"]*8,options["--tries"],3);
 	Marlin2Dictionary(P,options["--size"]*16,options["--tries"],4);
 	Marlin2Dictionary(P,options["--size"]*32,options["--tries"],5);
+	Marlin2Dictionary(P,options["--size"]*512,options["--tries"],9);
+	Marlin2Dictionary(P,options["--size"]*1024,options["--tries"],10);
 		
 	return 0;
 }
