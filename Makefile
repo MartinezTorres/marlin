@@ -55,7 +55,11 @@ ext:
 	@echo "CREATING $@"
 	@$(CXX) -c -o $@ $< $(CFLAGS)
 
-./bin/%: ./src/%.cc $(CODECS) ext
+./bin/dcc2018: ./src/%.cc $(CODECS) ext
+	@echo "CREATING $@"
+	@$(CXX) -o $@ $< $(CODECS) $(CFLAGS) $(LFLAGS)
+
+./bin/%: ./src/%.cc
 	@echo "CREATING $@"
 	@$(CXX) -o $@ $< $(CODECS) $(CFLAGS) $(LFLAGS)
 

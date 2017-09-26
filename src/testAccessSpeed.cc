@@ -70,7 +70,7 @@ void testOverlappingAccess() {
 		
 		if (true) {
 			size_t dataSize = (1<<i)/(sizeof(uint64_t));
-			std::cerr << "Test Normal Access: " << dataSize*sizeof(uint64_t) << std::endl;
+			std::cerr << "Test Mapped Access: " << dataSize*sizeof(uint64_t) << std::endl;
 
 			uint32_t mask = dataSize-1;
 			
