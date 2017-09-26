@@ -285,14 +285,46 @@ struct Marlin2018Pimpl : public CODEC8Z {
 		
 		struct Encoder {
 
-			const size_t keySize;
+			typedef uint32_t JumpIdx;
+			size_t keySize;
+			size_t alphaStride;
+			std::vector<JumpIdx> jumpTable;
 
-			std::vector<uint32_t> jumpTable;
-
-			Encoder(const Dictionary &dictionary) 
-			: keySize(std::log2(double(dictionary.dictSize)/(1<<overlap))) {
+			Encoder(const Dictionary &dictionary) {
 				
-				std::map<std::pair<Word,Symbol>,size_t> positions;
+				alphaStride = 0;
+				while ((1<<alphaStride)<dictionary.alphabet.size()) alphaStride++;
+				
+				jumpTable.resize(dictionary.size()*alphaStride,JumpIdx(-1));
+				
+				std::vector<std::map<Word, size_t>> positions;
+				
+				size_t nDict = 1<<dictionary.overlap;
+				
+				for (size_t k=0; k<nDict; k++) {
+				
+					for (size_t i=k*(dictionary.size()/nDict); i<(k+1)*(dictionary.size()/nDict); ii++)
+						positions[k][dictionary[i]] = i;
+				
+				}
+				
+				for (size_t k=0; k<(1<<dictionary.overlap); k++) {
+					
+					
+					for (size_t i=k*(dictionary.size()/(1<<dictionary.overlap)); i<(k+1)*(dictionary.size()/(1<<dictionary.overlap)); ii++) {
+						if (not dictionary[i].empty()) {
+							
+							Word parent = dictionary[i]; 
+							parent.pop_back();
+							jumpTable[positions[parent]*alphaStride+dictionary[i].back()] = i;
+						}
+					}
+					
+
+						
+					
+				}
+				
 				
 				
 			}
