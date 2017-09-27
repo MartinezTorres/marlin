@@ -286,117 +286,100 @@ struct Marlin2018Pimpl : public CODEC8Z {
 		struct Encoder {
 
 			typedef uint32_t JumpIdx;
-			size_t keySize;
-			size_t alphaStride;
+			size_t keySize,overlap;
+			size_t wordStride,alphaStride;
 			std::vector<JumpIdx> jumpTable;
+			std::vector<JumpIdx> start;
 
 			Encoder(const Dictionary &dictionary) {
+				
+				overlap(dictionary.overlap);
+				keySize = 0;
+				while ((1<<keySize)<dictionary.size()) keySize++;
+				wordStride = keySize+1; // Extra bit to label intermediate nodes.
 				
 				alphaStride = 0;
 				while ((1<<alphaStride)<dictionary.alphabet.size()) alphaStride++;
 				
-				jumpTable.resize(dictionary.size()*alphaStride,JumpIdx(-1));
+				jumpTable.resize((1<<wordStride)*(1<<alphaStride),JumpIdx(-1));
 				
-				std::vector<std::map<Word, size_t>> positions;
-				
-				size_t nDict = 1<<dictionary.overlap;
-				
-				for (size_t k=0; k<nDict; k++) {
-				
-					for (size_t i=k*(dictionary.size()/nDict); i<(k+1)*(dictionary.size()/nDict); ii++)
+				std::vector<std::map<Word, size_t>> positions(nDict);
+				size_t nDict = 1<<dictionary.overlap;				
+				// Init the mapping (to know where each word goes)
+				for (size_t k=0; k<nDict; k++)				
+					for (size_t i=k*(dictionary.size()/nDict); i<(k+1)*(dictionary.size()/nDict); i++)
 						positions[k][dictionary[i]] = i;
 				
-				}
-				
-				for (size_t k=0; k<(1<<dictionary.overlap); k++) {
-					
-					
-					for (size_t i=k*(dictionary.size()/(1<<dictionary.overlap)); i<(k+1)*(dictionary.size()/(1<<dictionary.overlap)); ii++) {
-						if (not dictionary[i].empty()) {
-							
-							Word parent = dictionary[i]; 
+				// Link each possible word to its continuation
+				size_t nextIntermediatePos = 1<<(wordStride-1);
+				for (size_t k=0; k<nDict; k++) {
+					for (size_t i=k*(dictionary.size()/nDict); i<(k+1)*(dictionary.size()/nDict); i++) {
+						Word parent = dictionary[i];
+						size_t pos = i;
+						while (not dictionary[i].empty()) {
+							auto lastSymbol = parent.back();						
 							parent.pop_back();
-							jumpTable[positions[parent]*alphaStride+dictionary[i].back()] = i;
+							size_t newPos;
+							if (positions[k].count(parent)) {
+								newPos = positions[k][parent];
+							} else {
+								newPos = nextIntermediatePos++;
+							}
+							jumpTable[newPos+(lastSymbol<<wordStride)] = pos;
+							pos = newPos;
 						}
 					}
-					
-
-						
-					
 				}
 				
+				//Link between inner dictionaries
+				for (size_t k=0; k<nDict; k++) {
+					for (size_t i=k*(dictionary.size()/nDict); i<(k+1)*(dictionary.size()/nDict); i++) {
+						Word &&w = dictionary[i];
+						for (size_t j=0; j<(1<<alphaStride); j++) {
+							if (jumpTable[i+(j<<wordStride)]==JumpIdx(-1)) {
+								if (positions[w.state].count(Word(1,Symbol(j)))) {
+									jumpTable[i+(j<<wordStride)]=positions[w.state][Word(1,Symbol(j))];
+								} else if (positions[w.state].count(Word())) {
+									jumpTable[i+(j<<wordStride)]=positions[w.state][Word()] + (1<<wordStride); // Another marker.
+								}
+							}
+						}
+					}
+				}
 				
-				
+				// Get Starting Positions
+				start.resize(1<<alphaStride,JumpIdx(-1));
+				if (positions[0].count(Word())) { // 0 is not victim
+					for (size_t j=0; j<(1<<alphaStride); j++)
+						start[j] = jumpTable[positions[0][positions[0][Word()]]+(j<<wordStride)];
+				} else { // 0 is victim and must have representation of all words of a single letter
+					for (size_t j=0; j<(1<<alphaStride); j++)
+						if (positions[0].count(Word(1,Symbol(j))))
+							start[j] = positions[0][Word(1,Symbol(j))];
+				}
 			}
 			
-			size_t encode(const uint8_t *src, size_t srcSize, uint8_t *dst) const {
-
-				uint8_t *dst0 = dst;
+			template<typename TIN, typename TOUT>
+			void encode(const TIN &in, TOUT &out) const {
 				
-				while (srcSize and src[srcSize-1]==0) srcSize--;
-				const uint8_t *srcEnd = src + srcSize;
+				if (out.size() < in.size()) out.resize(in.size());
 				
-				if (srcSize==0) return dst0-dst;
-
-				NodeIdx nodeId = *src++;
-				if (srcSize > 16*WORD_SIZE+2) while (src < srcEnd-16*WORD_SIZE+2) {
-
-					NodeIdx oldNodeId1 = 0;
-					do { 
-						oldNodeId1 = nodeId;
-						nodeId = nodes[nodeId].child[*src++]; 
-					} while (nodeId > ALPHABET_SIZE - 1);
+				uint8_t *o = (uint8_t *)out.data();
+				const uint8_t *i = (const uint8_t *)in.data();
+				
+				uint64_t mask = (1<<(keySize-overlap))-1;
+				uint64_t v=0; uint32_t c=0;
+				if (i<(const uint8_t *)in.end()) {
 					
-					//printf("NN %ld\n", nodeId);
-					
-					NodeIdx oldNodeId2 = 0;
-					do { 
-						oldNodeId2 = nodeId;
-						nodeId = nodes[nodeId].child[*src++]; 
-					} while (nodeId > ALPHABET_SIZE - 1);
-					
-					*((uint32_t *)dst) = nodes[oldNodeId1].code + (nodes[oldNodeId2].code << 12);
-					dst += 3;
-				}
-				while (true) {
-					// nodeId must be encoded.
-					NodeIdx oldNodeId1 = 0;
-					do { 
-						if (src==srcEnd) {
-							*((uint32_t *)dst) = nodes[nodeId].code;
-							dst += 3;
-							return dst-dst0;
-						}					
-						oldNodeId1 = nodeId;
-						nodeId = nodes[nodeId].child[*src++]; 
-					} while (nodeId > ALPHABET_SIZE - 1);
-					
-					NodeIdx oldNodeId2 = 0;
-					do { 
-
-						if (src==srcEnd) {
-							*((uint32_t *)dst) = nodes[oldNodeId1].code + (nodes[nodeId].code << 12);
-							dst += 3;
-							return dst-dst0;
-						}
-
-						oldNodeId2 = nodeId;
-						nodeId = nodes[nodeId].child[*src++]; 
-					} while (nodeId > ALPHABET_SIZE - 1);
-					
-					*((uint32_t *)dst) = nodes[oldNodeId1].code + (nodes[oldNodeId2].code << 12);
-					dst += 3;
-				}
-				assert(false);
-			}			
-
-
-				template<typename TIN, typename TOUT>
-				void encode(const TIN &in, TOUT &out) const {
-					
-					if (out.size() < in.size()) out.resize(in.size());
-					
-				}
+					JumpIdx j = start[*i++];					
+					while (i<(const uint8_t *)in.end()) {
+						
+						
+					} 
+				// TODO: Take care of rolling back. Do it using a recursive function.
+				
+				
+				
 			}
 		};
 		const Encoder encoder;
