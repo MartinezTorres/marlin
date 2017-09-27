@@ -283,74 +283,96 @@ struct Marlin2018Pimpl : public CODEC8Z {
 		};
 		const Dictionary dictionary;
 		
+		// Of course, only valid for power of 2 dictionary sizes
 		struct Encoder {
 
 			typedef uint32_t JumpIdx;
-			size_t keySize,overlap;
-			size_t wordStride,alphaStride;
-			std::vector<JumpIdx> jumpTable;
-			std::vector<JumpIdx> start;
+			// Structured as:
+			// FLAG_NEXT_WORD
+			// FLAG_INSERT_EMPTY_WORD
+			// Current Dictionary
+			// Where to jump next
+			
+			constexpr const size_t FLAG_NEXT_WORD = 1<<(8*sizeof(JumpIdx)-1);
+			constexpr const size_t FLAG_INSERT_EMPTY_WORD = 1<<(8*sizeof(JumpIdx)-2);
+			
+			//
+			size_t keySize;     // Non overlapping bits of the word index in the big dictionary
+			size_t overlap;     // Bits that overlap between keys
+			size_t wordStride;  // Bit stride of the jump table corresponding to the word dimension
+			
+			std::vector<JumpIdx> jumpTable; // Self referencing table with attributes
+			template<typedef T1, typedef T2>
+			constexpr JumpIdx &jump(const T1 &word, const T2 &next_letter) { 
+				return jumpTable[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
+			}
 
-			Encoder(const Dictionary &dictionary) {
+			std::vector<JumpIdx> start;
+			std::vector<JumpIdx> emptyWords;
+
+			Encoder(const Dictionary &dictionary, size_t victimIdx=size_t(-1)) {
 				
-				overlap(dictionary.overlap);
-				keySize = 0;
-				while ((1<<keySize)<dictionary.size()) keySize++;
-				wordStride = keySize+1; // Extra bit for intermediate nodes.
+				overlap = dictionary.overlap;
+				keySize = std::log2(dictionary.size())-overlap;
+				wordStride = keySize+overlap+1; // Extra bit for intermediate nodes.
+				jumpTable.resize((1<<wordStride)*dictionary.alphabet.size(),JumpIdx(-1));
 				
-				alphaStride = 0;
-				while ((1<<alphaStride)<dictionary.alphabet.size()) alphaStride++;
-				
-				jumpTable.resize((1<<wordStride)*(1<<alphaStride),JumpIdx(-1));
-				
-				std::vector<std::map<Word, size_t>> positions(nDict);
-				size_t nDict = 1<<dictionary.overlap;				
+				size_t NumSections = 1<<dictionary.overlap;
+				size_t SectionSize = 1<<keySize;
+				std::vector<std::map<Word, size_t>> positions(NumSections);
+
 				// Init the mapping (to know where each word goes)
-				for (size_t k=0; k<nDict; k++)				
-					for (size_t i=k*(dictionary.size()/nDict); i<(k+1)*(dictionary.size()/nDict); i++)
+				for (size_t k=0; k<NumSections; k++)
+					for (size_t i=k*SectionSize; i<(k+1)*SectionSize; i++)
 						positions[k][dictionary[i]] = i;
 				
 				// Link each possible word to its continuation
 				size_t nextIntermediatePos = 1<<(wordStride-1);
-				for (size_t k=0; k<nDict; k++) {
-					for (size_t i=k*(dictionary.size()/nDict); i<(k+1)*(dictionary.size()/nDict); i++) {
-						Word parent = dictionary[i];
-						size_t pos = i;
-						while (not dictionary[i].empty()) {
-							auto lastSymbol = parent.back();						
-							parent.pop_back();
-							size_t newPos;
-							if (positions[k].count(parent)) {
-								newPos = positions[k][parent];
+				for (size_t k=0; k<NumSections; k++) {
+					for (size_t i=k*SectionSize; i<(k+1)*SectionSize; i++) {
+						Word word = dictionary[i];
+						size_t wordIdx = i;
+						while (not word.empty()) {
+							auto lastSymbol = word.back();						
+							word.pop_back();
+							size_t parentIdx;
+							if (positions[k].count(word)) {
+								parentIdx = positions[k][word];
 							} else {
-								newPos = nextIntermediatePos++;
+								parentIdx = nextIntermediatePos++;
 							}
-							jumpTable[newPos+(lastSymbol<<wordStride)] = pos;
-							pos = newPos;
+							jump(parentIdx, lastSymbol) = wordIdx;
+							wordIdx = parentIdx;
 						}
 					}
 				}
 				
 				//Link between inner dictionaries
-				for (size_t k=0; k<nDict; k++) {
-					for (size_t i=k*(dictionary.size()/nDict); i<(k+1)*(dictionary.size()/nDict); i++) {
+				for (size_t k=0; k<NumSections; k++) {
+					for (size_t i=k*SectionSize; i<(k+1)*SectionSize; i++) {
 						Word &&w = dictionary[i];
-						for (size_t j=0; j<(1<<alphaStride); j++) {
-							if (jumpTable[i+(j<<wordStride)]==JumpIdx(-1)) {
-								if (positions[w.state].count(Word(1,Symbol(j)))) {
+						for (size_t j=0; j<dictionary.alphabet.size(); j++) {
+							if (jump(i,j)==JumpIdx(-1)) {
+								if (positions[i>>keySize].count(Word(1,Symbol(j)))) {
 									jumpTable[i+(j<<wordStride)] = 
-										positions[w.state][Word(1,Symbol(j))] +
-										(1<<(2*wordStride)) // Marker to advance step;
-								} else if (positions[w.state].count(Word())) {
+										positions[i>>keySize][Word(1,Symbol(j))] +
+										FLAG_NEXT_WORD;
+								} else {
 									jumpTable[i+(j<<wordStride)] =
-										 positions[w.state][Word(1,Symbol(j))] +
-										(positions[w.state][Word()] << wordStride) +
-										(2<<(2*wordStride)); // Marker to advance step twice.
+										positions[i>>keySize][Word(1,Symbol(j))] +
+										FLAG_NEXT_WORD + 
+										FLAG_INSERT_EMPTY_WORD;
 								}
 							}
 						}
 					}
 				}
+				
+				// Fill list of empty words
+				emptyWords.resize((1<<alphaStride),JumpIdx(-1));
+				for (size_t j=0; j<(1<<alphaStride); j++)
+					if (positions[j].count(Word()))
+					emptyWords[j] = positions[j][Word()];
 				
 				// Get Starting Positions
 				start.resize(1<<alphaStride,JumpIdx(-1));
@@ -364,6 +386,34 @@ struct Marlin2018Pimpl : public CODEC8Z {
 				}
 			}
 			
+			size_t findLongestMatch(const uint8_t *&in, const uint8_t *inEnd, JumpIdx &current) const {
+				
+				if (in==inEnd) return size_t(-1);
+
+
+				
+				if (current & FLAG_NEXT_WORD) {
+					size_t ret = current & keyMask;
+					current = jumpTable[(*in++ << wordStride) + (current & wordMask)];
+					return ret;
+				}
+				
+				size_t next =  jumpTable[(*in++ << wordStride) + (current & wordMask)];
+				size_t ret = findLongestMatch(in, inEnd, next);
+				if (ret! = size_t(-1)) {
+					current = next;
+					return ret;
+				}
+				in--; // Check if there is any option of ending the string now.
+				for (size_t j=0; j<(1<<alphaStride); j++) {
+					if (jumpTable[(j << wordStride) + (current & wordMask)] & FLAG_NEXT_WORD) {
+						current = emptyWords(w.state)
+						return 
+					}
+				}
+				
+			}
+			
 			template<typename TIN, typename TOUT>
 			void encode(const TIN &in, TOUT &out) const {
 				
@@ -373,18 +423,32 @@ struct Marlin2018Pimpl : public CODEC8Z {
 				const uint8_t *i = (const uint8_t *)in.data();
 				
 				uint64_t mask = (1<<(keySize-overlap))-1;
-				uint64_t v=0; uint32_t c=0;
+				uint64_t value=0; uint32_t bits=0;
 				if (i<(const uint8_t *)in.end()) {
 					
-					JumpIdx j = start[*i++];					
-					while (i<(const uint8_t *)in.end()) {
+					JumpIdx j0 = start[*i++];					
+					while (i+16<(const uint8_t *)in.end()) {
 						
+						JumpIdx j1 = jump(j0, *i++);
+
+						if (j1 & FLAG_NEXT_WORD) {
+							value <<= keySize;
+							bits += keySize;
+							value += j0 & ((1<<keySize)-1);
+							if (bits>32) 
+								bits -= 32;
+								((uint32_t *&)o)++ = uint32_t(value>>bits);
+							}
+						}
+
+						if (j1 & FLAG_INSERT_EMPTY_WORD)  i--;
+
+						j0=j1;
 						
-					} 
-				// TODO: Take care of rolling back. Do it using a recursive function.
-				
-				
-				
+					}
+					while (i<(const uint8_t *)in.end())
+						findLongestMatch(i,(const uint8_t *)in.end(),j0);
+				}
 			}
 		};
 		const Encoder encoder;
