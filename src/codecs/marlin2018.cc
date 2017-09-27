@@ -296,7 +296,7 @@ struct Marlin2018Pimpl : public CODEC8Z {
 				overlap(dictionary.overlap);
 				keySize = 0;
 				while ((1<<keySize)<dictionary.size()) keySize++;
-				wordStride = keySize+1; // Extra bit to label intermediate nodes.
+				wordStride = keySize+1; // Extra bit for intermediate nodes.
 				
 				alphaStride = 0;
 				while ((1<<alphaStride)<dictionary.alphabet.size()) alphaStride++;
@@ -338,9 +338,14 @@ struct Marlin2018Pimpl : public CODEC8Z {
 						for (size_t j=0; j<(1<<alphaStride); j++) {
 							if (jumpTable[i+(j<<wordStride)]==JumpIdx(-1)) {
 								if (positions[w.state].count(Word(1,Symbol(j)))) {
-									jumpTable[i+(j<<wordStride)]=positions[w.state][Word(1,Symbol(j))];
+									jumpTable[i+(j<<wordStride)] = 
+										positions[w.state][Word(1,Symbol(j))] +
+										(1<<(2*wordStride)) // Marker to advance step;
 								} else if (positions[w.state].count(Word())) {
-									jumpTable[i+(j<<wordStride)]=positions[w.state][Word()] + (1<<wordStride); // Another marker.
+									jumpTable[i+(j<<wordStride)] =
+										 positions[w.state][Word(1,Symbol(j))] +
+										(positions[w.state][Word()] << wordStride) +
+										(2<<(2*wordStride)); // Marker to advance step twice.
 								}
 							}
 						}
