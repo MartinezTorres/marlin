@@ -241,11 +241,10 @@ int main( int , char *[] ) {
 		
 	std::vector<shared_ptr<CODEC8>> C = {
 		std::make_shared<Nibble>(),
-		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,   9),
-		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
-		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  16),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL, 9),
-		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
+//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,   9),
+//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
+//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  16),
+//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,1),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,16),
 		std::make_shared<Rice>(),

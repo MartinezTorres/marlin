@@ -41,6 +41,8 @@ class AlignedArray {
 
 public:
 
+	typedef T value_type;
+
 	AlignedArray            (                      ) noexcept {}
     AlignedArray            (const AlignedArray&  p) noexcept { copy(p); }
     AlignedArray            (      AlignedArray&& p) noexcept : ptr(p.ptr), sz(p.sz) { p.ptr=nullptr; p.sz = 0; }
@@ -52,6 +54,7 @@ public:
     ~AlignedArray() { if (ptr!=nullptr) free(ptr); }
 
     static constexpr size_t capacity() { return AACapacityBytes/sizeof(T); };
+    constexpr T & front() { return *begin(); }
     constexpr T * begin() { return (T *)ptr; };
     constexpr T * data() const { return (T *)ptr; };
     constexpr T * end() { return ((T *)ptr)+sz; };
