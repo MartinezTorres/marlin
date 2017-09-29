@@ -1,4 +1,8 @@
-#include <queue>
+#include <marlinlib/marlin.hpp>
+
+#include <iostream>
+
+/*#include <queue>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
@@ -9,10 +13,6 @@
 
 #include <util/distribution.hpp>
 
-using std::cin;
-using std::cout;
-using std::cerr;
-using std::endl;
 
 struct Marlin2Dictionary {
 	
@@ -421,6 +421,13 @@ struct Marlin2Dictionary {
 
 
 };
+*/
+
+
+using std::cin;
+using std::cout;
+using std::cerr;
+using std::endl;
 
 void usage() {
 	
@@ -441,9 +448,9 @@ int main(int argc, char **argv) {
 	
 	// Parse command line optins
 	std::map<std::string,double> options;
-	options["--tries"]=3;
-	options["--size"]=256;
-//	options["--maxWordSize"]=256;
+	options["--keySize"]=12;
+	options["--overlap"]=2;
+	options["--maxWordSize"]=256;
 
 	std::vector<double> P;
 	for (int i=1; i<argc; i++) {
@@ -505,14 +512,15 @@ int main(int argc, char **argv) {
 	std::cerr << "Tunstall" << std::endl;
 	//TunstallDictionary(P,options["--size"]);
 	std::cerr << "Marlin2" << std::endl;
-	Marlin2Dictionary(P,options["--size"],options["--tries"]);
+	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]);
+/*	Marlin2Dictionary(P,options["--size"],options["--tries"]);
 	Marlin2Dictionary(P,options["--size"]*2,options["--tries"],1);
 	Marlin2Dictionary(P,options["--size"]*4,options["--tries"],2);
 	Marlin2Dictionary(P,options["--size"]*8,options["--tries"],3);
 	Marlin2Dictionary(P,options["--size"]*16,options["--tries"],4);
 	Marlin2Dictionary(P,options["--size"]*32,options["--tries"],5);
 	Marlin2Dictionary(P,options["--size"]*512,options["--tries"],9);
-	Marlin2Dictionary(P,options["--size"]*1024,options["--tries"],10);
+	Marlin2Dictionary(P,options["--size"]*1024,options["--tries"],10);*/
 		
 	return 0;
 }
