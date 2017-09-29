@@ -15,7 +15,7 @@ LFLAGS += -lgomp
 
 CFLAGS += -Ofast
 
-CFLAGS += -g
+CFLAGS += -g -O0
 
 CFLAGS += -I./ext
 LFLAGS += $(wildcard ./ext/*.a)
@@ -55,12 +55,8 @@ ext:
 	@echo "CREATING $@"
 	@$(CXX) -c -o $@ $< $(CFLAGS)
 
-./bin/dcc2018: ./src/dcc2018.cc $(CODECS) ext
-	@echo "CREATING $@"
-	@$(CXX) -o $@ $< $(CODECS) $(CFLAGS) $(LFLAGS)
-
-./bin/%: ./src/%.cc
-	@echo "CREATING $@"
+./bin/%: ./src/%.cc $(CODECS) ext
+	@echo "CREATING $@" $(CODECS) ext
 	@$(CXX) -o $@ $< $(CODECS) $(CFLAGS) $(LFLAGS)
 
 show: ./bin/dcc2017

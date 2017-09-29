@@ -16,7 +16,7 @@ class Marlin2018Simple {
 	static const constexpr bool enableVictimDictionary = true;
 	static const constexpr double purgeProbabilityThreshold = 1e-10;
 	static const constexpr size_t iterationLimit = 3;
-	static const constexpr bool debug = false;
+	static const constexpr bool debug = true;
 
 	typedef uint8_t Symbol; // storage used to store an input symbol.
 	typedef uint16_t WordIdx; // storage that suffices to store a word index.
@@ -48,6 +48,16 @@ class Marlin2018Simple {
 		using std::vector<Symbol>::vector;
 		double p = 0;
 		Symbol state = 0;
+		
+		friend std::ostream& operator<< (std::ostream& stream, const Word& word) {
+			stream << "{";
+			for (size_t i=0; i<word.size(); i++) {
+				if (i) stream << ",";
+				stream << int(word[i]);
+			}
+			stream << "}";
+			return stream;
+        }
 	};
 
 	class Dictionary : public std::vector<Word> {
@@ -93,14 +103,12 @@ class Marlin2018Simple {
 
 			// DICTIONARY INITIALIZATION
 			std::shared_ptr<Node> root = std::make_shared<Node>();
+			root->erased = true;
 			
 			// Include empty?
 			if (isVictim) {
-				retiredNodes++;
-			} else {
-				pq.push(root);
+				pq.push(root); // Does not do anything, only uses a spot
 			}
-			root->erased = true;
 
 			for (size_t c=0; c<alphabet.size(); c++) {			
 					
@@ -113,15 +121,18 @@ class Marlin2018Simple {
 			}
 				
 			// DICTIONARY GROWING
-			while (pq.size() + retiredNodes < (1U<<keySize)) {
+			while (not pq.empty() and (pq.size() + retiredNodes < (1U<<keySize))) {
 					
-				auto node = pq.top();
+				std::shared_ptr<Node> node = pq.top();
 				pq.pop();
+				
+				//if (node->sz>2) 
 					
 				double p = node->p * Pchild[node->size()];
 				node->push_back(std::make_shared<Node>());
 				node->back()->p = p;
-				root->back()->sz = node->sz+1;
+				node->back()->sz = node->sz+1;
+
 				node->p -= p;
 				pushAndPrune(node->back());
 					
@@ -135,11 +146,10 @@ class Marlin2018Simple {
 
 					node->push_back(std::make_shared<Node>());
 					node->back()->p = node->p;
-					root->back()->sz = node->sz+1;
+					node->back()->sz = node->sz+1;
 					pushAndPrune(node->back());
 				}
 			}
-			
 			return root;
 		}
 		
@@ -169,31 +179,65 @@ class Marlin2018Simple {
 		std::vector<Word> arrangeAndFuse( const std::vector<std::shared_ptr<Node>> &nodes, size_t victimIdx ) const {
 			
 			std::vector<Word> ret;
-			for (auto &&node : nodes) {
-
-				std::vector<Word> sortedDictionary = buildWords(node);
+			for (size_t n = 0; n<nodes.size(); n++) {
+				
+				std::vector<Word> sortedDictionary = buildWords(nodes[n]);
 				auto cmp = [](const Word &lhs, const Word &rhs) { 
 					if (lhs.state != rhs.state) return lhs.state<rhs.state;
 					return lhs.p > rhs.p;
 				};
 				std::sort(sortedDictionary.begin(), sortedDictionary.end(), cmp);
 				
-				std::vector<Word> w(sortedDictionary.size());
+				std::vector<Word> w(1<<keySize);
 				for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1<<overlap)) {
 					
-					if (j>=ret.size()) 
+					if (j>=w.size()) 
 						j=++k;
 						
-					if (victimIdx==j) {
+					if (victimIdx==j and n!=j) {
 						w[j] = Word();
 					} else {
 						w[j] = sortedDictionary[i++];
 					}
+					//std::cerr << "j" << j << std::endl;
 				}
 				ret.insert(ret.end(), w.begin(), w.end());
 			}
 			return ret;
 		}
+		
+		// Debug functions
+		
+		void print(std::vector<Word> dictionary) {
+			
+			if (dictionary.size()>40) return;
+
+			for (size_t i=0; i<dictionary.size()/(1U<<overlap); i++) { 
+				
+				for (size_t k=0; k<(1U<<overlap); k++) {
+					
+					auto idx = i + (k* (dictionary.size()/(1U<<overlap)));
+					auto &&w = dictionary[idx];
+					printf(" %02lX %01ld %2d %01.3lf ",idx,i%(1<<overlap),w.state,w.p);
+					for (size_t j=0; j<16; j++) putchar("0123456789ABCDEF "[j<w.size()?w[j]:16]);
+				}
+				putchar('\n');
+			}		
+			putchar('\n');
+		}
+
+		static void print(std::vector<std::vector<double>> Pstates) {
+			
+			for (size_t i=0; i<Pstates[0].size() and i<4; i++) { 
+				
+				printf("S: %02ld",i);
+				for (size_t k=0; k<Pstates.size() and k<8; k++) 
+						 printf(" %01.3lf",Pstates[k][i]);
+				putchar('\n');
+			}		
+			putchar('\n');
+		}
+			
 		
 	public:
 
@@ -211,16 +255,10 @@ class Marlin2018Simple {
 			std::vector<double> P;
 			for (auto &&a: alphabet) P.push_back(a.p);
 			double shannonLimit = Distribution::entropy(P)/std::log2(P.size());
-				
-			double efficiency = shannonLimit / keySize / (meanLength*std::log2(P.size()));
 
-			//printf("Compress Ratio: %3.4lf\n", (std::log2(dictSize)-overlapping)/(meanLength*std::log2(P.size())));
-			
-			
-			return efficiency;
+			return shannonLimit / (keySize / (meanLength*std::log2(P.size())));
 		}
 		
-//		Dictionary(const std::map<Symbol, double> &symbols, size_t dictSize, size_t overlap, size_t maxWordSize)
 		Dictionary(const Alphabet &alphabet, size_t keySize, size_t overlap, size_t maxWordSize)
 			: alphabet(alphabet), keySize(keySize), overlap(overlap), maxWordSize(maxWordSize) {
 			
@@ -231,15 +269,15 @@ class Marlin2018Simple {
 				Pstates.push_back(PstatesSingle);
 			}
 			
-			int leastProbable = 0;
+			int victimDictionary = 0;
 			
 			std::vector<std::shared_ptr<Node>> dictionaries;
 			for (auto k=0; k<(1<<overlap); k++)
-				dictionaries.push_back(buildTree(Pstates[k], k==leastProbable) );
+				dictionaries.push_back(buildTree(Pstates[k], k==victimDictionary) );
 				
-			std::vector<Word> words = arrangeAndFuse(dictionaries,leastProbable);
+			*(std::vector<Word> *)this = arrangeAndFuse(dictionaries,victimDictionary);
 				
-			//if (Marlin2018Simple::debug) print(dictionary);
+			if (Marlin2018Simple::debug) print(*this);
 				
 			for (size_t iteration=0; iteration<Marlin2018Simple::iterationLimit; iteration++) {
 
@@ -248,8 +286,8 @@ class Marlin2018Simple {
 					for (auto k=0; k<(1<<overlap); k++)
 						Pstates[k] = std::vector<double>(alphabet.size(), 0.);
 
-					for (size_t i=0; i<words.size(); i++)
-						Pstates[i%(1<<overlap)][words[i].state] += words[i].p;
+					for (size_t i=0; i<size(); i++)
+						Pstates[i%(1<<overlap)][(*this)[i].state] += (*this)[i].p;
 				}
 				
 				// Find least probable subdictionary
@@ -261,22 +299,22 @@ class Marlin2018Simple {
 							sumProb += ps;
 						if (sumProb > minP) continue;
 						minP = sumProb;
-						leastProbable = i;
+						victimDictionary = i;
 					}
 				}
-				//if (Marlin2018Simple::debug) print(Pstates);
+				if (Marlin2018Simple::debug) print(Pstates);
 
 				dictionaries.clear();
 				for (auto k=0; k<(1<<overlap); k++)
-					dictionaries.push_back(buildTree(Pstates[k], k==leastProbable) );
+					dictionaries.push_back(buildTree(Pstates[k], k==victimDictionary) );
 				
-				words = arrangeAndFuse(dictionaries,leastProbable);
+				*(std::vector<Word> *)this = arrangeAndFuse(dictionaries,victimDictionary);
 				
-				//if (Marlin2018Simple::debug) print(dictionary);
-				//if (Marlin2018Simple::debug) printf("Efficiency: %3.4lf\n", efficiency);
+				if (Marlin2018Simple::debug) print(*this);
+				if (Marlin2018Simple::debug) printf("Efficiency: %3.4lf\n", calcEfficiency());		
 			}
-			this->insert(this->end(), words.begin(), words.end());
-			//if (Marlin2018Simple::debug) printf("Efficiency: %3.4lf\n", efficiency);				
+//			this->insert(this->end(), words.begin(), words.end());
+			if (Marlin2018Simple::debug) printf("Efficiency: %3.4lf\n", calcEfficiency());				
 		}			
 	};
 	const Dictionary dictionary;
@@ -306,12 +344,14 @@ class Marlin2018Simple {
 				table(wordStride*nAlpha,JumpIdx(-1))
 				{}
 			
-			JumpIdx &operator()(const size_t &word, const size_t &nextLetter) { 
-				return table[(word&(1<<wordStride))+(nextLetter<<wordStride)];
+			template<typename T0, typename T1>
+			JumpIdx &operator()(const T0 &word, const T1 &nextLetter) { 
+				return table[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
 			}
-			
-			JumpIdx  operator()(const size_t &word, const size_t &nextLetter) const { 
-				return table[(word&(1<<wordStride))+(nextLetter<<wordStride)];
+
+			template<typename T0, typename T1>
+			JumpIdx operator()(const T0 &word, const T1 &nextLetter) const { 
+				return table[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
 			}
 			
 			size_t getNewPos() { return nextIntermediatePos++; }
@@ -336,26 +376,32 @@ class Marlin2018Simple {
 			for (size_t k=0; k<NumSections; k++)
 				for (size_t i=k*SectionSize; i<(k+1)*SectionSize; i++)
 					positions[k][dict[i]] = i;
-			
+
 			// Link each possible word to its continuation
 			for (size_t k=0; k<NumSections; k++) {
 				for (size_t i=k*SectionSize; i<(k+1)*SectionSize; i++) {
 					Word word = dict[i];
 					size_t wordIdx = i;
+					std::cerr << "start " << k << " " << i << " " << dict.size() << std::endl;
 					while (not word.empty()) {
 						auto lastSymbol = word.back();						
 						word.pop_back();
 						size_t parentIdx;
 						if (positions[k].count(word)) {
 							parentIdx = positions[k][word];
+						std::cerr << "bipbipA " << k << " " << parentIdx << " " << word << std::endl;
 						} else {
 							parentIdx = jumpTable.getNewPos();
+						std::cerr << "bipbipB " << k << " " << parentIdx << " " << word << std::endl;
 						}
 						jumpTable(parentIdx, lastSymbol) = wordIdx;
 						wordIdx = parentIdx;
 					}
 				}
 			}
+
+			std::cerr << "I'm here" << std::endl;
+			
 			
 			//Link between inner dictionaries
 			for (size_t k=0; k<NumSections; k++) {
