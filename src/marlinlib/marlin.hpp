@@ -11,8 +11,7 @@
 #include <cassert>
 
 class Marlin2018Simple {
-public:
-
+	
 	// Configuration		
 	static const constexpr bool enableVictimDictionary = true;
 	static const constexpr double purgeProbabilityThreshold = 1e-10;
@@ -22,7 +21,29 @@ public:
 	typedef uint8_t Symbol; // storage used to store an input symbol.
 	typedef uint16_t WordIdx; // storage that suffices to store a word index.
 
-	// Member Types and Variables
+	struct SymbolAndProbability {
+		Symbol symbol;
+		double p;
+		bool operator<(const SymbolAndProbability &rhs) {
+			if (p!=rhs.p) return p>rhs.p; // Descending in probability
+			return symbol<rhs.symbol; // Ascending in symbol index
+		}
+	};
+	
+	struct Alphabet : public std::vector<SymbolAndProbability> {
+		
+		Alphabet(const std::map<Symbol, double> &symbols) {
+			for (auto &&symbol : symbols)
+				this->push_back(SymbolAndProbability({symbol.first, symbol.second}));
+			std::sort(this->begin(),this->end());
+		}
+		Alphabet(const std::vector<double> &symbols) {
+			for (size_t i=0; i<symbols.size(); i++)
+				this->push_back(SymbolAndProbability({Symbol(i), symbols[i]}));
+			std::sort(this->begin(),this->end());
+		}
+	};
+	
 	struct Word : std::vector<Symbol> {
 		using std::vector<Symbol>::vector;
 		double p = 0;
@@ -30,7 +51,7 @@ public:
 	};
 
 	class Dictionary : public std::vector<Word> {
-			
+		
 		struct Node;		
 		struct Node : std::vector<std::shared_ptr<Node>> {
 			double p=0;
@@ -39,7 +60,6 @@ public:
 		};
 
 		std::shared_ptr<Node> buildTree(const std::vector<double> &Pstates, bool isVictim) const {
-
 
 			std::vector<double> PN;
 			for (auto &&a : alphabet) PN.push_back(a.p);
@@ -53,8 +73,8 @@ public:
 			
 			auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { return lhs->p < rhs->p;};
 		
-//				auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs)
-//					return lhs->p*(1+std::pow(lhs->sz,1)) < rhs->p*(1+std::pow(rhs->sz,1));	};
+//			auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs)
+//				return lhs->p*(1+std::pow(lhs->sz,1)) < rhs->p*(1+std::pow(rhs->sz,1));	};
 
 			std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
 			size_t retiredNodes=0;
@@ -93,7 +113,7 @@ public:
 			}
 				
 			// DICTIONARY GROWING
-			while (pq.size() + retiredNodes < dictSize) {
+			while (pq.size() + retiredNodes < (1U<<keySize)) {
 					
 				auto node = pq.top();
 				pq.pop();
@@ -123,7 +143,7 @@ public:
 			return root;
 		}
 		
-		std::vector<Word> buildWords(const std::shared_ptr<Node> &root) const {
+		std::vector<Word> buildWords( const std::shared_ptr<Node> &root) const {
 		
 			std::vector<Word> ret;
 			
@@ -177,32 +197,10 @@ public:
 		
 	public:
 
-		const size_t dictSize; // Size of the big dictionary in words
-		const size_t overlap; // Overlap, in bytes
-		const size_t maxWordSize; // Maximum number of symbols that a word in the dictionary can have.
-
-		struct SymbolWithP {
-			Symbol symbol;
-			double p;
-			bool operator<(const SymbolWithP &rhs) {
-				if (p!=rhs.p) return p>rhs.p; // Descending in probability
-				return symbol<rhs.symbol; // Ascending in symbol index
-			}
-		};
-				
-		struct Alphabet : std::vector<SymbolWithP> {
-			Alphabet(const std::map<Symbol, double> &symbols) {
-				for (auto &&symbol : symbols)
-					this->push_back(SymbolWithP({symbol.first, symbol.second}));
-				std::sort(this->begin(),this->end());
-			}
-			Alphabet(const std::vector<double> &symbols) {
-				for (size_t i=0; i<symbols.size(); i++)
-					this->push_back(SymbolWithP({Symbol(i), symbols[i]}));
-				std::sort(this->begin(),this->end());
-			}
-		};
 		const Alphabet alphabet;
+		const size_t keySize;     // Non overlapping bits of the word index in the big dictionary.
+		const size_t overlap;     // Bits that overlap between keys.s
+		const size_t maxWordSize; // Maximum number of symbols that a word in the dictionary can have.
 
 		double calcEfficiency() const {
 		
@@ -214,7 +212,7 @@ public:
 			for (auto &&a: alphabet) P.push_back(a.p);
 			double shannonLimit = Distribution::entropy(P)/std::log2(P.size());
 				
-			double efficiency = shannonLimit / ((std::log2(dictSize)-overlap)/(meanLength*std::log2(P.size())));
+			double efficiency = shannonLimit / keySize / (meanLength*std::log2(P.size()));
 
 			//printf("Compress Ratio: %3.4lf\n", (std::log2(dictSize)-overlapping)/(meanLength*std::log2(P.size())));
 			
@@ -223,9 +221,8 @@ public:
 		}
 		
 //		Dictionary(const std::map<Symbol, double> &symbols, size_t dictSize, size_t overlap, size_t maxWordSize)
-		Dictionary(const Alphabet &symbols, size_t dictSize, size_t overlap, size_t maxWordSize)
-			: dictSize(dictSize), overlap(overlap), maxWordSize(maxWordSize),
-			  alphabet(symbols) {
+		Dictionary(const Alphabet &alphabet, size_t keySize, size_t overlap, size_t maxWordSize)
+			: alphabet(alphabet), keySize(keySize), overlap(overlap), maxWordSize(maxWordSize) {
 			
 			std::vector<std::vector<double>> Pstates;
 			for (auto k=0; k<(1<<overlap); k++) {
@@ -284,7 +281,7 @@ public:
 	};
 	const Dictionary dictionary;
 	
-	struct Encoder {
+	struct Encoder { 
 
 		typedef uint32_t JumpIdx;
 		// Structured as:
@@ -296,33 +293,43 @@ public:
 		constexpr static const size_t FLAG_NEXT_WORD = 1<<(8*sizeof(JumpIdx)-1);
 		constexpr static const size_t FLAG_INSERT_EMPTY_WORD = 1<<(8*sizeof(JumpIdx)-2);
 		
-		//
-		const size_t keySize;     // Non overlapping bits of the word index in the big dictionary
-		const size_t overlap;     // Bits that overlap between keys
-		const size_t wordStride;  // Bit stride of the jump table corresponding to the word dimension
+		class JumpTable {
+
+			const size_t wordStride;  // Bit stride of the jump table corresponding to the word dimension
+			size_t nextIntermediatePos = 1<<(wordStride-1);	
+			std::vector<JumpIdx> table;
 		
-		std::vector<JumpIdx> jumpTable; // Self referencing table with attributes
-		template<typename T1, typename T2>
-		void setJump(const T1 &word, const T2 &nextLetter, JumpIdx value ) { 
-			jumpTable[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)] = value;
-		}
-
-		template<typename T1, typename T2>
-		constexpr JumpIdx getJump(const T1 &word, const T2 &nextLetter) const { 
-			return jumpTable[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
-		}
-
+		public:
+		
+			JumpTable(size_t keySize, size_t overlap, size_t nAlpha) :
+				wordStride(keySize+overlap+1), // Extra bit for intermediate nodes.
+				table(wordStride*nAlpha,JumpIdx(-1))
+				{}
+			
+			JumpIdx &operator()(const size_t &word, const size_t &nextLetter) { 
+				return table[(word&(1<<wordStride))+(nextLetter<<wordStride)];
+			}
+			
+			JumpIdx  operator()(const size_t &word, const size_t &nextLetter) const { 
+				return table[(word&(1<<wordStride))+(nextLetter<<wordStride)];
+			}
+			
+			size_t getNewPos() { return nextIntermediatePos++; }
+			
+			bool isIntermediate(size_t pos) const { return pos & (1<<(wordStride-1)); }
+		};
+		JumpTable jumpTable;
+		
 		std::vector<JumpIdx> start;
 		std::vector<JumpIdx> emptyWords;
+		const size_t keySize;
 
 		Encoder(const Dictionary &dict) :
-			keySize(std::log2(dict.size())-overlap),
-			overlap(dict.overlap),
-			wordStride(keySize+overlap+1), // Extra bit for intermediate nodes.
-			jumpTable((1<<wordStride)*dict.alphabet.size(),JumpIdx(-1)) { 
+			jumpTable(dict.keySize, dict.overlap, dict.alphabet.size()),
+			keySize(dict.keySize) { 
 			
 			size_t NumSections = 1<<dict.overlap;
-			size_t SectionSize = 1<<keySize;
+			size_t SectionSize = 1<<dict.keySize;
 			std::vector<std::map<Word, size_t>> positions(NumSections);
 
 			// Init the mapping (to know where each word goes)
@@ -331,7 +338,6 @@ public:
 					positions[k][dict[i]] = i;
 			
 			// Link each possible word to its continuation
-			size_t nextIntermediatePos = 1<<(wordStride-1);
 			for (size_t k=0; k<NumSections; k++) {
 				for (size_t i=k*SectionSize; i<(k+1)*SectionSize; i++) {
 					Word word = dict[i];
@@ -343,9 +349,9 @@ public:
 						if (positions[k].count(word)) {
 							parentIdx = positions[k][word];
 						} else {
-							parentIdx = nextIntermediatePos++;
+							parentIdx = jumpTable.getNewPos();
 						}
-						setJump(parentIdx, lastSymbol, wordIdx);
+						jumpTable(parentIdx, lastSymbol) = wordIdx;
 						wordIdx = parentIdx;
 					}
 				}
@@ -355,14 +361,14 @@ public:
 			for (size_t k=0; k<NumSections; k++) {
 				for (size_t i=k*SectionSize; i<(k+1)*SectionSize; i++) {
 					for (size_t j=0; j<dict.alphabet.size(); j++) {
-						if (getJump(i,j)==JumpIdx(-1)) {
-							if (positions[i>>keySize].count(Word(1,Symbol(j)))) {
-								setJump(i, j, positions[i>>keySize][Word(1,Symbol(j))] +
-									FLAG_NEXT_WORD);
+						if (jumpTable(i,j)==JumpIdx(-1)) {
+							if (positions[i>>dict.keySize].count(Word(1,Symbol(j)))) {
+								jumpTable(i, j) = positions[i>>dict.keySize][Word(1,Symbol(j))] +
+									FLAG_NEXT_WORD;
 							} else { 
-								setJump(i, j, positions[i>>keySize][Word(1,Symbol(j))] +
+								jumpTable(i, j) = positions[i>>dict.keySize][Word(1,Symbol(j))] +
 									FLAG_NEXT_WORD + 
-									FLAG_INSERT_EMPTY_WORD);
+									FLAG_INSERT_EMPTY_WORD;
 							}
 						}
 					}
@@ -388,7 +394,7 @@ public:
 		}
 		
 		template<class TIN, typename TOUT, typename std::enable_if<sizeof(typename TIN::value_type)==1,int>::type = 0>		
-		void encode(const TIN &in, TOUT &out) const {
+		void operator()(const TIN &in, TOUT &out) const {
 			
 			if (out.size() < in.size()) out.resize(in.size());
 			
@@ -402,7 +408,7 @@ public:
 				JumpIdx j0 = start[*i++];					
 				while (i<iend) {
 					
-					JumpIdx j1 = getJump(j0, *i++);
+					JumpIdx j1 = jumpTable(j0, *i++);
 
 					if (j1 & FLAG_NEXT_WORD) {
 						value <<= keySize;
@@ -418,7 +424,7 @@ public:
 					}
 					j0=j1;
 				}
-				assert (not (j0 & (1<<(wordStride-1)))); //If we end in an intermediate node, we should roll back. Not implemented.
+				assert (not jumpTable.isIntermediate(j0)); //If we end in an intermediate node, we should roll back. Not implemented.
 				value <<= keySize;
 				bits += keySize;
 				value += j0 & ((1<<keySize)-1);
@@ -431,7 +437,7 @@ public:
 	};
 	const Encoder encoder;
 	
-	struct Decoder {
+	struct Decoder { //Only valid for dictionaries with sizes multiple of 2
 
 		const size_t keySize;     // Non overlapping bits of the word index in the big dictionary
 		const size_t overlap;     // Bits that overlap between keys
@@ -526,7 +532,7 @@ public:
 		}
 		
 		template<typename TIN, typename TOUT>
-		void decode(const TIN &in, TOUT &out) const {
+		void operator()(const TIN &in, TOUT &out) const {
 			
 			if (out.size() < in.size()) out.resize(in.size());
 
@@ -547,33 +553,21 @@ public:
 			}
 		}
 	};
-	const Decoder decoder;
+	const Decoder decoder;	
 	
 public:
 
-	const size_t keySize;     // Non overlapping bits of the word index in the big dictionary
-	const size_t overlap;     // Bits that overlap between keys
-	const size_t maxWordSize;
-
 	const double efficiency;
 
-	Marlin2018Simple (const std::map<Symbol, double> &symbols, size_t keySize, size_t overlap, size_t maxWordSize)
-		: dictionary(symbols, keySize, overlap, maxWordSize),
+	Marlin2018Simple (const Alphabet &alphabet, size_t keySize, size_t overlap, size_t maxWordSize)
+		: dictionary(alphabet, keySize, overlap, maxWordSize),
 		  encoder(dictionary),
 		  decoder(dictionary),
-		  keySize(keySize), overlap(overlap), maxWordSize(maxWordSize),
-		  efficiency(dictionary.calcEfficiency())  {}
-
-	Marlin2018Simple (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize)
-		: dictionary(pdf, keySize, overlap, maxWordSize),
-		  encoder(dictionary),
-		  decoder(dictionary),
-		  keySize(keySize), overlap(overlap), maxWordSize(maxWordSize),
 		  efficiency(dictionary.calcEfficiency())  {}
 		  
 	template<typename TIN, typename TOUT>
-	void encode(const TIN &in, TOUT &out) const { encoder.encode(in, out); }
+	void encode(const TIN &in, TOUT &out) const { encoder(in, out); }
 
 	template<typename TIN, typename TOUT>
-	void decode(const TIN &in, TOUT &out) const { decoder.decode(in, out); }
+	void decode(const TIN &in, TOUT &out) const { decoder(in, out); }
 };
