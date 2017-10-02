@@ -17,7 +17,7 @@ class Marlin2018Simple {
 	static const constexpr bool enableVictimDictionary = true;
 	static const constexpr double purgeProbabilityThreshold = 1e-10;
 	static const constexpr size_t iterationLimit = 3;
-	static const constexpr bool debug = false;
+	static const constexpr bool debug = true;
 
 	typedef uint8_t Symbol; // storage used to store an input symbol.
 	typedef uint16_t WordIdx; // storage that suffices to store a word index.
@@ -340,7 +340,7 @@ class Marlin2018Simple {
 			JumpTable(size_t keySize, size_t overlap, size_t nAlpha) :
 				alphaStride(std::ceil(std::log2(nAlpha))),
 				wordStride(keySize+overlap+1), // Extra bit for intermediate nodes.
-				table((1<<wordStride)*nAlpha,JumpIdx(-1))
+				table((1<<wordStride)*(1<<alphaStride),JumpIdx(-1))
 				{}
 			
 			template<typename T0, typename T1>
@@ -443,9 +443,10 @@ class Marlin2018Simple {
 		template<class TIN, typename TOUT, typename std::enable_if<sizeof(typename TIN::value_type)==1,int>::type = 0>		
 		void encodeA(const TIN &in, TOUT &out) const {
 			
-			if (out.size() < in.size()) out.resize(in.size());
+			if (out.size() < 2*in.size()) out.resize(in.size());
 			
-			uint32_t *o = (uint32_t *)&out.front();
+			uint32_t *o = (uint32_t *)&*out.begin();
+			uint32_t *oend = (uint32_t *)&*out.end();
 			const uint8_t *i = (const uint8_t *)&in.front();
 			const uint8_t *iend = i + in.size();
 			
@@ -455,6 +456,7 @@ class Marlin2018Simple {
 				JumpIdx j0 = jumpTable(start, *i++);
 				while (i<iend) {
 
+
 					JumpIdx j1 = jumpTable(j0, *i++);
 					
 					if (j1 & FLAG_NEXT_WORD) {
@@ -462,6 +464,7 @@ class Marlin2018Simple {
 						bits += dict.keySize;
 						value += j0 & ((1<<dict.keySize)-1);
 						if (bits>=32) {
+							if (o==oend) return;
 							bits -= 32;
 							*o++ = value>>bits;
 						}
@@ -486,10 +489,12 @@ class Marlin2018Simple {
 
 //std::cerr << (j0 & ((1<<dict.keySize)-1)) << " " << bits << std::endl;
 					}
+					if (o==oend) return;
 					bits -= 32;
 					*o++ = value>>bits;
 				}
 			}
+//			std::cerr << out.size() << " " << ((uint8_t *)o-(uint8_t *)&out.front()) << std::endl;
 			out.resize((uint8_t *)o-(uint8_t *)&out.front());
 		}
 
@@ -547,7 +552,7 @@ class Marlin2018Simple {
 		template<class TIN, typename TOUT, typename std::enable_if<sizeof(typename TIN::value_type)==1,int>::type = 0>		
 		void operator()(const TIN &in, TOUT &out) const {
 			if (dict.keySize==12) 
-				encode12(in,out);
+				encodeA(in,out);
 			else
 				encodeA(in,out);
 		}
@@ -567,9 +572,12 @@ class Marlin2018Simple {
 			return true;
 		}
 
-		void operator()(const std::vector<uint8_t> in, std::vector<uint8_t> & out) const {
+		template<class TIN, typename TOUT, typename std::enable_if<sizeof(typename TIN::value_type)==1,int>::type = 0>		
+		void operator()(const TIN &in, TOUT &out) const {
 
-			out.clear();
+			out.resize(in.size());
+			out.resize(0);
+			
 			uint64_t value=0; int32_t bits=0;
 			
 			size_t lastWord = 0;
@@ -577,6 +585,11 @@ class Marlin2018Simple {
 				lastWord++;
 			
 			for (size_t i=0, longest=0; i<in.size(); i+=longest) {
+				
+				if (out.size()>in.size()-16) {
+					std::cerr << "E: " << in.size() << " " << out.size() << std::endl;
+					return;
+				}
 				
 				size_t remaining = in.size()-i;
 				
@@ -594,7 +607,7 @@ class Marlin2018Simple {
 				bits += W.keySize;
 				value += best & ((1<<W.keySize)-1);
 				lastWord = best;
-				std::cerr << best << ":" << bits << std::endl;
+//				std::cerr << best << ":" << bits << std::endl;
 
 				if (bits>=32) {
 					bits-=32;
@@ -612,7 +625,7 @@ class Marlin2018Simple {
 							bits += W.keySize;
 							value += idx & ((1<<W.keySize)-1);
 							lastWord = idx;
-							std::cerr << idx << ":" << bits << std::endl;
+//							std::cerr << idx << ":" << bits << std::endl;
 							break;
 						}
 					}
@@ -622,9 +635,11 @@ class Marlin2018Simple {
 				uint32_t *v = (uint32_t *)&*out.end();
 				*--v = value>>bits;
 			}
+			
+//			std::cerr << "E: " << in.size() << " " << out.size() << std::endl;
 		}
 	};
-	const Encoder encoder = Encoder(dictionary);
+	const EncoderSlow encoder = EncoderSlow(dictionary);
 	
 	struct Decoder {
 
@@ -750,7 +765,7 @@ class Marlin2018Simple {
 	
 	struct DecoderSlow {
 		
-		const Dictionary &W;
+		const Dictionary W;
 		DecoderSlow(const Dictionary &dict) : W(dict) {}
 		
 /*		void operator()(const std::vector<uint8_t> in, std::vector<uint8_t> & out) const {	
@@ -777,8 +792,10 @@ class Marlin2018Simple {
 		
 		template<typename TIN, typename TOUT>
 		void operator()(const TIN &in, TOUT &out) const  {
+			
+			//out.resize(2*in.size());
+			out.resize(0);
 
-			uint8_t *o = (uint8_t *)&out.front();
 			const uint32_t *i = (const uint32_t *)&in.front();
 			const uint32_t *iend = i + in.size();
 			
@@ -788,6 +805,7 @@ class Marlin2018Simple {
 			uint32_t bits = 0;
 			
 			while (bits>0 or i<iend) {
+				
 				if (bits < W.keySize) {
 					bits += 32;
 					value = (value<<32) + *i++;
@@ -795,9 +813,15 @@ class Marlin2018Simple {
 				auto idx = (value>>(bits-W.keySize)) & ((1<<(W.keySize+W.overlap))-1);
 //				std::cerr << idx << ":" << bits << std::endl;
 				bits -= W.keySize;
-				for (auto c : W[idx]) *o++ = c;
+
+				if (out.size()+W[idx].size() > out.capacity()) {
+					//std::cerr << "DECODE_WHAT: " << (out.size()+W[idx].size()) << " " <<  out.capacity() << std::endl;
+					//break;
+				}					
+
+				for (auto c : W[idx]) out.push_back(c);
 			}
-			out.resize((uint8_t *)o-(uint8_t *)&out.front());
+			//out.resize((uint8_t *)o-(uint8_t *)&out.front());
 		}
 		
 	};	
@@ -816,10 +840,13 @@ public:
 	const double efficiency;
 
 	Marlin2018Simple (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize)
-		: dictionary(pdf, keySize, overlap, maxWordSize),
-		  efficiency(dictionary.calcEfficiency())  {
-			  /*
-		auto testData = Distribution::getResiduals(pdf, 1<<24);
+		: 
+		  dictionary(pdf, keySize, overlap, maxWordSize),
+		  efficiency(dictionary.calcEfficiency())  {}
+		 
+	void test(const std::vector<double> &pdf) const {
+			  
+		auto testData = Distribution::getResiduals(pdf, 1<<16);
 		
 		auto compressedData = testData;
 		
@@ -844,15 +871,19 @@ public:
 		tt.stop();
 		
 		std::cerr << testData.size() << " " << uncompressedData.size() << std::endl;
-		for (size_t i=0; i<10; i++) std::cerr << int(testData[i]) << " | "; std::cerr << std::endl;
-		for (size_t i=0; i<10; i++) std::cerr << int(uncompressedData[i]) << " | "; std::cerr << std::endl;
-		
-		for (size_t i=0; i<1000 and i<testData.size(); i++) std::cerr << int(testData[i]==uncompressedData[i]); std::cerr << std::endl;
-		
-		
 		
 		std::cerr << (testData==uncompressedData) <<  " " << (testData.size()/tt()/(1<<20)) << std::endl;
-		*/
+		if (testData!=uncompressedData) {
+
+			for (size_t i=0; i<10; i++) std::cerr << int(testData[i]) << " | "; std::cerr << std::endl;
+			for (size_t i=0; i<10; i++) std::cerr << int(uncompressedData[i]) << " | "; std::cerr << std::endl;
+
+			for (size_t i=0; i<100000 and i<testData.size() and i<uncompressedData.size(); i++) 
+				std::cerr << int(testData[i]==uncompressedData[i]) << (i%240?"":"\n"); 
+			std::cerr << std::endl;
+			
+		}
+		
 	}
 		  
 	template<typename TIN, typename TOUT>

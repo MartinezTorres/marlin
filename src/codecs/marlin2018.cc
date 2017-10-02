@@ -33,32 +33,38 @@ struct Marlin2018Pimpl : public CODEC8Z {
 
 		std::vector<std::shared_ptr<Marlin2018Simple>> builtDictionaries(numDict);
 
-		#pragma omp parallel for
+		//#pragma omp parallel for
 		for (size_t p=0; p<numDict; p++) {
 			
 			std::vector<double> pdf(256,0.);
 			for (double i=0.05; i<1; i+=0.1) {
 				
-				auto pdf0 = Distribution::pdf(distType, (p+i)/numDict);
+				auto pdf0 = Distribution::pdf(distType, (p+i-0.5)/numDict);
 				for (size_t j=0; j<pdf.size(); j++)
-					pdf[j] += pdf0[j]/9.;
+					pdf[j] += pdf0[j]/10.;
 			}
 			
-			builtDictionaries[p] = std::make_shared<Marlin2018Simple>(pdf, keySize, overlap, 4);
+			//double ss = 0; for (auto &p : pdf) ss+=p; std::cerr << ss << std::endl;
+			
+			builtDictionaries[p] = std::make_shared<Marlin2018Simple>(pdf, keySize, overlap, 4-1);
 			for (int maxWordLength=8; maxWordLength <= 128; maxWordLength*=2) {
+				
+				std::cerr << "Test: " << keySize << " " << overlap << " " << maxWordLength-1 << std::endl;
 
-				std::shared_ptr<Marlin2018Simple> dict = std::make_shared<Marlin2018Simple>(pdf, keySize, overlap, maxWordLength);
-				if (dict->efficiency > builtDictionaries[p]->efficiency+0.005)
-					builtDictionaries[p] = dict;
+				std::shared_ptr<Marlin2018Simple> dict = std::make_shared<Marlin2018Simple>(pdf, keySize, overlap, maxWordLength-1);
+
+				if (dict->efficiency < builtDictionaries[p]->efficiency+0.005) break;
+
+				builtDictionaries[p] = dict;
 			}
 		}
 		
 		dictionaries.resize(256);
 		
-		#pragma omp parallel for
+		//#pragma omp parallel for
 		for (size_t h=0; h<256; h+=4) {
 			
-			auto testData = Distribution::getResiduals(Distribution::pdf(distType, (h+2)/256.), 1<<18);
+			auto testData = Distribution::getResiduals(Distribution::pdf(distType, (h+2)/256.), 1<<16);
 			
 			double lowestSize = testData.size()*0.99; // If efficiency is not enough to compress 1%, skip compression
 			for (auto &&dict : builtDictionaries) {

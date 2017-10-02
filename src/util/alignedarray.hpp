@@ -59,6 +59,8 @@ public:
     constexpr T * data() const { return (T *)ptr; };
     constexpr T * end() { return ((T *)ptr)+sz; };
 
+	void push_back(const T &t) { *(end()) = t; sz++; }
+
     constexpr size_t size() { return sz; };
     void resize(size_t newSize) { sz = newSize; }
 

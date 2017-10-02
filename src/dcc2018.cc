@@ -240,14 +240,16 @@ using namespace std;
 int main( int , char *[] ) {
 		
 	std::vector<shared_ptr<CODEC8>> C = {
-		std::make_shared<Nibble>(),
+//		std::make_shared<Nibble>(),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,   9),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  16),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,1),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,0),
+		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
+//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,16),
-		std::make_shared<Rice>(),
+/*		std::make_shared<Rice>(),
 		std::make_shared<RLE>(),
 		std::make_shared<Snappy>(),
 		std::make_shared<Nibble>(),
@@ -261,7 +263,7 @@ int main( int , char *[] ) {
 		std::make_shared<Huff0>(),
 		std::make_shared<Lz4>(),
 		std::make_shared<Zstd>(),
-		std::make_shared<CharLS>(),
+		std::make_shared<CharLS>(),*/
 	};
 	
 	for (auto c : C) 
