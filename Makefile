@@ -15,7 +15,9 @@ LFLAGS += -lgomp
 
 CFLAGS += -Ofast
 
-CFLAGS += -g -O0
+CFLAGS += -g
+#CFLAGS += -g -O0
+CFLAGS += -g -Ofast
 
 CFLAGS += -I./ext
 LFLAGS += $(wildcard ./ext/*.a)
@@ -51,7 +53,11 @@ data:
 ext:
 	@$(MAKE) -C ext --no-print-directory
 	
-./src/codecs/%.o: ./src/codecs/%.cc ./src/codecs/%.hpp ./src/util/*.hpp 
+./src/codecs/marlin2018.o: ./src/codecs/marlin2018.cc ./src/codecs/marlin2018.hpp ./src/util/*.hpp  ./src/marlinlib/marlin.hpp
+	@echo "CREATING $@"
+	@$(CXX) -c -o $@ $< $(CFLAGS)
+
+./src/codecs/%.o: ./src/codecs/%.cc ./src/codecs/%.hpp ./src/util/*.hpp
 	@echo "CREATING $@"
 	@$(CXX) -c -o $@ $< $(CFLAGS)
 

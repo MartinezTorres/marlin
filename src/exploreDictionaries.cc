@@ -472,7 +472,7 @@ int main(int argc, char **argv) {
 	if (options["-h"] or options["--help"] or options.empty())
 		usage();
 	
-		cerr << "P: "; for (auto p : P) cerr << p << " "; cerr  << endl;
+	//cerr << "P: "; for (auto p : P) cerr << p << " "; cerr  << endl;
 
 
 	if (options["--custom"]) {
@@ -502,10 +502,10 @@ int main(int argc, char **argv) {
 		usage();
 	}
 		
-	cerr << "P: "; for (auto p : P) cerr << p << " "; cerr << Distribution::entropy(P) << endl;
+	//cerr << "P: "; for (auto p : P) cerr << p << " "; cerr << Distribution::entropy(P) << endl;
 		
 	// Ensure that symbols are sorted in order of decreasing probabilities
-	std::sort(P.begin(), P.end(), std::greater<double>());
+	//std::sort(P.begin(), P.end(), std::greater<double>());
 	
 	
 	std::cerr << "Marlin" << std::endl;
