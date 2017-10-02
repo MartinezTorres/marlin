@@ -33,13 +33,14 @@ struct Marlin2018Pimpl : public CODEC8Z {
 
 		std::vector<std::shared_ptr<Marlin2018Simple>> builtDictionaries(numDict);
 
-		//#pragma omp parallel for
+		#pragma omp parallel for
 		for (size_t p=0; p<numDict; p++) {
 			
 			std::vector<double> pdf(256,0.);
 			for (double i=0.05; i<1; i+=0.1) {
 				
-				auto pdf0 = Distribution::pdf(distType, (p+i-0.5)/numDict);
+//				auto pdf0 = Distribution::pdf(distType, (p+0.5)/numDict);
+				auto pdf0 = Distribution::pdf(distType, (p+i)/numDict);
 				for (size_t j=0; j<pdf.size(); j++)
 					pdf[j] += pdf0[j]/10.;
 			}
@@ -61,7 +62,7 @@ struct Marlin2018Pimpl : public CODEC8Z {
 		
 		dictionaries.resize(256);
 		
-		//#pragma omp parallel for
+		#pragma omp parallel for
 		for (size_t h=0; h<256; h+=4) {
 			
 			auto testData = Distribution::getResiduals(Distribution::pdf(distType, (h+2)/256.), 1<<16);
