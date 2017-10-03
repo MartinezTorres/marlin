@@ -48,7 +48,7 @@ struct Marlin2018Pimpl : public CODEC8Z {
 			//double ss = 0; for (auto &p : pdf) ss+=p; std::cerr << ss << std::endl;
 			
 			builtDictionaries[p] = std::make_shared<Marlin2018Simple>(pdf, keySize, overlap, 4-1);
-			for (int maxWordLength=8; maxWordLength <= 128; maxWordLength*=2) {
+			for (int maxWordLength=8; maxWordLength <= 512; maxWordLength*=2) {
 				
 				std::cerr << "Test: " << keySize << " " << overlap << " " << maxWordLength-1 << std::endl;
 

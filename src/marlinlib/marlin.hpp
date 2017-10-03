@@ -17,7 +17,7 @@ class Marlin2018Simple {
 	static const constexpr bool enableVictimDictionary = true;
 	static const constexpr double purgeProbabilityThreshold = 1e-10;
 	static const constexpr size_t iterationLimit = 3;
-	static const constexpr bool debug = false;
+	static const constexpr bool debug = true;
 
 	typedef uint8_t Symbol; // storage used to store an input symbol.
 	typedef uint16_t WordIdx; // storage that suffices to store a word index.
@@ -89,10 +89,10 @@ class Marlin2018Simple {
 
 			std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
 			size_t retiredNodes=0;
-
+			
 			auto pushAndPrune = [this,&pq,&retiredNodes,isVictim](std::shared_ptr<Node> node) {
 				if (isVictim or (not Marlin2018Simple::enableVictimDictionary) or node->p>Marlin2018Simple::purgeProbabilityThreshold) {
-					if (node->sz<=maxWordSize) {
+					if (node->sz<maxWordSize) {
 						pq.push(node);
 					} else {
 						retiredNodes++;
@@ -169,6 +169,8 @@ class Marlin2018Simple {
 					w2.push_back(alphabet[i].symbol);
 					w2.p = n->at(i)->p;
 					w2.state = n->at(i)->size();
+					
+					assert(n->at(i)->sz == w2.size());
 					q.emplace(n->at(i), w2);
 				}
 			}
@@ -686,42 +688,80 @@ class Marlin2018Simple {
 		void decode12(const TIN &in, TOUT &out) const {
 			
 			uint8_t *o = (uint8_t *)&out.front();
-			const uint8_t *i = (const uint8_t *)in.data();
+			const uint32_t *i = (const uint32_t *)in.data();
+			const uint32_t *iend = (const uint32_t *)&*in.end();
 			
 			uint64_t mask = (1<<(keySize+overlap))-1;
 			const T *D = (const T *)decoderTable.data();
-			uint64_t v64 = start;
-			while (i<(const uint8_t *)&*in.end()) {
+			uint64_t value = start; 
+			if ( in.size()>12 ) {
+				iend-=3;
+				while (i<iend) {
 
-				v64 <<= 6;
-				v64 += (*(const uint64_t *)i) & 0x0000FFFFFFFFFFFFULL;
-				i+=6;
-				
-				{				
-					T v = D[(v64>>0 ) & mask];
-					*((T *)o) = v;
-					o += v >> ((sizeof(T)-1)*8);
+					value = (value<<32) + *i++;
+					{				
+						T v = D[(value>>20 ) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					{				
+						T v = D[(value>>8) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					value = (value<<32) + *i++;
+					{				
+						T v = D[(value>>28) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					{				
+						T v = D[(value>>16) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					{				
+						T v = D[(value>>4) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					value = (value<<32) + *i++;
+					{				
+						T v = D[(value>>24) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					{				
+						T v = D[(value>>12) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					{				
+						T v = D[(value>>0) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+				}
+				iend+=3;
+			}
+			int32_t c=-keySize;
+			while (c>=0 or i<(const uint32_t *)&*in.end()) {
+				if (c<0) {
+					value = (value<<32) + *i++;
+					c   += 32;
 				}
 				{				
-					T v = D[(v64>>12) & mask];
-					*((T *)o) = v;
-					o += v >> ((sizeof(T)-1)*8);
-				}
-				{				
-					T v = D[(v64>>24) & mask];
-					*((T *)o) = v;
-					o += v >> ((sizeof(T)-1)*8);
-				}
-				{				
-					T v = D[(v64>>36) & mask];
+					T v = D[(value>>c) & mask];
+					c -= keySize;
 					*((T *)o) = v;
 					o += v >> ((sizeof(T)-1)*8);
 				}
 			}
+			out.resize(o-(uint8_t *)&out.front());
 		}
 	
 		Decoder(const Dictionary &dict) :
-			keySize(std::log2(dict.size())-overlap),
+			keySize(dict.keySize),
 			overlap(dict.overlap),
 			maxWordSize(dict.maxWordSize) {
 				
@@ -734,7 +774,10 @@ class Marlin2018Simple {
 
 				Symbol *d = &decoderTable[i*(maxWordSize+1)];
 				d[maxWordSize] = dict[i].size();
-				assert(dict[i].size()<=maxWordSize-3);
+				if (dict[i].size()>maxWordSize) {
+					std::cerr << "WHAT?" << i << " " << dict[i].size() << " " << maxWordSize << std::endl;
+				}
+				assert(dict[i].size()<=maxWordSize);
 				for (auto c : dict[i])
 					*d++ = c;
 			}
@@ -743,8 +786,6 @@ class Marlin2018Simple {
 		template<typename TIN, typename TOUT>
 		void operator()(const TIN &in, TOUT &out) const {
 			
-			if (out.size() < in.size()) out.resize(in.size());
-
 			if (keySize==12) {
 				switch (maxWordSize+1) {
 					case   4: return decode12<uint32_t>(in, out);
@@ -758,6 +799,8 @@ class Marlin2018Simple {
 				case  32: return decodeA<uint64_t, 4>(in, out);
 				case  64: return decodeA<uint64_t, 8>(in, out);
 				case 128: return decodeA<uint64_t,16>(in, out);
+				case 256: return decodeA<uint64_t,32>(in, out);
+				case 512: return decodeA<uint64_t,64>(in, out);
 				default: throw std::runtime_error ("unsupported maxWordSize");
 			}
 		}
@@ -803,6 +846,7 @@ class Marlin2018Simple {
 		}
 		
 	};	
+//	const DecoderSlow decoder = DecoderSlow(dictionary);
 	const Decoder decoder = Decoder(dictionary);
 	
 	
