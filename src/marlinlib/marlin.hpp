@@ -17,7 +17,7 @@ class Marlin2018Simple {
 	static const constexpr bool enableVictimDictionary = true;
 	static const constexpr double purgeProbabilityThreshold = 1e-10;
 	static const constexpr size_t iterationLimit = 3;
-	static const constexpr bool debug = true;
+	static const constexpr bool debug = false;
 
 	typedef uint8_t Symbol; // storage used to store an input symbol.
 	typedef uint16_t WordIdx; // storage that suffices to store a word index.
