@@ -37,14 +37,14 @@ struct Marlin2018Pimpl : public CODEC8Z {
 		for (size_t p=0; p<numDict; p++) {
 			
 			std::vector<double> pdf(256,0.);
-			for (double i=0.05; i<1; i+=0.1) {
+			for (double i=0.05; i<0.99; i+=0.1) {
 				
 //				auto pdf0 = Distribution::pdf(distType, (p+0.5)/numDict);
 				auto pdf0 = Distribution::pdf(distType, (p+i)/numDict);
 				for (size_t j=0; j<pdf.size(); j++)
 					pdf[j] += pdf0[j]/10.;
 			}
-			
+					
 			//double ss = 0; for (auto &p : pdf) ss+=p; std::cerr << ss << std::endl;
 			
 			builtDictionaries[p] = std::make_shared<Marlin2018Simple>(pdf, keySize, overlap, 4-1);

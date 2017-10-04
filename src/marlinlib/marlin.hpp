@@ -1,4 +1,5 @@
 #pragma once
+#include <util/dedupvector.hpp>
 #include <iostream>
 #include <vector>
 #include <map>
@@ -13,11 +14,12 @@
 
 class Marlin2018Simple {
 	
-	// Configuration		
-	static const constexpr bool enableVictimDictionary = true;
-	static const constexpr double purgeProbabilityThreshold = 1e-10;
-	static const constexpr size_t iterationLimit = 3;
-	static const constexpr bool debug = false;
+	// Configuration
+	constexpr static const bool enableDedup = false;	
+	constexpr static const bool enableVictimDictionary = true;
+	constexpr static const double purgeProbabilityThreshold = 1e-6;
+	constexpr static const size_t iterationLimit = 3;
+	constexpr static const bool debug = false;
 
 	typedef uint8_t Symbol; // storage used to store an input symbol.
 	typedef uint16_t WordIdx; // storage that suffices to store a word index.
@@ -25,7 +27,7 @@ class Marlin2018Simple {
 	struct SymbolAndProbability {
 		Symbol symbol;
 		double p;
-		bool operator<(const SymbolAndProbability &rhs) {
+		bool operator<(const SymbolAndProbability &rhs) const {
 			if (p!=rhs.p) return p>rhs.p; // Descending in probability
 			return symbol<rhs.symbol; // Ascending in symbol index
 		}
@@ -36,12 +38,12 @@ class Marlin2018Simple {
 		Alphabet(const std::map<Symbol, double> &symbols) {
 			for (auto &&symbol : symbols)
 				this->push_back(SymbolAndProbability({symbol.first, symbol.second}));
-			std::sort(this->begin(),this->end());
+			std::stable_sort(this->begin(),this->end());
 		}
 		Alphabet(const std::vector<double> &symbols) {
 			for (size_t i=0; i<symbols.size(); i++)
 				this->push_back(SymbolAndProbability({Symbol(i), symbols[i]}));
-			std::sort(this->begin(),this->end());
+			std::stable_sort(this->begin(),this->end());
 		}
 	};
 	
@@ -70,7 +72,7 @@ class Marlin2018Simple {
 			size_t erased=0;
 		};
 
-		std::shared_ptr<Node> buildTree(const std::vector<double> &Pstates, bool isVictim) const {
+		std::shared_ptr<Node> buildTree(std::vector<double> Pstates, bool isVictim) const {
 
 			std::vector<double> PN;
 			for (auto &&a : alphabet) PN.push_back(a.p);
@@ -82,9 +84,8 @@ class Marlin2018Simple {
 				Pchild[i] = alphabet[i].p/PN[i];
 
 			
-			auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { return lhs->p < rhs->p;};
-		
-//			auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs)
+			auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { 
+				return lhs->p<rhs->p;};		
 //				return lhs->p*(1+std::pow(lhs->sz,1)) < rhs->p*(1+std::pow(rhs->sz,1));	};
 
 			std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
@@ -108,6 +109,13 @@ class Marlin2018Simple {
 			
 			// Include empty word
 			pq.push(root); // Does not do anything, only uses a spot
+			
+			long double factor = 0.;
+			for (auto &&p : Pstates) factor += p;
+			for (auto &&p : Pstates) p/=factor;
+			for (auto &&p : Pstates) if (std::abs(p-1.)<0.0001) p=1.;
+			for (auto &&p : Pstates) if (std::abs(p-0.)<0.0001) p=0.;
+			
 
 			for (size_t c=0; c<alphabet.size(); c++) {			
 					
@@ -116,6 +124,8 @@ class Marlin2018Simple {
 				for (size_t t = 0; t<=c; t++) sum += Pstates[t]/PN[t];
 				root->back()->p = sum * alphabet[c].p;
 				root->back()->sz = 1;
+				
+				//if (isVictim or (not Marlin2018Simple::enableVictimDictionary) or root->back()->p>Marlin2018Simple::purgeProbabilityThreshold)
 				pushAndPrune(root->back());
 			}
 				
@@ -125,8 +135,6 @@ class Marlin2018Simple {
 				std::shared_ptr<Node> node = pq.top();
 				pq.pop();
 				
-				//if (node->sz>2) 
-					
 				double p = node->p * Pchild[node->size()];
 				node->push_back(std::make_shared<Node>());
 				node->back()->p = p;
@@ -149,10 +157,24 @@ class Marlin2018Simple {
 					pushAndPrune(node->back());
 				}
 			}
+
+			{
+				std::stack<std::shared_ptr<Node>> q;
+				q.emplace(root);
+				while (not q.empty()) {
+					std::shared_ptr<Node> n = q.top();
+					q.pop();
+					n->p *= factor;
+					for (size_t i = 0; i<n->size(); i++)
+						q.emplace(n->at(i));
+				}
+			}
 			return root;
+			
+			
 		}
 		
-		std::vector<Word> buildWords( const std::shared_ptr<Node> &root) const {
+		std::vector<Word> buildWords( const std::shared_ptr<Node> root) const {
 		
 			std::vector<Word> ret;
 			
@@ -177,17 +199,18 @@ class Marlin2018Simple {
 			return ret;
 		}
 		
-		std::vector<Word> arrangeAndFuse( const std::vector<std::shared_ptr<Node>> &nodes, size_t victimIdx ) const {
-			
+		std::vector<Word> arrangeAndFuse( const std::vector<std::shared_ptr<Node>> nodes, size_t victimIdx ) const {
+
 			std::vector<Word> ret;
 			for (size_t n = 0; n<nodes.size(); n++) {
 				
 				std::vector<Word> sortedDictionary = buildWords(nodes[n]);
 				auto cmp = [](const Word &lhs, const Word &rhs) { 
 					if (lhs.state != rhs.state) return lhs.state<rhs.state;
-					return lhs.p > rhs.p;
+					if (std::abs(lhs.p-rhs.p)/(lhs.p+rhs.p) > 1e-10) return lhs.p > rhs.p;
+					return lhs<rhs;
 				};
-				std::sort(sortedDictionary.begin(), sortedDictionary.end(), cmp);
+				std::stable_sort(sortedDictionary.begin(), sortedDictionary.end(), cmp);
 				
 				std::vector<Word> w(1<<keySize);
 				for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1<<overlap)) {
@@ -501,57 +524,6 @@ class Marlin2018Simple {
 		}
 
 		template<class TIN, typename TOUT, typename std::enable_if<sizeof(typename TIN::value_type)==1,int>::type = 0>		
-		void encode12(const TIN &in, TOUT &out) const {
-			
-			if (out.size() < in.size()) out.resize(in.size());
-			
-			uint32_t *o = (uint32_t *)&out.front();
-			const uint8_t *i = (const uint8_t *)&in.front();
-			const uint8_t *iend = i + in.size();
-			
-			uint64_t value=0; int32_t bits=0;
-			if (i<iend) {
-				
-				JumpIdx j0 = jumpTable(start, *i++);
-				while (i<iend) {
-					
-					JumpIdx j1 = jumpTable(j0, *i++);
-					if (j1 & FLAG_NEXT_WORD) {
-						if (j1 & FLAG_INSERT_EMPTY_WORD)  i--;
-						value <<= 12;
-						bits += 12;
-						value += j0 & ((1<<12)-1);
-						if (bits>=32) {
-							bits -= 32;
-							*o++ = value>>bits;
-						}
-					}
-					j0=j1;
-				}
-				assert (not jumpTable.isIntermediate(j0)); //If we end in an intermediate node, we should roll back. Not implemented.
-				value <<= dict.keySize;
-				bits += dict.keySize;
-				value += j0 & ((1<<dict.keySize)-1);
-
-//std::cerr << (j0 & ((1<<dict.keySize)-1)) << " " << bits << std::endl;
-				
-				while (bits) {
-					while (bits<32) {
-						j0 = emptyWords[j0 % emptyWords.size()];
-						value <<= dict.keySize;
-						bits += dict.keySize;
-						value += j0 & ((1<<dict.keySize)-1);
-
-//std::cerr << (j0 & ((1<<dict.keySize)-1)) << " " << bits << std::endl;
-					}
-					bits -= 32;
-					*o++ = value>>bits;
-				}
-			}
-			out.resize((uint8_t *)o-(uint8_t *)&out.front());
-		}
-
-		template<class TIN, typename TOUT, typename std::enable_if<sizeof(typename TIN::value_type)==1,int>::type = 0>		
 		void operator()(const TIN &in, TOUT &out) const {
 			if (dict.keySize==12) 
 				encodeA(in,out);
@@ -651,6 +623,8 @@ class Marlin2018Simple {
 		
 		size_t start;
 		
+		std::shared_ptr<DedupVector<Symbol>> dedupVector;
+		
 		std::vector<Symbol> decoderTable;
 		template<typename T, size_t N, typename TIN, typename TOUT>
 		void decodeA(const TIN &in, TOUT &out) const  {
@@ -659,7 +633,7 @@ class Marlin2018Simple {
 			const uint32_t *i = (const uint32_t *)in.data();
 	
 			uint64_t mask = (1<<(keySize+overlap))-1;
-			const std::array<T,N>  *DD = (const std::array<T,N> *)decoderTable.data();
+			const std::array<T,N>  *DD = dedupVector ? (const std::array<T,N> *)(*dedupVector)() : (const std::array<T,N> *)decoderTable.data();
 			uint64_t v32 = start; int32_t c=-keySize;
 			
 			while (c>=0 or i<(const uint32_t *)&*in.end()) {
@@ -692,7 +666,8 @@ class Marlin2018Simple {
 			const uint32_t *iend = (const uint32_t *)&*in.end();
 			
 			uint64_t mask = (1<<(keySize+overlap))-1;
-			const T *D = (const T *)decoderTable.data();
+			
+			const T *D = dedupVector ? (const T *)(*dedupVector)() : (const T *)decoderTable.data();
 			uint64_t value = start; 
 			if ( in.size()>12 ) {
 				iend-=3;
@@ -781,6 +756,11 @@ class Marlin2018Simple {
 				for (auto c : dict[i])
 					*d++ = c;
 			}
+			
+			if (configuration("dedup", enableDedup))
+				dedupVector = std::make_shared<DedupVector<Symbol>>(decoderTable);
+				
+			std::cerr << bool(dedupVector) << std::endl;
 		}
 		
 		template<typename TIN, typename TOUT>
@@ -810,8 +790,7 @@ class Marlin2018Simple {
 		
 		const Dictionary W;
 		DecoderSlow(const Dictionary &dict) : W(dict) {}
-		
-		
+			
 		template<typename TIN, typename TOUT>
 		void operator()(const TIN &in, TOUT &out) const  {
 			
@@ -842,31 +821,58 @@ class Marlin2018Simple {
 
 				for (auto c : W[idx]) out.push_back(c);
 			}
-			//out.resize((uint8_t *)o-(uint8_t *)&out.front());
 		}
 		
 	};	
 //	const DecoderSlow decoder = DecoderSlow(dictionary);
 	const Decoder decoder = Decoder(dictionary);
-	
-	
-struct TestTimer {
-	timespec c_start, c_end;
-	void start() { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_start); };
-	void stop () { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_end); };
-	double operator()() { return (c_end.tv_sec-c_start.tv_sec) + 1.E-9*(c_end.tv_nsec-c_start.tv_nsec); }
-};
 
+	static std::map<std::string, double> &getConfigurationStructure() {
+		static std::map<std::string, double> c;
+		return c;
+	}
+
+	static double configuration(std::string name, double def=0.) {
+		auto &&c = getConfigurationStructure();
+		if (not c.count(name)) c[name]=def;
+		return c[name];
+	}
+	
 public:
 
+	static double getConfiguration(std::string name) { return getConfigurationStructure()[name]; }
+	
+	static void overrideConfiguration(std::string name, double val) { getConfigurationStructure()[name] = val; }
+	
+	
 	const double efficiency;
 
 	Marlin2018Simple (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize)
 		: 
 		  dictionary(pdf, keySize, overlap, maxWordSize),
 		  efficiency(dictionary.calcEfficiency())  {}
-		 
+
+    Marlin2018Simple() = delete;
+    Marlin2018Simple(const Marlin2018Simple& other) = delete;
+    Marlin2018Simple& operator= (const Marlin2018Simple& other) = delete;
+
+    Marlin2018Simple(Marlin2018Simple&& other) noexcept = default;
+    Marlin2018Simple& operator= (Marlin2018Simple&& other) noexcept = default;
+
+    /** Destructor */
+    ~Marlin2018Simple() noexcept = default;
+
+
 	void test(const std::vector<double> &pdf, size_t sz = 1<<6) const {
+		
+			
+		struct TestTimer {
+			timespec c_start, c_end;
+			void start() { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_start); };
+			void stop () { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_end); };
+			double operator()() { return (c_end.tv_sec-c_start.tv_sec) + 1.E-9*(c_end.tv_nsec-c_start.tv_nsec); }
+		};
+
 			  
 		auto testData = Distribution::getResiduals(pdf, sz);
 		
