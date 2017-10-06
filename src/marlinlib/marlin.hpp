@@ -358,14 +358,19 @@ class Marlin2018Simple {
 			const size_t alphaStride;  // Bit stride of the jump table corresponding to the word dimension
 			const size_t wordStride;  // Bit stride of the jump table corresponding to the word dimension
 			size_t nextIntermediatePos = 1<<(wordStride-1);	
-			std::vector<JumpIdx> table;
-		
+			
+			std::shared_ptr<DedupVector<JumpIdx>> dv;
+
 		public:
+
+			std::vector<JumpIdx> table;		
+			const JumpIdx *data;
 		
 			JumpTable(size_t keySize, size_t overlap, size_t nAlpha) :
 				alphaStride(std::ceil(std::log2(nAlpha))),
 				wordStride(keySize+overlap+1), // Extra bit for intermediate nodes.
-				table((1<<wordStride)*(1<<alphaStride),JumpIdx(-1))
+				table(((1<<wordStride)+76)*(1<<alphaStride),JumpIdx(-1)),
+				data(table.data())
 				{}
 			
 			template<typename T0, typename T1>
@@ -374,7 +379,9 @@ class Marlin2018Simple {
 //				if ((word&((1<<wordStride)-1))+(nextLetter<<wordStride) >= table.size()) std::cerr << "Overrun" << std::endl;
 
 //				return table[((word&((1<<wordStride)-1))<<alphaStride) + nextLetter];
-				return table[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
+
+//				return table[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
+				return table[(word&((1<<wordStride)-1))+(nextLetter*((1<<wordStride)+32))];
 			}
 
 			template<typename T0, typename T1>
@@ -382,12 +389,61 @@ class Marlin2018Simple {
 //				if ((word&((1<<wordStride)-1))+(nextLetter<<wordStride) < 0) std::cerr << "Underrun" << std::endl;
 //				if ((word&((1<<wordStride)-1))+(nextLetter<<wordStride) >= table.size()) std::cerr << "Overrun" << std::endl;
 //				return table[((word&((1<<wordStride)-1))<<alphaStride) + nextLetter];
-				return table[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
+
+//				return data[((word&((1<<wordStride)-1))<<alphaStride) + nextLetter];
+
+//				return data[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
+				return data[(word&((1<<wordStride)-1))+(nextLetter*((1<<wordStride)+32))];
 			}
 			
 			size_t getNewPos() { return nextIntermediatePos++; }
 			
 			bool isIntermediate(size_t pos) const { return pos & (1<<(wordStride-1)); }
+			
+			void dedup() {
+				dv = std::make_shared<DedupVector<JumpIdx>>(table);
+				data = (*dv)();
+			}
+			
+			void clean(JumpIdx start, const Dictionary &dict) {
+				
+				size_t NumSections = 1<<dict.overlap;
+				size_t SectionSize = 1<<dict.keySize;
+			
+				// Deduplicate
+				if (true) {
+					for (size_t k=0; k<NumSections; k++) {
+						bool ok = false;
+						for (size_t k2=0; (not ok) and (k2<k); k2++) {
+							ok = true;
+							for (size_t i=0; ok and (i<SectionSize); i++)
+								ok = (dict[k*SectionSize+i] == dict[k2*SectionSize+i]);
+								
+							if (ok) {
+								for (auto &v : table)
+									if (((v>>dict.keySize)&((1<<dict.overlap)-1)) == k)
+										v = (v&FLAG_NEXT_WORD) | (v&FLAG_INSERT_EMPTY_WORD) | (k2<<dict.overlap) | (v&((1<<dict.keySize)-1));
+							}
+						}
+					}
+				}
+			
+				// Zero unreachable
+				if (true) {
+					std::vector<bool> reachable(1<<wordStride,false);
+					reachable[start&((1U<<wordStride)-1)] = true;
+					for (auto &&v : table) 
+						reachable[v&((1U<<wordStride)-1)] = true;
+					
+					for (size_t i=0; i<(1U<<wordStride); i++)
+						if (not reachable[i])
+							for (size_t j=0; j<(1U<<alphaStride); j++)
+								(*this)(i,j) = -1;
+				}
+
+					
+				//dedup();
+			}
 		};
 		JumpTable jumpTable;
 		
@@ -449,6 +505,7 @@ class Marlin2018Simple {
 				}
 			}
 			
+			
 			// Fill list of empty words
 			emptyWords.resize(NumSections,JumpIdx(-1));
 			for (size_t k=0; k<NumSections; k++)
@@ -463,6 +520,8 @@ class Marlin2018Simple {
 			start = victim*SectionSize;
 			while (not dict[start].empty()) 
 				start++;
+
+			jumpTable.clean(start, dict);
 		}
 		
 		template<class TIN, typename TOUT, typename std::enable_if<sizeof(typename TIN::value_type)==1,int>::type = 0>		
