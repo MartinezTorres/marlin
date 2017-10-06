@@ -24,8 +24,9 @@ public:
 
 	DedupVector(std::vector<T> src) : sz(src.size()*sizeof(T)) {
 		
-		std::string name = "dedupXXXXXX";
+		std::string name = "/tmp/dedupXXXXXX";
 		if ((fd = mkstemp(&name[0]))<0) throw std::runtime_error("mkstemp");
+		if (unlink(&name[0])) throw std::runtime_error("unlink");
 		
 		//fd = open("kk",O_RDWR|O_CREAT|O_TRUNC,S_IRWXU);
 		if (write(fd,src.data(),sz)<0) throw std::runtime_error("write");
