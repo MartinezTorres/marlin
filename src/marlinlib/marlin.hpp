@@ -355,6 +355,7 @@ class Marlin2018Simple {
 		
 		class JumpTable {
 
+			constexpr static const size_t unalignment = 8;
 			const size_t alphaStride;  // Bit stride of the jump table corresponding to the word dimension
 			const size_t wordStride;  // Bit stride of the jump table corresponding to the word dimension
 			size_t nextIntermediatePos = 1<<(wordStride-1);	
@@ -369,7 +370,7 @@ class Marlin2018Simple {
 			JumpTable(size_t keySize, size_t overlap, size_t nAlpha) :
 				alphaStride(std::ceil(std::log2(nAlpha))),
 				wordStride(keySize+overlap+1), // Extra bit for intermediate nodes.
-				table(((1<<wordStride)+76)*(1<<alphaStride),JumpIdx(-1)),
+				table(((1<<wordStride)+unalignment)*(1<<alphaStride),JumpIdx(-1)),
 				data(table.data())
 				{}
 			
@@ -381,7 +382,7 @@ class Marlin2018Simple {
 //				return table[((word&((1<<wordStride)-1))<<alphaStride) + nextLetter];
 
 //				return table[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
-				return table[(word&((1<<wordStride)-1))+(nextLetter*((1<<wordStride)+32))];
+				return table[(word&((1<<wordStride)-1))+(nextLetter*((1<<wordStride)+unalignment))];
 			}
 
 			template<typename T0, typename T1>
@@ -393,7 +394,7 @@ class Marlin2018Simple {
 //				return data[((word&((1<<wordStride)-1))<<alphaStride) + nextLetter];
 
 //				return data[(word&((1<<wordStride)-1))+(nextLetter<<wordStride)];
-				return data[(word&((1<<wordStride)-1))+(nextLetter*((1<<wordStride)+32))];
+				return data[(word&((1<<wordStride)-1))+(nextLetter*((1<<wordStride)+unalignment))];
 			}
 			
 			size_t getNewPos() { return nextIntermediatePos++; }
@@ -442,8 +443,31 @@ class Marlin2018Simple {
 							for (size_t j=0; j<(1U<<alphaStride); j++)
 								(*this)(i,j) = -1;
 				}
+				
+				{
+					size_t unreachable = 0;
+					for (auto &&v : table)
+						if (v==JumpIdx(-1)) unreachable++;
+						
+					std::cerr << table.size() << " " << unreachable << " " << (100.*unreachable)/table.size() << std::endl;
+				}
 
+				{
 					
+					size_t emptySections=0;
+					for (size_t k=0; k<NumSections; k++) {
+						bool empty = true;
+						for (size_t i=0; empty and (i<(1U<<SectionSize)); i++)
+							for (size_t j=0; empty and j<(1U<<alphaStride); j++)
+								empty = ((*this)(k*NumSections+i,j) == JumpIdx(-1));
+						
+						if (empty)
+							emptySections++;
+					}
+						
+					std::cerr << NumSections << " " << emptySections << " " << (100.*emptySections)/NumSections << std::endl;
+				}
+				
 				//dedup();
 			}
 		};
@@ -826,8 +850,6 @@ class Marlin2018Simple {
 			
 			if (configuration("dedup", enableDedup))
 				dedupVector = std::make_shared<DedupVector<Symbol>>(decoderTable);
-				
-			std::cerr << bool(dedupVector) << std::endl;
 		}
 		
 		template<typename TIN, typename TOUT>
@@ -925,6 +947,17 @@ public:
 	static double theoreticalEfficiency(const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) {
 		Dictionary dictionary(pdf, keySize, overlap, maxWordSize);
 		return dictionary.calcEfficiency();
+	}
+
+	static std::pair<double,size_t> theoreticalEfficiencyAndUniqueWords(const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) {
+		Dictionary dictionary(pdf, keySize, overlap, maxWordSize);
+		
+		double efficiency = dictionary.calcEfficiency();
+		
+		std::sort(dictionary.begin(), dictionary.end());
+		size_t uniqueCount = std::unique(dictionary.begin(), dictionary.end()) - dictionary.begin();
+		
+		return std::make_pair(efficiency, uniqueCount);
 	}
 	
 	const double efficiency;
