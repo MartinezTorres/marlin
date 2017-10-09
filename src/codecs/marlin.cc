@@ -97,8 +97,8 @@ struct MarlinPimpl : public CODEC8Z {
 
 		std::vector<Word> W;
 		
-		Dictionary(const std::vector<double> &P, size_t dictSize2, size_t maxWordSize) :
-			P(P), dictSize2(dictSize2), maxWordSize(maxWordSize) {
+		Dictionary(const std::vector<double> &P_, size_t dictSize2_, size_t maxWordSize_) :
+			P(P_), dictSize2(dictSize2_), maxWordSize(maxWordSize_) {
 
 
 			PnextState = P;  

@@ -50,7 +50,7 @@ struct RicePimpl : public CODEC8Z {
 
 	std::string name() const { return "Rice"; }
 
-	RicePimpl(Distribution::Type distType) : distType(distType) {
+	RicePimpl(Distribution::Type distType_) : distType(distType_) {
 
 		memset(&uT, 0, sizeof(uT));
 		for (size_t split=0; split<SPLITS; split++) {

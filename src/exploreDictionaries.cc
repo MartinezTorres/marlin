@@ -513,18 +513,21 @@ int main(int argc, char **argv) {
 	std::cerr << "Tunstall" << std::endl;
 	//TunstallDictionary(P,options["--size"]);
 	std::cerr << "Marlin2" << std::endl;
-	Marlin2018Simple::overrideConfiguration("dedup",0.);
+//	Marlin2018Simple::setConfiguration("encoderFast",0);
+	Marlin2018Simple::setConfiguration("debug",1.);
+	Marlin2018Simple::setConfiguration("dedup",0.);
+	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).benchmark(P,options["--testSize"]);
+/*	Marlin2018Simple::setConfiguration("dedup",1.);
 	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).test(P,options["--testSize"]);
-	Marlin2018Simple::overrideConfiguration("dedup",1.);
+	Marlin2018Simple::setConfiguration("dedup",0.);
 	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).test(P,options["--testSize"]);
-	Marlin2018Simple::overrideConfiguration("dedup",0.);
+	Marlin2018Simple::setConfiguration("dedup",1.);
 	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).test(P,options["--testSize"]);
-	Marlin2018Simple::overrideConfiguration("dedup",1.);
+	Marlin2018Simple::setConfiguration("dedup",0.);
 	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).test(P,options["--testSize"]);
-	Marlin2018Simple::overrideConfiguration("dedup",0.);
+	Marlin2018Simple::setConfiguration("dedup",1.);
 	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).test(P,options["--testSize"]);
-	Marlin2018Simple::overrideConfiguration("dedup",1.);
-	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).test(P,options["--testSize"]);
+*/
 /*	Marlin2Dictionary(P,options["--size"],options["--tries"]);
 	Marlin2Dictionary(P,options["--size"]*2,options["--tries"],1);
 	Marlin2Dictionary(P,options["--size"]*4,options["--tries"],2);

@@ -26,7 +26,7 @@ class LzoPimpl : public CODEC8AA {
 
 public:
 	
-	LzoPimpl(int level) : level(level) {}
+	LzoPimpl(int level_) : level(level_) {}
 
 };
 

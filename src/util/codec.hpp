@@ -23,7 +23,7 @@ public:
 	virtual size_t uncompress(const CompressedData8 &in, UncompressedData8 &out) const { out.resize(in.size()); for (auto &o : out) o.resize(BlockSizeBytes); return pImpl->uncompress(in, out); }
 protected:
 
-	CODEC8withPimpl(CODEC8 *pImpl) : pImpl(pImpl) {}
+	CODEC8withPimpl(CODEC8 *pImpl_) : pImpl(pImpl_) {}
     std::unique_ptr<CODEC8> pImpl;
 private:
 	CODEC8withPimpl();

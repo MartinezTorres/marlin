@@ -50,7 +50,7 @@ class GzipPimpl : public CODEC8AA {
 
 public:
 	
-	GzipPimpl(int level) : level(level) {}
+	GzipPimpl(int level_) : level(level_) {}
 
 };
 

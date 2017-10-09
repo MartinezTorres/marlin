@@ -22,7 +22,7 @@ class ZstdPimpl : public CODEC8AA {
 	}
 
 public:
-	ZstdPimpl(int level) : level(level) {
+	ZstdPimpl(int level_) : level(level_) {
 		cctx = ZSTD_createCCtx();
 		dctx = ZSTD_createDCtx();
 	}

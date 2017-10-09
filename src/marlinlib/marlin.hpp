@@ -15,14 +15,14 @@
 class Marlin2018Simple {
 	
 	// Configuration
-	constexpr static const bool enableDedup = false;	
+	constexpr static const bool enableDedup = true;	
 	constexpr static const bool enableVictimDictionary = true;
 	constexpr static const double purgeProbabilityThreshold = 1e-6;
-	constexpr static const size_t iterationLimit = 3;
+	constexpr static const size_t iterationLimit = 5;
 	constexpr static const bool debug = false;
 
 	typedef uint8_t Symbol; // storage used to store an input symbol.
-	typedef uint16_t WordIdx; // storage that suffices to store a word index.
+	//typedef uint16_t WordIdx; // storage that suffices to store a word index.
 
 	struct SymbolAndProbability {
 		Symbol symbol;
@@ -282,8 +282,8 @@ class Marlin2018Simple {
 			return shannonLimit / (keySize / (meanLength*std::log2(P.size())));
 		}
 		
-		Dictionary(const Alphabet &alphabet, size_t keySize, size_t overlap, size_t maxWordSize)
-			: alphabet(alphabet), keySize(keySize), overlap(overlap), maxWordSize(maxWordSize) {
+		Dictionary(const Alphabet &alphabet_, size_t keySize_, size_t overlap_, size_t maxWordSize_)
+			: alphabet(alphabet_), keySize(keySize_), overlap(overlap_), maxWordSize(maxWordSize_) {
 			
 			std::vector<std::vector<double>> Pstates;
 			for (auto k=0; k<(1<<overlap); k++) {
@@ -350,8 +350,8 @@ class Marlin2018Simple {
 		// Current Dictionary
 		// Where to jump next
 		
-		constexpr static const size_t FLAG_NEXT_WORD = 1<<(8*sizeof(JumpIdx)-1);
-		constexpr static const size_t FLAG_INSERT_EMPTY_WORD = 1<<(8*sizeof(JumpIdx)-2);
+		constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(JumpIdx)-1);
+		constexpr static const size_t FLAG_INSERT_EMPTY_WORD = 1UL<<(8*sizeof(JumpIdx)-2);
 		
 		class JumpTable {
 
@@ -419,10 +419,12 @@ class Marlin2018Simple {
 							for (size_t i=0; ok and (i<SectionSize); i++)
 								ok = (dict[k*SectionSize+i] == dict[k2*SectionSize+i]);
 								
-							if (ok) {
+							if (true and ok) {
 								for (auto &v : table)
 									if (((v>>dict.keySize)&((1<<dict.overlap)-1)) == k)
-										v = (v&FLAG_NEXT_WORD) | (v&FLAG_INSERT_EMPTY_WORD) | (k2<<dict.overlap) | (v&((1<<dict.keySize)-1));
+										v = ((v&(FLAG_NEXT_WORD + FLAG_INSERT_EMPTY_WORD)) | 
+											(k2<<dict.keySize) | 
+											(v&((1<<dict.keySize)-1)));
 							}
 						}
 					}
@@ -451,9 +453,9 @@ class Marlin2018Simple {
 		std::vector<JumpIdx> emptyWords; //emptyWords are pointers to the victim dictionary.
 		const Dictionary dict;
 
-		Encoder(const Dictionary &dict) :
-			jumpTable(dict.keySize, dict.overlap, dict.alphabet.size()),
-			dict(dict) { 
+		Encoder(const Dictionary &dict_) :
+			jumpTable(dict_.keySize, dict_.overlap, dict_.alphabet.size()),
+			dict(dict_) { 
 			
 			size_t NumSections = 1<<dict.overlap;
 			size_t SectionSize = 1<<dict.keySize;
@@ -477,7 +479,7 @@ class Marlin2018Simple {
 						if (positions[k].count(word)) {
 							parentIdx = positions[k][word];
 						} else {
-							std::cerr << "SHOULD NEVER HAPPEN" << std::endl;
+							std::cerr << (i%SectionSize) << "SHOULD NEVER HAPPEN" << std::endl;
 							parentIdx = jumpTable.getNewPos();
 						}
 						jumpTable(parentIdx, lastSymbol) = wordIdx;
@@ -534,6 +536,8 @@ class Marlin2018Simple {
 			const uint8_t *i = (const uint8_t *)&in.front();
 			const uint8_t *iend = i + in.size();
 			
+			//while (i<iend and iend[-1]==0) iend--;
+			
 			uint64_t value=0; int32_t bits=0;
 			if (i<iend) {
 				
@@ -553,7 +557,10 @@ class Marlin2018Simple {
 							*o++ = value>>bits;
 						}
 
-						if (j1 & FLAG_INSERT_EMPTY_WORD) i--;
+						if (j1 & FLAG_INSERT_EMPTY_WORD) {
+							i--;
+							//std::cerr << "We found an empty word!" << std::endl;
+						}
 					}
 					j0=j1;
 				}
@@ -564,7 +571,7 @@ class Marlin2018Simple {
 
 //std::cerr << (j0 & ((1<<dict.keySize)-1)) << " " << bits << std::endl;
 				
-				while (bits) {
+				while (bits>0) {
 					while (bits<32) {
 						j0 = emptyWords[j0 % emptyWords.size()];
 						value <<= dict.keySize;
@@ -590,6 +597,7 @@ class Marlin2018Simple {
 				encodeA(in,out);
 		}
 	};
+	const Encoder encoderFast = Encoder(dictionary);
 	
 	struct EncoderSlow {
 		
@@ -672,8 +680,8 @@ class Marlin2018Simple {
 //			std::cerr << "E: " << in.size() << " " << out.size() << std::endl;
 		}
 	};
-	const Encoder encoder = Encoder(dictionary);
-	
+	const EncoderSlow encoderSlow = EncoderSlow(dictionary);
+
 	struct Decoder {
 
 		const size_t keySize;     // Non overlapping bits of the word index in the big dictionary
@@ -844,7 +852,8 @@ class Marlin2018Simple {
 			}
 		}
 	};
-	
+	const Decoder decoderFast = Decoder(dictionary);
+
 	struct DecoderSlow {
 		
 		const Dictionary W;
@@ -883,15 +892,14 @@ class Marlin2018Simple {
 		}
 		
 	};	
-//	const DecoderSlow decoder = DecoderSlow(dictionary);
-	const Decoder decoder = Decoder(dictionary);
-
+	const DecoderSlow decoderSlow = DecoderSlow(dictionary);
+	
 	static std::map<std::string, double> &getConfigurationStructure() {
 		static std::map<std::string, double> c;
 		return c;
 	}
 
-	static double configuration(std::string name, double def=0.) {
+	static double configuration(std::string name, double def) {
 		auto &&c = getConfigurationStructure();
 		if (not c.count(name)) c[name]=def;
 		return c[name];
@@ -899,17 +907,33 @@ class Marlin2018Simple {
 	
 public:
 
-	static double getConfiguration(std::string name) { return getConfigurationStructure()[name]; }
+	static void clearConfiguration() { 
+		getConfigurationStructure().clear();
+	}
+
+	static double configuration(std::string name) { 
+		
+		auto &&c = getConfigurationStructure();
+		if (not c.count(name)) return 0.;
+		return c[name];
+	}
 	
-	static void overrideConfiguration(std::string name, double val) { getConfigurationStructure()[name] = val; }
+	static void setConfiguration(std::string name, double val) { 
+		getConfigurationStructure()[name] = val; 
+	}
 	
+	static double theoreticalEfficiency(const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) {
+		Dictionary dictionary(pdf, keySize, overlap, maxWordSize);
+		return dictionary.calcEfficiency();
+	}
 	
 	const double efficiency;
 
 	Marlin2018Simple (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize)
 		: 
 		  dictionary(pdf, keySize, overlap, maxWordSize),
-		  efficiency(dictionary.calcEfficiency())  {}
+		  efficiency(dictionary.calcEfficiency())  {
+	}
 
     Marlin2018Simple() = delete;
     Marlin2018Simple(const Marlin2018Simple& other) = delete;
@@ -921,46 +945,68 @@ public:
     /** Destructor */
     ~Marlin2018Simple() noexcept = default;
 
-
-	void test(const std::vector<double> &pdf, size_t sz = 1<<6) const {
+	std::map<std::string,double> benchmark(const std::vector<double> &pdf, size_t sz = 1<<20) const {
 		
-			
+		std::map<std::string,double> results;
+		
 		struct TestTimer {
 			timespec c_start, c_end;
 			void start() { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_start); };
 			void stop () { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_end); };
 			double operator()() { return (c_end.tv_sec-c_start.tv_sec) + 1.E-9*(c_end.tv_nsec-c_start.tv_nsec); }
 		};
-
-			  
+		TestTimer tEncode, tDecode;
+		
 		auto testData = Distribution::getResiduals(pdf, sz);
 		
-		auto compressedData = testData;
+		typeof(testData)  compressedData, uncompressedData;
+		compressedData  .reserve(8*testData.size());
+		uncompressedData.reserve(8*testData.size());
 		
-		compressedData.resize(8*testData.size());
+		// Encoding bechmark
+		tEncode.start();
+		compressedData.clear();
 		encode(testData,compressedData);
-		compressedData.resize(8*testData.size());
-		TestTimer tt;
-		tt.start();
-		encode(testData,compressedData);
-		tt.stop();
-		
-		double shannonLimit = Distribution::entropy(pdf)/std::log2(pdf.size());
-		double efficiency = shannonLimit / (compressedData.size()/double(testData.size()));
-		std::cerr << testData.size() << " " << compressedData.size() << " " << efficiency <<  " " << (testData.size()/tt()/(1<<20)) << std::endl;
+		tEncode.stop();			
 
-		auto uncompressedData = testData;
-		uncompressedData.resize(8*testData.size());
-		decode(compressedData,uncompressedData);
-		uncompressedData.resize(8*testData.size());
-		tt.start();
-		decode(compressedData,uncompressedData);
-		tt.stop();
+		size_t encoderTimes = 1+(2/tEncode());
+		tEncode.start();
+		for (size_t t=0; t<encoderTimes; t++) {
+			compressedData.clear();
+			encode(testData,compressedData);
+		}
+		tEncode.stop();
 		
-		std::cerr << testData.size() << " " << uncompressedData.size() << std::endl;
+		// Decoding benchmark
+		tDecode.start();
+		uncompressedData.resize(testData.size());
+		decode(compressedData,uncompressedData);
+		tDecode.stop();
+
+		size_t decoderTimes = 1+(2/tDecode());
+		tDecode.start();
+		for (size_t t=0; t<decoderTimes; t++) {
+			uncompressedData.resize(testData.size());
+			decode(compressedData,uncompressedData);
+		}
+		tDecode.stop();
+
+		// Speed calculation
+		results["encodingSpeed"] = encoderTimes*testData.size()/tEncode()/(1<<20);
+		results["decodingSpeed"] = decoderTimes*testData.size()/tDecode()/(1<<20);
+		if (configuration("debug",debug)) 
+			std::cerr << "Enc: " << results["encodingSpeed"] << "MiB/s Dec: " << results["decodingSpeed"] << "MiB/s" << std::endl;
 		
-		std::cerr << (testData==uncompressedData) <<  " " << (testData.size()/tt()/(1<<20)) << std::endl;
+		// Efficiency calculation
+		results["shannonLimit"] = Distribution::entropy(pdf)/std::log2(pdf.size());
+		results["empiricalEfficiency"] = results["shannonLimit"] / (compressedData.size()/double(testData.size()));
+		if (configuration("debug",debug)) 
+			std::cerr << testData.size() << " " << compressedData.size() << " " << efficiency <<  " " << results["empiricalEfficiency"] << " " << std::endl;
+		
+
 		if (testData!=uncompressedData) {
+
+			std::cerr << testData.size() << " " << uncompressedData.size() << std::endl;
 
 			for (size_t i=0; i<10; i++) std::cerr << int(testData[i]) << " | "; std::cerr << std::endl;
 			for (size_t i=0; i<10; i++) std::cerr << int(uncompressedData[i]) << " | "; std::cerr << std::endl;
@@ -973,11 +1019,23 @@ public:
 			std::cerr << std::endl;
 		}
 		
+		return results;
 	}
+	
 		  
 	template<typename TIN, typename TOUT>
-	void encode(const TIN &in, TOUT &out) const { encoder(in, out); }
+	void encode(const TIN &in, TOUT &out) const { 
+		if (configuration("encoderFast",true))
+			encoderFast(in, out);
+		else
+			encoderSlow(in, out);
+	}
 
 	template<typename TIN, typename TOUT>
-	void decode(const TIN &in, TOUT &out) const { decoder(in, out); }
+	void decode(const TIN &in, TOUT &out) const { 
+		if (configuration("decoderFast",true))
+			decoderFast(in, out); 
+		else
+			decoderSlow(in, out);
+	}
 };
