@@ -516,7 +516,8 @@ int main(int argc, char **argv) {
 //	Marlin2018Simple::setConfiguration("encoderFast",0);
 	Marlin2018Simple::setConfiguration("debug",1.);
 	Marlin2018Simple::setConfiguration("dedup",0.);
-	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).benchmark(P,options["--testSize"]);
+	Marlin2018Simple::theoreticalEfficiency(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]);
+	//Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).benchmark(P,options["--testSize"]);
 /*	Marlin2018Simple::setConfiguration("dedup",1.);
 	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).test(P,options["--testSize"]);
 	Marlin2018Simple::setConfiguration("dedup",0.);

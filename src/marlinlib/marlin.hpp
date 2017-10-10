@@ -17,9 +17,9 @@ class Marlin2018Simple {
 	// Configuration
 	constexpr static const bool enableDedup = true;	
 	constexpr static const bool enableVictimDictionary = true;
-	constexpr static const double purgeProbabilityThreshold = 1e-6;
+	constexpr static const double purgeProbabilityThreshold = 1e-2;
 	constexpr static const size_t iterationLimit = 5;
-	constexpr static const bool debug = false;
+	constexpr static const bool debug = true;
 
 	typedef uint8_t Symbol; // storage used to store an input symbol.
 	//typedef uint16_t WordIdx; // storage that suffices to store a word index.
@@ -91,8 +91,14 @@ class Marlin2018Simple {
 			std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
 			size_t retiredNodes=0;
 			
-			auto pushAndPrune = [this,&pq,&retiredNodes,isVictim](std::shared_ptr<Node> node) {
-				if (isVictim or (not Marlin2018Simple::enableVictimDictionary) or node->p>Marlin2018Simple::purgeProbabilityThreshold) {
+			double ppThres = Marlin2018Simple::purgeProbabilityThreshold/(1U<<keySize);
+			
+			auto pushAndPrune = [this,&pq,&retiredNodes,isVictim,ppThres](std::shared_ptr<Node> node) {
+				if (isVictim or 
+					(not Marlin2018Simple::enableVictimDictionary) or 
+					node->p>ppThres
+					//or node->size()>0
+					) {
 					if (node->sz<maxWordSize) {
 						pq.push(node);
 					} else {
@@ -123,6 +129,7 @@ class Marlin2018Simple {
 				double sum = 0;
 				for (size_t t = 0; t<=c; t++) sum += Pstates[t]/PN[t];
 				root->back()->p = sum * alphabet[c].p;
+				//if (c==0) std::cerr << "pp" << 
 				root->back()->sz = 1;
 				
 				//if (isVictim or (not Marlin2018Simple::enableVictimDictionary) or root->back()->p>Marlin2018Simple::purgeProbabilityThreshold)
@@ -143,7 +150,7 @@ class Marlin2018Simple {
 				node->p -= p;
 				pushAndPrune(node->back());
 					
-				if (node->size()<alphabet.size()-1) {
+				if (false or (node->size()<alphabet.size()-1)) {
 
 					pushAndPrune(node);
 						
@@ -232,7 +239,7 @@ class Marlin2018Simple {
 		// Debug functions
 		
 		void print(std::vector<Word> dictionary) {
-			
+
 			if (dictionary.size()>40) return;
 
 			for (size_t i=0; i<dictionary.size()/(1U<<overlap); i++) { 
