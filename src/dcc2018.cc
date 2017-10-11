@@ -247,7 +247,7 @@ int main( int , char *[] ) {
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,0),
 //		std::make_shared<Marlin2018>(Distribution::Laplace,12,4),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,4),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,6),
 //		std::make_shared<Marlin2018>(Distribution::Laplace,12,8),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),

@@ -92,8 +92,12 @@ class Marlin2018Simple {
 			size_t retiredNodes=0;
 			
 			double ppThres = Marlin2018Simple::purgeProbabilityThreshold/(1U<<keySize);
+
+			// DICTIONARY INITIALIZATION
+			std::shared_ptr<Node> root = std::make_shared<Node>();
+			root->erased = true;
 			
-			auto pushAndPrune = [this,&pq,&retiredNodes,isVictim,ppThres](std::shared_ptr<Node> node) {
+			auto pushAndPrune = [this,&pq,&retiredNodes,&root, isVictim,ppThres](std::shared_ptr<Node> node) {
 				if (isVictim or 
 					(not Marlin2018Simple::enableVictimDictionary) or 
 					node->p>ppThres
@@ -106,12 +110,10 @@ class Marlin2018Simple {
 					}
 				} else {
 					node->erased = true;
+					root->p += node->p;
 				}
 			};
 
-			// DICTIONARY INITIALIZATION
-			std::shared_ptr<Node> root = std::make_shared<Node>();
-			root->erased = true;
 			
 			// Include empty word
 			pq.push(root); // Does not do anything, only uses a spot
@@ -186,7 +188,8 @@ class Marlin2018Simple {
 			std::vector<Word> ret;
 			
 			std::stack<std::pair<std::shared_ptr<Node>, Word>> q;
-			q.emplace(root, Word());
+			Word rootWord; rootWord.p = root->p;
+			q.emplace(root, rootWord);
 			while (not q.empty()) {
 				std::shared_ptr<Node> n = q.top().first;
 				Word w = q.top().second;
@@ -248,8 +251,8 @@ class Marlin2018Simple {
 					
 					auto idx = i + (k* (dictionary.size()/(1U<<overlap)));
 					auto &&w = dictionary[idx];
-					printf(" %02lX %01ld %2d %01.3lf ",idx,i%(1<<overlap),w.state,w.p);
-					for (size_t j=0; j<16; j++) putchar("0123456789ABCDEF "[j<w.size()?w[j]:16]);
+					printf(" %02lX %01ld %2d %01.2le ",idx,i%(1<<overlap),w.state,w.p);
+					for (size_t j=0; j<8; j++) putchar(j<w.size()?'a'+w[j]:' ');
 				}
 				putchar('\n');
 			}		
