@@ -91,15 +91,17 @@ class Marlin2018Simple {
 			std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
 			size_t retiredNodes=0;
 			
+			bool enableVictimDict = Marlin2018Simple::configuration("enableVictim", Marlin2018Simple::enableVictimDictionary);
+			
 			double ppThres = Marlin2018Simple::purgeProbabilityThreshold/(1U<<keySize);
 
 			// DICTIONARY INITIALIZATION
 			std::shared_ptr<Node> root = std::make_shared<Node>();
 			root->erased = true;
 			
-			auto pushAndPrune = [this,&pq,&retiredNodes,&root, isVictim,ppThres](std::shared_ptr<Node> node) {
+			auto pushAndPrune = [this,&pq,&retiredNodes,&root, isVictim, ppThres, enableVictimDict](std::shared_ptr<Node> node) {
 				if (isVictim or 
-					(not Marlin2018Simple::enableVictimDictionary) or 
+					(not enableVictimDict) or 
 					node->p>ppThres
 					//or node->size()>0
 					) {
@@ -222,6 +224,10 @@ class Marlin2018Simple {
 				};
 				std::stable_sort(sortedDictionary.begin(), sortedDictionary.end(), cmp);
 				
+				if (Marlin2018Simple::configuration("shuffle",false))
+					std::random_shuffle(sortedDictionary.begin(), sortedDictionary.end());
+					
+				
 				std::vector<Word> w(1<<keySize);
 				for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1<<overlap)) {
 					
@@ -230,6 +236,7 @@ class Marlin2018Simple {
 						
 					if (victimIdx==j) {
 						w[j] = Word();
+						w[j].p = nodes[n]->p;
 					} else {
 						w[j] = sortedDictionary[i++];
 					}
@@ -311,8 +318,10 @@ class Marlin2018Simple {
 			*(std::vector<Word> *)this = arrangeAndFuse(dictionaries,victimDictionary);
 				
 			if (Marlin2018Simple::debug) print(*this);
+			
+			size_t iterations= Marlin2018Simple::configuration("iterations", Marlin2018Simple::iterationLimit);
 				
-			for (size_t iteration=0; iteration<Marlin2018Simple::iterationLimit; iteration++) {
+			while (iterations--) {
 
 				// UPDATING STATE PROBABILITIES
 				{

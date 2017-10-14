@@ -24,16 +24,20 @@ int main() {
 	// Unless stated differently: key=12, overlap=4
 
 
+	// Same Dictionary Size, efficiency over H.
 	if (false) {
+	
+		tex << "\\input{results/ssse.tex}\n";
+		ofstream res("results/ssse.tex");
 		
 		auto Dist = LaplacianPDF;
 
-		tex << R"ML(
+		res << R"ML(
 		\begin{figure}
 		\centering
 		\begin{tikzpicture} 
 		\begin{axis}[
-			title="Decoding Speed vs Efficiency", 
+			title="Same Dictionary Size Efficiency", 
 			title style={yshift=-1mm},
 			height=3cm, width=5cm,
 %			nodes near coords={(\coordindex)},
@@ -50,38 +54,37 @@ int main() {
 %			ylabel style={font={\footnotesize},yshift=4mm}, 
 %			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm},
 %			axis y line=left,
-			ylabel={\emph{Efficiency}}, 
+			ylabel={\emph{Efficiency(\%)}}, 
 			xlabel={\emph{H(\%)}}, 
-			ylabel style={font={\footnotesize},yshift=4mm}, 
-			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}
+			ylabel style={font={\footnotesize}}, 
+			xlabel style={font={\footnotesize}}
+%			ylabel style={font={\footnotesize},yshift=4mm}, 
+%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}
 			])ML";
 			
 			
 		Marlin2018Simple::clearConfiguration();
 		Marlin2018Simple::setConfiguration("debug",1.);
-		for (size_t sz=9; sz<=16; sz++) {
+		for (size_t sz=9; sz<=16; sz+=3) {
 
-			tex << R"ML(
+			res << R"ML(
 				\addplot+[mark=none] coordinates {
 				)ML";
 
 			for (size_t i=1; i<LaplacianPDF.size()-1; i+=6) {
 				;
 			
-//			auto results = marlinTest.benchmark(LaplacianPDF[(LaplacianPDF.size()-1)/2], 1<<20);
-			
-//			tex << "(" << results["empiricalEfficiency"]*100 << "," << results["decodingSpeed"]/1024. << ")" << std::endl;
-				tex << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],sz,16-sz,(2<<20)-1)*100. << ")" << std::endl;
+				res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],sz,16-sz,(2<<20)-1)*100. << ")" << std::endl;
 			}
-			tex << "};" << std::endl;
+			res << "};" << std::endl;
 		}
 
-		tex << R"ML(
-			%\legend{Dedup, No Dedup, No Overlap}
+		res << R"ML(
+			\legend{9+7, 12+4, 15+1}
 			)ML";
 			
 			
-		tex << R"ML(
+		res << R"ML(
 			\end{axis} 
 			\end{tikzpicture}
 			\caption{}
@@ -91,17 +94,20 @@ int main() {
 	}
 
 
-
-	if (true) {
+	// Overlap @ K=12.
+	if (false) {
+	
+		tex << "\\input{results/overlapEfficiency.tex}\n";
+		ofstream res("results/overlapEfficiency.tex");
 		
 		auto Dist = LaplacianPDF;
 
-		tex << R"ML(
+		res << R"ML(
 		\begin{figure}
 		\centering
 		\begin{tikzpicture} 
 		\begin{axis}[
-			title="Decoding Speed vs Efficiency", 
+			title="Efficiency With Overlap", 
 			title style={yshift=-1mm},
 			height=3cm, width=5cm,
 %			nodes near coords={(\coordindex)},
@@ -110,7 +116,7 @@ int main() {
 			scale only axis, 
 			enlargelimits=false, 
 			xmin=0, xmax=100, 
-			ymin=80, ymax=100, 
+			ymin=85, ymax=100, 
 			ymajorgrids, major grid style={dotted, gray}, 
 %			xtick=data,
 			x tick label style={font={\footnotesize},yshift=1mm}, 
@@ -118,38 +124,37 @@ int main() {
 %			ylabel style={font={\footnotesize},yshift=4mm}, 
 %			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm},
 %			axis y line=left,
-			ylabel={\emph{Efficiency}}, 
+			ylabel={\emph{Efficiency(\%)}}, 
 			xlabel={\emph{H(\%)}}, 
-			ylabel style={font={\footnotesize},yshift=4mm}, 
-			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}
+			ylabel style={font={\footnotesize}}, 
+			xlabel style={font={\footnotesize}}
+%			ylabel style={font={\footnotesize},yshift=4mm}, 
+%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}
 			])ML";
 			
 			
 		Marlin2018Simple::clearConfiguration();
 		Marlin2018Simple::setConfiguration("debug",1.);
-		for (size_t overlap=0; overlap<=2; overlap++) {
+		for (size_t over=0; over<=6; over++) {
 
-			tex << R"ML(
+			res << R"ML(
 				\addplot+[mark=none] coordinates {
 				)ML";
 
 			for (size_t i=1; i<LaplacianPDF.size()-1; i+=6) {
 				;
 			
-//			auto results = marlinTest.benchmark(LaplacianPDF[(LaplacianPDF.size()-1)/2], 1<<20);
-			
-//			tex << "(" << results["empiricalEfficiency"]*100 << "," << results["decodingSpeed"]/1024. << ")" << std::endl;
-				tex << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],16,overlap,(2<<20)-1)*100. << ")" << std::endl;
+				res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,over,(2<<20)-1)*100. << ")" << std::endl;
 			}
-			tex << "};" << std::endl;
+			res << "};" << std::endl;
 		}
 
-		tex << R"ML(
-			%\legend{Dedup, No Dedup, No Overlap}
+		res << R"ML(
+			%\legend{9+7, 12+4, 15+1}
 			)ML";
 			
 			
-		tex << R"ML(
+		res << R"ML(
 			\end{axis} 
 			\end{tikzpicture}
 			\caption{}
@@ -157,6 +162,8 @@ int main() {
 			\end{figure}
 			)ML";
 	}
+
+
 
 
 	// Efficiency over Laplacian distribution, from 0 entropy to 100% entropy. Overlapping from 0 to 5 + Tunstall.
@@ -303,7 +310,7 @@ int main() {
     
    
 
-	if (true) {
+	if (false) {
 
 		tex << R"ML(
 		\begin{figure}
@@ -367,7 +374,7 @@ int main() {
     // Laplacian 0.5 entropy: efficiency vs  unique dictionary size, overlaps 0 to 5
 
 
-	if (true) {
+	if (false) {
 
 		tex << R"ML(
 		\begin{figure}
@@ -496,7 +503,7 @@ int main() {
     // Laplacian 0.25 entropy: efficiency vs unique dictionary size, overlaps 0 to 5
 
 
-	if (true) {
+	if (false) {
 
 		tex << R"ML(
 		\begin{figure}
@@ -625,6 +632,76 @@ int main() {
     // Laplacian 0.25 entropy: efficiency vs unique dictionary size, overlaps 0 to 5
 
     // Justify victim
+	if (false) {
+	
+		tex << "\\input{results/justifyVictim.tex}\n";
+		ofstream res("results/justifyVictim.tex");
+		
+		auto Dist = LaplacianPDF;
+
+		res << R"ML(
+		\begin{figure}
+		\centering
+		\begin{tikzpicture} 
+		\begin{axis}[
+			title="Efficiency With Overlap", 
+			title style={yshift=-1mm},
+			height=3cm, width=5cm,
+%			nodes near coords={(\coordindex)},
+%			log origin=infty, 
+%			log ticks with fixed point, 
+			scale only axis, 
+			enlargelimits=false, 
+			xmin=0, xmax=100, 
+			ymin=85, ymax=100, 
+			ymajorgrids, major grid style={dotted, gray}, 
+%			xtick=data,
+			x tick label style={font={\footnotesize},yshift=1mm}, 
+			y tick label style={font={\footnotesize},xshift=-1mm},
+%			ylabel style={font={\footnotesize},yshift=4mm}, 
+%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm},
+%			axis y line=left,
+			ylabel={\emph{Efficiency(\%)}}, 
+			xlabel={\emph{H(\%)}}, 
+			ylabel style={font={\footnotesize}}, 
+			xlabel style={font={\footnotesize}}
+%			ylabel style={font={\footnotesize},yshift=4mm}, 
+%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}
+			])ML";
+			
+			
+		Marlin2018Simple::clearConfiguration();
+		Marlin2018Simple::setConfiguration("debug",1.);
+		Marlin2018Simple::setConfiguration("shuffle",true);
+		for (size_t over=0; over<=4; over++) {
+
+			res << R"ML(
+				\addplot+[mark=none] coordinates {
+				)ML";
+
+			for (size_t i=1; i<LaplacianPDF.size()-1; i+=6) {
+				;
+			
+				res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,over,(2<<20)-1)*100. << ")" << std::endl;
+//				res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple(Dist[i],12,over,(1<<8)-1).benchmark(Dist[i])["empiricalEfficiency"]*100. << ")" << std::endl;
+			}
+			res << "};" << std::endl;
+		}
+
+		res << R"ML(
+			%\legend{9+7, 12+4, 15+1}
+			)ML";
+			
+			
+		res << R"ML(
+			\end{axis} 
+			\end{tikzpicture}
+			\caption{}
+			\label{fig:}
+			\end{figure}
+			)ML";
+	}
+
     
     // Efficiency over Laplacian distribution, from 0 entropy to 100% entropy. Overlapping 4. Victim, no victim, no overlap.
 	// KeySize = 12, overlap 0  to 5
@@ -636,7 +713,7 @@ int main() {
 	
 	
 	// Speed vs efficiency, Overlap  + deduplication.
-	if (false) {
+	if (true) {
 
 		tex << R"ML(
 		\begin{figure}
