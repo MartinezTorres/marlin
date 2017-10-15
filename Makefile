@@ -41,7 +41,7 @@ CXX = g++
 #CXX = clang++-3.3 -D__extern_always_inline=inline -fslp-vectorize
 #CXX = icpc -fast -auto-ilp32 -xHost -fopenmp
 
-all: data ./bin/dcc2017 ./bin/dcc2018
+all: data ./bin/benchmark
 
 .PHONY: data ext show prof clean realclean
 
@@ -61,14 +61,13 @@ ext:
 	@echo "CREATING $@"
 	@$(CXX) -c -o $@ $< $(CFLAGS)
 
-./bin/%: ./src/%.cc $(CODECS) ext
+./bin/benchmark: ./src/benchmark.cc $(CODECS) ext
 	@echo "CREATING $@" $(CODECS) ext
 	@$(CXX) -o $@ $< $(CODECS) $(CFLAGS) $(LFLAGS)
 
-show: ./bin/dcc2017
-	./bin/dcc2017
-	pdflatex out.tex > /dev/null
-	evince out.pdf
+./bin/%: ./src/%.cc ext
+	@echo "CREATING $@" ext
+	@$(CXX) -o $@ $< $(CFLAGS) $(LFLAGS)
 
 prof: ./bin/dcc2017
 	 valgrind --dsymutil=yes --cache-sim=yes --branch-sim=yes --dump-instr=yes --trace-jump=no --tool=callgrind --callgrind-out-file=callgrind.out ./eval 
