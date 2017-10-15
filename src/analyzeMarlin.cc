@@ -642,60 +642,76 @@ int main() {
 		res << R"ML(
 		\begin{figure}
 		\centering
-		\begin{tikzpicture} 
+		\subfloat[]{
+		\begin{tikzpicture}
 		\begin{axis}[
-			title="Efficiency With Overlap", 
+			title="Impact of Victim Dictionary", 
 			title style={yshift=-1mm},
-			height=3cm, width=5cm,
-%			nodes near coords={(\coordindex)},
-%			log origin=infty, 
-%			log ticks with fixed point, 
+			height=3cm, width=6cm,
 			scale only axis, 
 			enlargelimits=false, 
 			xmin=0, xmax=100, 
 			ymin=85, ymax=100, 
 			ymajorgrids, major grid style={dotted, gray}, 
-%			xtick=data,
 			x tick label style={font={\footnotesize},yshift=1mm}, 
 			y tick label style={font={\footnotesize},xshift=-1mm},
-%			ylabel style={font={\footnotesize},yshift=4mm}, 
-%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm},
-%			axis y line=left,
 			ylabel={\emph{Efficiency(\%)}}, 
-			xlabel={\emph{H(\%)}}, 
-			ylabel style={font={\footnotesize}}, 
-			xlabel style={font={\footnotesize}}
-%			ylabel style={font={\footnotesize},yshift=4mm}, 
-%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}
+			xlabel={\emph{Entropy (\%)}}, 
+			xlabel style={font={\footnotesize},xshift= 2mm}, 
+			ylabel style={font={\footnotesize},yshift=-2mm}
 			])ML";
-			
 			
 		Marlin2018Simple::clearConfiguration();
 		Marlin2018Simple::setConfiguration("debug",1.);
 		Marlin2018Simple::setConfiguration("shuffle",true);
 		for (size_t over=0; over<=4; over++) {
 
-			res << R"ML(
-				\addplot+[mark=none] coordinates {
-				)ML";
-
-			for (size_t i=1; i<LaplacianPDF.size()-1; i+=6) {
-				;
-			
-				res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,over,(2<<20)-1)*100. << ")" << std::endl;
-//				res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple(Dist[i],12,over,(1<<8)-1).benchmark(Dist[i])["empiricalEfficiency"]*100. << ")" << std::endl;
-			}
+			res << "\t\\addplot+[mark=none] coordinates {";
+			for (size_t i=1; i<LaplacianPDF.size()-1; i+=6)
+				res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,over,(2<<20)-1)*100. << ")";
 			res << "};" << std::endl;
 		}
-
 		res << R"ML(
-			%\legend{9+7, 12+4, 15+1}
-			)ML";
+		\end{axis} 
+		\end{tikzpicture}
+		}
+		\subfloat[]{
+		\begin{tikzpicture}
+		\begin{axis}[
+			title="Impact of Victim Dictionary", 
+			title style={yshift=-1mm},
+			height=3cm, width=6cm,
+			scale only axis, 
+			enlargelimits=false, 
+			xmin=-.5, xmax=6.5, 
+			ymin=85, ymax=100, 
+			xtick=data,
+			ymajorgrids, major grid style={dotted, gray}, 
+			x tick label style={font={\footnotesize},yshift=1mm}, 
+			y tick label style={font={\footnotesize},xshift=-1mm},
+			ylabel={\emph{Efficiency(\%)}}, 
+			xlabel={\emph{Overlap}}, 
+			xlabel style={font={\footnotesize},xshift= 2mm}, 
+			ylabel style={font={\footnotesize},yshift=-2mm}
+			])ML";
 			
-			
+		Marlin2018Simple::clearConfiguration();
+		Marlin2018Simple::setConfiguration("debug",1.);
+		Marlin2018Simple::setConfiguration("shuffle",true);
+			res << "\t\\addplot+[mark=none] coordinates {";
+		for (size_t over=0; over<=6; over++) {
+
+			res << "(" << over << "," << Marlin2018Simple::theoreticalEfficiency(
+			Dist[(Dist.size()-1)/2],12,over,(2<<20)-1)*100. << ")";
+		}
+		res << "};" << std::endl;
 		res << R"ML(
 			\end{axis} 
 			\end{tikzpicture}
+			}
+			)ML";
+			
+		res << R"ML(
 			\caption{}
 			\label{fig:}
 			\end{figure}
