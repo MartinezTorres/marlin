@@ -7,7 +7,8 @@ LFLAGS += `pkg-config opencv --libs`
 
 LFLAGS += -lboost_system -lboost_program_options -lboost_serialization
 LFLAGS += -lz -lrt
-LFLAGS += -lsnappy -lCharLS -lzstd -llz4 -llzo2
+
+LCODECS += -lsnappy -lCharLS -lzstd -llz4 -llzo2
 
 
 CFLAGS += -fopenmp
@@ -63,7 +64,7 @@ ext:
 
 ./bin/benchmark: ./src/benchmark.cc $(CODECS) ext
 	@echo "CREATING $@" $(CODECS) ext
-	@$(CXX) -o $@ $< $(CODECS) $(CFLAGS) $(LFLAGS)
+	@$(CXX) -o $@ $< $(CODECS) $(LCODECS) $(CFLAGS) $(LFLAGS)
 
 ./bin/%: ./src/%.cc ext
 	@echo "CREATING $@" ext
