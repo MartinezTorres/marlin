@@ -1077,6 +1077,9 @@ public:
 		typeof(testData)  compressedData, uncompressedData;
 		compressedData  .reserve(8*testData.size());
 		uncompressedData.reserve(8*testData.size());
+
+		compressedData.clear();
+		encode(testData,compressedData);
 		
 		// Encoding bechmark
 		tEncode.start();
@@ -1093,15 +1096,20 @@ public:
 		tEncode.stop();
 		
 		// Decoding benchmark
-		tDecode.start();
 		uncompressedData.resize(testData.size());
+		decode(compressedData,uncompressedData);
+		decode(compressedData,uncompressedData);
+		decode(compressedData,uncompressedData);
+
+		tDecode.start();
+//		uncompressedData.resize(testData.size());
 		decode(compressedData,uncompressedData);
 		tDecode.stop();
 
 		size_t decoderTimes = 1+(2/tDecode());
 		tDecode.start();
 		for (size_t t=0; t<decoderTimes; t++) {
-			uncompressedData.resize(testData.size());
+//			uncompressedData.resize(testData.size());
 			decode(compressedData,uncompressedData);
 		}
 		tDecode.stop();
