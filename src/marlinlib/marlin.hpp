@@ -937,12 +937,12 @@ class Marlin2018Simple {
 					case   8: return decode12<uint64_t>(in, out);
 				}
 			} 
-			if (keySize==16) {
+/*			if (keySize==16) {
 				switch (maxWordSize+1) {
 					case   4: return decode16<uint32_t>(in, out);
 					case   8: return decode16<uint64_t>(in, out);
 				}
-			} 
+			} */
 			switch (maxWordSize+1) {
 				case   4: return decodeA<uint32_t, 1>(in, out);
 				case   8: return decodeA<uint64_t, 1>(in, out);
