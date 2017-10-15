@@ -844,7 +844,64 @@ class Marlin2018Simple {
 			}
 			out.resize(o-(uint8_t *)&out.front());
 		}
-	
+
+
+		template<typename T, typename TIN, typename TOUT>
+		void decode16(const TIN &in, TOUT &out) const {
+			
+			uint8_t *o = (uint8_t *)&out.front();
+			const uint32_t *i = (const uint32_t *)in.data();
+			const uint32_t *iend = (const uint32_t *)&*in.end();
+			
+			uint64_t mask = (1<<(keySize+overlap))-1;
+			
+			const T *D = dedupVector ? (const T *)(*dedupVector)() : (const T *)decoderTable.data();
+			uint64_t value = start; 
+			if ( in.size()>12 ) {
+				iend-=2;
+				while (i<iend) {
+
+					value = (value<<32) + *i++;
+					{				
+						T v = D[(value>>16 ) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					{				
+						T v = D[(value>>0) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					value = (value<<32) + *i++;
+					{				
+						T v = D[(value>>16 ) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+					{				
+						T v = D[(value>>0) & mask];
+						*((T *)o) = v;
+						o += v >> ((sizeof(T)-1)*8);
+					}
+				}
+				iend+=2;
+			}
+			int32_t c=-keySize;
+			while (c>=0 or i<(const uint32_t *)&*in.end()) {
+				if (c<0) {
+					value = (value<<32) + *i++;
+					c   += 32;
+				}
+				{				
+					T v = D[(value>>c) & mask];
+					c -= keySize;
+					*((T *)o) = v;
+					o += v >> ((sizeof(T)-1)*8);
+				}
+			}
+			out.resize(o-(uint8_t *)&out.front());
+		}
+		
 		Decoder(const Dictionary &dict) :
 			keySize(dict.keySize),
 			overlap(dict.overlap),
@@ -878,6 +935,12 @@ class Marlin2018Simple {
 				switch (maxWordSize+1) {
 					case   4: return decode12<uint32_t>(in, out);
 					case   8: return decode12<uint64_t>(in, out);
+				}
+			} 
+			if (keySize==16) {
+				switch (maxWordSize+1) {
+					case   4: return decode16<uint32_t>(in, out);
+					case   8: return decode16<uint64_t>(in, out);
 				}
 			} 
 			switch (maxWordSize+1) {
