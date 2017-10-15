@@ -55,7 +55,7 @@ public:
 					while ( p<correspondence.size() and (correspondence[p]-p == correspondence[start]-start) )
 						p++;
 
-					std::cerr << "MAP: {" << start << "  -> " << p-1 << " } to {" << correspondence[start] << "  -> " << correspondence[p-1] << " }" << std::endl; 
+					//std::cerr << "MAP: {" << start << "  -> " << p-1 << " } to {" << correspondence[start] << "  -> " << correspondence[p-1] << " }" << std::endl; 
 
 					maps.emplace_back(mmap(data+start*4096,(p-start)*4096,PROT_READ,MAP_PRIVATE|MAP_FIXED|MAP_POPULATE|MAP_NORESERVE,fd,correspondence[start]*4096),(p-start)*4096);
 				}

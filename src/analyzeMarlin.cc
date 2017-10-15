@@ -749,7 +749,7 @@ int main() {
 			Marlin2018Simple::setConfiguration("dedup",0.);
 			Marlin2018Simple marlinTest(LaplacianPDF[(LaplacianPDF.size()-1)/2],12,overlap,7);
 			
-			auto results = marlinTest.benchmark(LaplacianPDF[(LaplacianPDF.size()-1)/2], 1<<20);
+			auto results = marlinTest.benchmark(LaplacianPDF[(LaplacianPDF.size()-1)/2], 1<<22);
 			
 			tex << "(" << results["empiricalEfficiency"]*100 << "," << results["decodingSpeed"]/1024. << ")" << std::endl;
 			
@@ -764,7 +764,7 @@ int main() {
 			Marlin2018Simple::setConfiguration("dedup",1.);
 			Marlin2018Simple marlinTest(LaplacianPDF[(LaplacianPDF.size()-1)/2],12,overlap,7);
 			
-			auto results = marlinTest.benchmark(LaplacianPDF[(LaplacianPDF.size()-1)/2], 1<<20);
+			auto results = marlinTest.benchmark(LaplacianPDF[(LaplacianPDF.size()-1)/2], 1<<22);
 			
 			tex << "(" << results["empiricalEfficiency"]*100 << "," << results["decodingSpeed"]/1024. << ")" << std::endl;
 			
