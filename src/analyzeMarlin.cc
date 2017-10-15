@@ -632,7 +632,7 @@ int main() {
     // Laplacian 0.25 entropy: efficiency vs unique dictionary size, overlaps 0 to 5
 
     // Justify victim
-	if (false) {
+	if (true) {
 	
 		tex << "\\input{results/justifyVictim.tex}\n";
 		ofstream res("results/justifyVictim.tex");
@@ -713,7 +713,7 @@ int main() {
 	
 	
 	// Speed vs efficiency, Overlap  + deduplication.
-	if (true) {
+	if (false) {
 
 		tex << R"ML(
 		\begin{figure}
@@ -800,50 +800,6 @@ int main() {
 			)ML";
 	}
 	
-	if (false) {
-
-		tex << R"ML(
-		\begin{tikzpicture} 
-		\begin{semilogyaxis}[
-			title="Decoding Speed vs Efficiency", 
-			title style={yshift=-1mm},
-			height=3cm, width=5cm,
-			log origin=infty, 
-			log ticks with fixed point, 
-			scale only axis, 
-			ybar=0pt, enlargelimits=false, 
-			bar width=5pt, 
-			ymin=0.021544, ymax=46.416, 
-			xmin=0, xmax=100, 
-			ymajorgrids, major grid style={dotted, gray}, 
-			axis y line=right, 
-			x tick label style={font={\footnotesize},yshift=1mm}, 
-			y tick label style={font={\footnotesize},xshift=-1mm},
-			xtick=data, 
-			ylabel={\emph{GiB/s}}, 
-			xlabel={\emph{H(\%)}}, 
-			ylabel style={font={\footnotesize},yshift=4mm}, 
-			xlabel style={font={\footnotesize},yshift=5.25mm, 
-			xshift=29mm}])ML";
-			
-		tex << R"ML(
-		\end{semilogyaxis} 
-		\begin{axis}[
-			height=3cm, width=5cm,
-			scale only axis, 
-			axis x line=none, 
-			axis y line*=left, 
-			ymin=0,ymax=100,
-			xmin=0,xmax=100,
-			enlargelimits=false, 
-			y tick label style={font={\footnotesize},xshift=1mm}, 
-			y label style={font={\footnotesize},yshift=-3mm}, ylabel={\emph{efficiency (\%)}}])ML";
-			
-		tex << R"ML(
-			\end{axis} \end{tikzpicture}
-			)ML";
-	}
-
 	tex << "\\end{document}" << endl;
 	
 	return 0;
