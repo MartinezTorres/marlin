@@ -19,7 +19,7 @@ class Marlin2018Simple {
 	constexpr static const bool enableVictimDictionary = true;
 	constexpr static const double purgeProbabilityThreshold = 1e-2;
 	constexpr static const size_t iterationLimit = 5;
-	constexpr static const bool debug = true;
+	constexpr static const bool debug = false;
 
 	typedef uint8_t Symbol; // storage used to store an input symbol.
 	//typedef uint16_t WordIdx; // storage that suffices to store a word index.
@@ -317,7 +317,7 @@ class Marlin2018Simple {
 				
 			*(std::vector<Word> *)this = arrangeAndFuse(dictionaries,victimDictionary);
 				
-			if (Marlin2018Simple::debug) print(*this);
+			if (Marlin2018Simple::configuration("debug", Marlin2018Simple::debug)) print(*this);
 			
 			size_t iterations= Marlin2018Simple::configuration("iterations", Marlin2018Simple::iterationLimit);
 				
@@ -344,7 +344,7 @@ class Marlin2018Simple {
 						victimDictionary = i;
 					}
 				}
-				if (Marlin2018Simple::debug) print(Pstates);
+				if (Marlin2018Simple::configuration("debug", Marlin2018Simple::debug)) print(Pstates);
 
 				dictionaries.clear();
 				for (auto k=0; k<(1<<overlap); k++)
@@ -352,10 +352,10 @@ class Marlin2018Simple {
 				
 				*(std::vector<Word> *)this = arrangeAndFuse(dictionaries,victimDictionary);
 				
-				if (Marlin2018Simple::debug) print(*this);
-				if (Marlin2018Simple::debug) printf("Efficiency: %3.4lf\n", calcEfficiency());		
+				if (Marlin2018Simple::configuration("debug", Marlin2018Simple::debug)) print(*this);
+				if (Marlin2018Simple::configuration("debug", Marlin2018Simple::debug)) printf("Efficiency: %3.4lf\n", calcEfficiency());		
 			}
-			if (Marlin2018Simple::debug) printf("Efficiency: %3.4lf\n", calcEfficiency());				
+			if (Marlin2018Simple::configuration("debug", Marlin2018Simple::debug)) printf("Efficiency: %3.4lf\n", calcEfficiency());				
 		}			
 	};
 	const Dictionary dictionary;

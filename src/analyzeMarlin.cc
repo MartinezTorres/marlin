@@ -632,7 +632,7 @@ int main() {
     // Laplacian 0.25 entropy: efficiency vs unique dictionary size, overlaps 0 to 5
 
     // Justify victim
-	if (true) {
+	if (false) {
 	
 		tex << "\\input{results/justifyVictim.tex}\n";
 		ofstream res("results/justifyVictim.tex");
@@ -645,7 +645,7 @@ int main() {
 		\subfloat[]{
 		\begin{tikzpicture}
 		\begin{axis}[
-			title="Impact of Victim Dictionary", 
+			title=Impact of Victim Dictionary, 
 			title style={yshift=-1mm},
 			height=3cm, width=6cm,
 			scale only axis, 
@@ -662,12 +662,12 @@ int main() {
 			])ML";
 			
 		Marlin2018Simple::clearConfiguration();
-		Marlin2018Simple::setConfiguration("debug",1.);
+//		Marlin2018Simple::setConfiguration("debug",1.);
 		Marlin2018Simple::setConfiguration("shuffle",true);
 		for (size_t over=0; over<=4; over++) {
 
 			res << "\t\\addplot+[mark=none] coordinates {";
-			for (size_t i=1; i<LaplacianPDF.size()-1; i+=6)
+			for (size_t i=1; i<LaplacianPDF.size()-1; i++)
 				res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,over,(2<<20)-1)*100. << ")";
 			res << "};" << std::endl;
 		}
@@ -678,7 +678,7 @@ int main() {
 		\subfloat[]{
 		\begin{tikzpicture}
 		\begin{axis}[
-			title="Impact of Victim Dictionary", 
+			title=Impact of Victim Dictionary at 50\% Entropy, 
 			title style={yshift=-1mm},
 			height=3cm, width=6cm,
 			scale only axis, 
@@ -696,7 +696,7 @@ int main() {
 			])ML";
 			
 		Marlin2018Simple::clearConfiguration();
-		Marlin2018Simple::setConfiguration("debug",1.);
+//		Marlin2018Simple::setConfiguration("debug",1.);
 		Marlin2018Simple::setConfiguration("shuffle",true);
 			res << "\t\\addplot+[mark=none] coordinates {";
 		for (size_t over=0; over<=6; over++) {
