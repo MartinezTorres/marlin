@@ -6,6 +6,7 @@
 using namespace std;
 int main() {
 	
+	int skip=1;
 	
 	std::vector<std::vector<double>> LaplacianPDF(101);
 	for (size_t i=0; i<LaplacianPDF.size(); i++)
@@ -16,16 +17,23 @@ int main() {
 		NormalPDF[i] = Distribution::pdf(256,Distribution::Gaussian,double(i)/double(NormalPDF.size()-1));
 	
 	ofstream tex("out.tex");
-	tex << "\\documentclass{article}" << endl 
-		<< "\\usepackage[a4paper, margin=1cm]{geometry}" << endl 
-		<< "\\usepackage{tikz}" << endl 
-		<< "\\usepackage{pgfplots}" << endl 
-		<< "\\begin{document}" << endl;	
+	
+	tex << R"ML(
+\documentclass{article}
+\usepackage[a4paper, margin=1cm]{geometry}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.13}
+\usepgfplotslibrary{colorbrewer}
+\pgfplotsset{cycle list/Set2}
+\begin{document}
+)ML";
+	
 	// Unless stated differently: key=12, overlap=4
 
 
 	// Same Dictionary Size, efficiency over H.
-	if (false) {
+	if (true) {
 	
 		tex << "\\input{results/ssse.tex}\n";
 		ofstream res("results/ssse.tex");
@@ -39,49 +47,51 @@ int main() {
 		\begin{axis}[
 			title="Same Dictionary Size Efficiency", 
 			title style={yshift=-1mm},
-			height=3cm, width=5cm,
-%			nodes near coords={(\coordindex)},
-%			log origin=infty, 
-%			log ticks with fixed point, 
+			height=3cm, width=6cm,
 			scale only axis, 
 			enlargelimits=false, 
 			xmin=0, xmax=100, 
 			ymin=80, ymax=100, 
 			ymajorgrids, major grid style={dotted, gray}, 
-%			xtick=data,
 			x tick label style={font={\footnotesize},yshift=1mm}, 
 			y tick label style={font={\footnotesize},xshift=-1mm},
-%			ylabel style={font={\footnotesize},yshift=4mm}, 
-%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm},
-%			axis y line=left,
 			ylabel={\emph{Efficiency(\%)}}, 
-			xlabel={\emph{H(\%)}}, 
-			ylabel style={font={\footnotesize}}, 
-			xlabel style={font={\footnotesize}}
-%			ylabel style={font={\footnotesize},yshift=4mm}, 
-%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}
+			xlabel={\emph{Entropy (\%)}}, 
+			xlabel style={font={\footnotesize},xshift= 2mm}, 
+			ylabel style={font={\footnotesize},yshift=-2mm},
+			legend style={at={(0.5,-0.2)},legend columns=-1,anchor=north,nodes={scale=0.75, transform shape}}
 			])ML";
 			
 			
 		Marlin2018Simple::clearConfiguration();
-		Marlin2018Simple::setConfiguration("debug",1.);
-		for (size_t sz=9; sz<=16; sz+=3) {
+//		Marlin2018Simple::setConfiguration("debug",1.);
 
-			res << R"ML(
-				\addplot+[mark=none] coordinates {
-				)ML";
+		res << "\\addplot+[line width=2pt, gray, mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,0)*100. << ")";
+		res << "};" << std::endl;
 
-			for (size_t i=1; i<LaplacianPDF.size()-1; i+=6) {
-				;
-			
-				res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],sz,16-sz,(2<<20)-1)*100. << ")" << std::endl;
-			}
-			res << "};" << std::endl;
-		}
+/*		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],10,6)*100. << ")";
+		res << "};" << std::endl;*/
 
-		res << R"ML(
-			\legend{9+7, 12+4, 15+1}
-			)ML";
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,4)*100. << ")";
+		res << "};" << std::endl;
+
+/*		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],14,2)*100. << ")";
+		res << "};" << std::endl;*/
+
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],16,0)*100. << ")";
+		res << "};" << std::endl;
+
+		res << "\\legend{12+0, 9+7, 12+4, 15+1}" << std::endl;
 			
 			
 		res << R"ML(

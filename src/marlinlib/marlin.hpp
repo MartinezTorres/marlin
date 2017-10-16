@@ -1026,12 +1026,12 @@ public:
 		getConfigurationStructure()[name] = val; 
 	}
 	
-	static double theoreticalEfficiency(const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) {
+	static double theoreticalEfficiency(const std::vector<double> &pdf, size_t keySize=12, size_t overlap=0, size_t maxWordSize = 1<<20) {
 		Dictionary dictionary(pdf, keySize, overlap, maxWordSize);
 		return dictionary.calcEfficiency();
 	}
 
-	static std::pair<double,size_t> theoreticalEfficiencyAndUniqueWords(const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) {
+	static std::pair<double,size_t> theoreticalEfficiencyAndUniqueWords(const std::vector<double> &pdf, size_t keySize=12, size_t overlap=0, size_t maxWordSize = 1<<20) {
 		Dictionary dictionary(pdf, keySize, overlap, maxWordSize);
 		
 		double efficiency = dictionary.calcEfficiency();
