@@ -33,10 +33,10 @@ int main() {
 
 
 	// Same Dictionary Size, efficiency over H.
-	if (true) {
+	if (false) {
 	
-		tex << "\\input{results/ssse.tex}\n";
-		ofstream res("results/ssse.tex");
+		tex << "\\input{results/ssse1.tex}\n";
+		ofstream res("results/ssse1.tex");
 		
 		auto Dist = LaplacianPDF;
 
@@ -66,33 +66,17 @@ int main() {
 		Marlin2018Simple::clearConfiguration();
 //		Marlin2018Simple::setConfiguration("debug",1.);
 
-		res << "\\addplot+[line width=2pt, gray, mark=none] coordinates { ";
+		res << "\\addplot+[line width=2pt, gray!50, mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
 			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,0)*100. << ")";
 		res << "};" << std::endl;
-
-/*		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
-		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
-			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],10,6)*100. << ")";
-		res << "};" << std::endl;*/
 
 		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
 			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,4)*100. << ")";
 		res << "};" << std::endl;
 
-/*		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
-		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
-			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],14,2)*100. << ")";
-		res << "};" << std::endl;*/
-
-		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
-		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
-			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],16,0)*100. << ")";
-		res << "};" << std::endl;
-
-		res << "\\legend{12+0, 9+7, 12+4, 15+1}" << std::endl;
-			
+		res << "\\legend{No Overlap, Overlap}" << std::endl;
 			
 		res << R"ML(
 			\end{axis} 
@@ -103,6 +87,59 @@ int main() {
 			)ML";
 	}
 
+	if (false) {
+	
+		tex << "\\input{results/ssse2.tex}\n";
+		ofstream res("results/ssse2.tex");
+		
+		auto Dist = NormalPDF;
+
+		res << R"ML(
+		\begin{figure}
+		\centering
+		\begin{tikzpicture} 
+		\begin{axis}[
+			title="Same Dictionary Size Efficiency", 
+			title style={yshift=-1mm},
+			height=3cm, width=6cm,
+			scale only axis, 
+			enlargelimits=false, 
+			xmin=0, xmax=100, 
+			ymin=80, ymax=100, 
+			ymajorgrids, major grid style={dotted, gray}, 
+			x tick label style={font={\footnotesize},yshift=1mm}, 
+			y tick label style={font={\footnotesize},xshift=-1mm},
+			ylabel={\emph{Efficiency(\%)}}, 
+			xlabel={\emph{Entropy (\%)}}, 
+			xlabel style={font={\footnotesize},xshift= 2mm}, 
+			ylabel style={font={\footnotesize},yshift=-2mm},
+			legend style={at={(0.5,-0.2)},legend columns=-1,anchor=north,nodes={scale=0.75, transform shape}}
+			])ML";
+			
+			
+		Marlin2018Simple::clearConfiguration();
+//		Marlin2018Simple::setConfiguration("debug",1.);
+
+		res << "\\addplot+[line width=2pt, gray!50, mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,0)*100. << ")";
+		res << "};" << std::endl;
+
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,4)*100. << ")";
+		res << "};" << std::endl;
+
+		res << "\\legend{No Overlap, Overlap}" << std::endl;
+			
+		res << R"ML(
+			\end{axis} 
+			\end{tikzpicture}
+			\caption{}
+			\label{fig:}
+			\end{figure}
+			)ML";
+	}
 
 	// Overlap @ K=12.
 	if (false) {
@@ -384,7 +421,7 @@ int main() {
     // Laplacian 0.5 entropy: efficiency vs  unique dictionary size, overlaps 0 to 5
 
 
-	if (false) {
+	if (true) {
 
 		tex << R"ML(
 		\begin{figure}
@@ -417,11 +454,11 @@ int main() {
 		auto Dist = LaplacianPDF;
 		Marlin2018Simple::clearConfiguration();
 		Marlin2018Simple::setConfiguration("debug",1.);
-		for (size_t sz=9; sz<=16; sz++) {
+		for (size_t overlap=0; overlap<=4; overlap++) {
 			tex << R"ML(
 				\addplot+[mark=none] coordinates {
 				)ML";
-			for (size_t overlap=0; sz+overlap<=16; overlap++) {
+		for (size_t sz=9; sz+overlap<=20; sz++) {
 				auto res = Marlin2018Simple::theoreticalEfficiencyAndUniqueWords(Dist[(Dist.size()-1)/2],sz,overlap,(2<<20)-1);
 				tex << "(" << res.second << "," << res.first*100. << ")" << std::endl;
 //				tex << "(" << (1<<(sz+overlap)) << "," << res.first*100. << ")" << std::endl;
