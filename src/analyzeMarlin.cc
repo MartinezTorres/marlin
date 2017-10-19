@@ -421,7 +421,7 @@ int main() {
     // Laplacian 0.5 entropy: efficiency vs  unique dictionary size, overlaps 0 to 5
 
 
-	if (true) {
+	if (false) {
 
 		tex << R"ML(
 		\begin{figure}
@@ -483,74 +483,10 @@ int main() {
 			)ML";
 	}
 	
-    // Laplacian 0.25 entropy: efficiency vs dictionary size, overlaps 0 to 5
-
-
-	if (false) {
-
-		tex << R"ML(
-		\begin{figure}
-		\centering
-		\begin{tikzpicture} 
-		\begin{semilogxaxis}[
-			title="Decoding Speed vs Efficiency", 
-			title style={yshift=-1mm},
-			height=3cm, width=5cm,
-%			nodes near coords={(\coordindex)},
-%			log origin=infty, 
-%			log ticks with fixed point, 
-			scale only axis, 
-			enlargelimits=false, 
-			xmin=256, xmax=65536, 
-			ymin=50, ymax=100, 
-			ymajorgrids, major grid style={dotted, gray}, 
-%			xtick=data,
-			x tick label style={font={\footnotesize},yshift=1mm}, 
-			y tick label style={font={\footnotesize},xshift=-1mm},
-%			ylabel style={font={\footnotesize},yshift=4mm}, 
-%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm},
-%			axis y line=left,
-			ylabel={\emph{Efficiency}}, 
-			xlabel={\emph{H(\%)}}, 
-			ylabel style={font={\footnotesize},yshift=4mm}, 
-			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}
-			])ML";
-			
-		auto Dist = LaplacianPDF;
-		Marlin2018Simple::clearConfiguration();
-		Marlin2018Simple::setConfiguration("debug",1.);
-		for (size_t sz=9; sz<=16; sz++) {
-			tex << R"ML(
-				\addplot+[mark=none] coordinates {
-				)ML";
-			for (size_t overlap=0; sz+overlap<=16; overlap++)
-				tex << "(" << (1<<(sz+overlap)) << "," << Marlin2018Simple::theoreticalEfficiency(Dist[(Dist.size()-1)/4],sz,overlap,(2<<20)-1)*100. << ")" << std::endl;
-			tex << "};" << std::endl;
-		}
-
-
-
-
-		tex << R"ML(
-			%\legend{Dedup, No Dedup, No Overlap}
-			)ML";
-			
-			
-		tex << R"ML(
-			\end{semilogxaxis} 
-			\end{tikzpicture}
-			\caption{}
-			\label{fig:}
-			\end{figure}
-			)ML";
-	}
-	
-
-
     // Laplacian 0.25 entropy: efficiency vs unique dictionary size, overlaps 0 to 5
 
 
-	if (false) {
+	if (true) {
 
 		tex << R"ML(
 		\begin{figure}
@@ -564,6 +500,7 @@ int main() {
 %			log origin=infty, 
 %			log ticks with fixed point, 
 			scale only axis, 
+			log basis x=2,
 			enlargelimits=false, 
 			xmin=256, xmax=65536, 
 			ymin=50, ymax=100, 
@@ -583,14 +520,14 @@ int main() {
 		auto Dist = LaplacianPDF;
 		Marlin2018Simple::clearConfiguration();
 		Marlin2018Simple::setConfiguration("debug",1.);
-		for (size_t sz=9; sz<=16; sz++) {
+		for (size_t overlap=0; overlap<=4; overlap++) {
 			tex << R"ML(
 				\addplot+[mark=none] coordinates {
 				)ML";
-			for (size_t overlap=0; sz+overlap<=16; overlap++) {
+		for (size_t sz=9; sz+overlap<=20; sz++) {
 				auto res = Marlin2018Simple::theoreticalEfficiencyAndUniqueWords(Dist[(Dist.size()-1)/4],sz,overlap,(2<<20)-1);
-				tex << "(" << res.second << "," << res.first*100. << ")" << std::endl;
-//				tex << "(" << (1<<(sz+overlap)) << "," << res.first*100. << ")" << std::endl;
+				tex << "(" << res.second << "," << res.first*100. << ") ";
+				if (res.second>65536) break;
 			}
 			tex << "};" << std::endl;
 		}
@@ -611,6 +548,71 @@ int main() {
 			\end{figure}
 			)ML";
 	}
+
+    // Laplacian 0.25 entropy: efficiency vs unique dictionary size, overlaps 0 to 5
+	if (true) {
+
+		tex << R"ML(
+		\begin{figure}
+		\centering
+		\begin{tikzpicture} 
+		\begin{semilogxaxis}[
+			title="Decoding Speed vs Efficiency", 
+			title style={yshift=-1mm},
+			height=3cm, width=5cm,
+%			nodes near coords={(\coordindex)},
+%			log origin=infty, 
+%			log ticks with fixed point, 
+			scale only axis, 
+			enlargelimits=false, 
+			xmin=256, xmax=65536, 
+			ymin=50, ymax=100, 
+			ymajorgrids, major grid style={dotted, gray}, 
+%			xtick=data,
+			log basis x=2,
+			x tick label style={font={\footnotesize},yshift=1mm}, 
+			y tick label style={font={\footnotesize},xshift=-1mm},
+%			ylabel style={font={\footnotesize},yshift=4mm}, 
+%			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm},
+%			axis y line=left,
+			ylabel={\emph{Efficiency}}, 
+			xlabel={\emph{H(\%)}}, 
+			ylabel style={font={\footnotesize},yshift=4mm}, 
+			xlabel style={font={\footnotesize},yshift=5.25mm, xshift=29mm}
+			])ML";
+			
+		auto Dist = LaplacianPDF;
+		Marlin2018Simple::clearConfiguration();
+		Marlin2018Simple::setConfiguration("debug",1.);
+		for (size_t overlap=0; overlap<=4; overlap++) {
+			tex << R"ML(
+				\addplot+[mark=none] coordinates {
+				)ML";
+		for (size_t sz=9; sz+overlap<=20; sz++) {
+				auto res = Marlin2018Simple::theoreticalEfficiencyAndUniqueWords(Dist[3*(Dist.size()-1)/4],sz,overlap,(2<<20)-1);
+				tex << "(" << res.second << "," << res.first*100. << ") ";
+				if (res.second>65536) break;
+			}
+			tex << "};" << std::endl;
+		}
+
+
+
+
+		tex << R"ML(
+			%\legend{Dedup, No Dedup, No Overlap}
+			)ML";
+			
+			
+		tex << R"ML(
+			\end{semilogxaxis} 
+			\end{tikzpicture}
+			\caption{}
+			\label{fig:}
+			\end{figure}
+			)ML";
+	}
+
 	
     // Laplacian 0.75 entropy: efficiency vs dictionary size, overlaps 0 to 5
 
