@@ -1,5 +1,7 @@
 #include <dirent.h>
 
+#include <marlinlib/marlin.hpp>
+
 #include <fstream>
 #include <map>
 #include <queue>
@@ -237,38 +239,85 @@ static inline std::pair<std::string,std::string> testOnAllImages( std::shared_pt
 	return std::pair<std::string,std::string>(enc.str(), dec.str());	
 }
 
+
+
+static inline std::pair<std::string,std::string> testOnIndividualImages( std::shared_ptr<CODEC8> codec) {
+
+	//std::cout << "Testing codec: " << codec->name() << " against Images" << std::endl;
+
+	std::map<std::string, double> compressSpeed, uncompressSpeed, compressionRate;
+	
+	for (auto file : getAllFilenames("rawzor", ".pgm")) {
+		
+		cv::Mat1b img = readPGM8(file);
+		img = img(cv::Rect(0,0,img.cols&0xFF80,img.rows&0xFF80));
+		
+		UncompressedData8 in(img);
+		CompressedData8 compressed;
+		UncompressedData8 uncompressed;
+		
+		TestTimer compressTimer, uncompressTimer;
+		size_t nComp = 1, nUncomp = 1;
+		do {
+			nComp *= 2;
+			codec->compress(in, compressed);
+			compressTimer.start();
+			for (size_t t=0; t<nComp; t++)
+				codec->compress(in, compressed);
+			compressTimer.stop();
+		} while (compressTimer()<.01);
+
+		do {
+			nUncomp *= 2;
+			codec->uncompress(compressed, uncompressed);
+			uncompressTimer.start();
+			for (size_t t=0; t<nUncomp; t++)
+				codec->uncompress(compressed, uncompressed);
+			uncompressTimer.stop();
+		} while (uncompressTimer()<.01);
+		
+		if ( cv::countNonZero(img != uncompressed.img(img.rows, img.cols)) != 0)
+			std::cerr << "Image uncompressed incorrectly" <<  std::endl;
+
+		compressSpeed[file] = nComp*in.nBytes()/  compressTimer();
+		uncompressSpeed[file] = nUncomp*in.nBytes()/  uncompressTimer();
+		compressionRate[file] = double(compressed.nBytes())/double(in.nBytes());
+		
+//		printf("File: %s (%02.2lf)\n",file.c_str(), double(compressed.nBytes())/double(in.nBytes()));
+	}
+	
+	double meanCompressionRate=0, meanCompressSpeed=0, meanUncompressSpeed=0;
+	for (auto &e : compressionRate) meanCompressionRate += e.second/compressionRate.size(); 
+	for (auto &e : compressSpeed) meanCompressSpeed += e.second/compressSpeed.size(); 
+	for (auto &e : uncompressSpeed) meanUncompressSpeed += e.second/uncompressSpeed.size(); 
+	
+//	std::cout << "Codec: " << codec->name() << std::endl;
+//	std::cout << "R: " << meanCompressionRate << std::endl;
+//	std::cout << "C: " << int(meanCompressSpeed/(1<<20)) << "MB/s" << std::endl;
+//	std::cout << "U: " << int(meanUncompressSpeed/(1<<20)) << "MB/s" << std::endl;
+
+	std::ostringstream enc, dec;
+	enc << "" << 1./meanCompressionRate << " " << (meanCompressSpeed/(1<<20)) << " " << codec->name() << " {west}" << std::endl;
+
+	dec << "" << 1./meanCompressionRate << " " << (meanUncompressSpeed/(1<<20)) << " " << codec->name() << " {west}" << std::endl;
+	
+	return std::pair<std::string,std::string>(enc.str(), dec.str());	
+}
 using namespace std;
 	
 int main( int , char *[] ) {
 		
 	std::vector<shared_ptr<CODEC8>> C = {
-		std::make_shared<Nibble>(),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,   9),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  16),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
-//		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,16),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,2,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,6,11),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,7),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,2,7),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,4,7),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,6,7),
 		std::make_shared<Marlin2018>(Distribution::Laplace,16,0,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,6,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,16,2,11),
-//		std::make_shared<Marlin2018>(Distribution::Laplace,16,4,11),
-//		std::make_shared<Marlin2018>(Distribution::Laplace,16,6,11),
 		std::make_shared<Rice>(),
 		std::make_shared<RLE>(),
 		std::make_shared<Snappy>(),
 		std::make_shared<Nibble>(),
-		std::make_shared<CODEC8>(),
-//		std::make_shared<CODEC8AA>(),
-		std::make_shared<CODEC8Z>(),
 		std::make_shared<FiniteStateEntropy>(),
 		std::make_shared<Gipfeli>(),
 		std::make_shared<Gzip>(),
@@ -278,6 +327,12 @@ int main( int , char *[] ) {
 		std::make_shared<Zstd>(),
 		std::make_shared<CharLS>(),
 	};
+
+	Marlin2018Simple::setConfiguration("dedup",0.);
+	C.push_back(std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11));
+	Marlin2018Simple::setConfiguration("dedup",1.);
+
+
 	
 	for (auto c : C) 
 		testCorrectness(c);
@@ -320,10 +375,10 @@ int main( int , char *[] ) {
 	
 	std::vector<std::string> encodeImages, decodeImages;
 	for (auto c : C) {
-		auto res = testOnAllImages(c, tex);
+		auto res = testOnIndividualImages(c);
 		encodeImages.push_back(res.first);
 		decodeImages.push_back(res.second);
-		std::cout << res.first << res.second;
+		//std::cout << res.first << res.second;
 	}
 	
 	std::cout << "Encoding" << std::endl;

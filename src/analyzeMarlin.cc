@@ -33,7 +33,7 @@ int main() {
 
 
 	// Same Dictionary Size, efficiency over H.
-	if (false) {
+	if (true) {
 	
 		tex << "\\input{results/ssse1.tex}\n";
 		ofstream res("results/ssse1.tex");
@@ -64,19 +64,36 @@ int main() {
 			
 			
 		Marlin2018Simple::clearConfiguration();
-//		Marlin2018Simple::setConfiguration("debug",1.);
+		Marlin2018Simple::setConfiguration("enableVictim",1.);
+		Marlin2018Simple::setConfiguration("shuffle",0.);
 
 		res << "\\addplot+[line width=2pt, gray!50, mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
 			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,0)*100. << ")";
 		res << "};" << std::endl;
 
+		Marlin2018Simple::setConfiguration("enableVictim",1.);
+		Marlin2018Simple::setConfiguration("shuffle",1.);
 		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
 			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,4)*100. << ")";
 		res << "};" << std::endl;
 
-		res << "\\legend{No Overlap, Overlap}" << std::endl;
+		Marlin2018Simple::setConfiguration("enableVictim",0.);
+		Marlin2018Simple::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,4)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Simple::setConfiguration("enableVictim",1.);
+		Marlin2018Simple::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,4)*100. << ")";
+		res << "};" << std::endl;
+
+		res << "\\legend{No Overlap, Victim only, Specialized only, Victim + Specialized}" << std::endl;
 			
 		res << R"ML(
 			\end{axis} 
@@ -87,7 +104,7 @@ int main() {
 			)ML";
 	}
 
-	if (false) {
+	if (true) {
 	
 		tex << "\\input{results/ssse2.tex}\n";
 		ofstream res("results/ssse2.tex");
@@ -118,19 +135,36 @@ int main() {
 			
 			
 		Marlin2018Simple::clearConfiguration();
-//		Marlin2018Simple::setConfiguration("debug",1.);
+		Marlin2018Simple::setConfiguration("enableVictim",1.);
+		Marlin2018Simple::setConfiguration("shuffle",0.);
 
 		res << "\\addplot+[line width=2pt, gray!50, mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
 			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,0)*100. << ")";
 		res << "};" << std::endl;
 
+		Marlin2018Simple::setConfiguration("enableVictim",1.);
+		Marlin2018Simple::setConfiguration("shuffle",1.);
 		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
 			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,4)*100. << ")";
 		res << "};" << std::endl;
 
-		res << "\\legend{No Overlap, Overlap}" << std::endl;
+		Marlin2018Simple::setConfiguration("enableVictim",0.);
+		Marlin2018Simple::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,4)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Simple::setConfiguration("enableVictim",1.);
+		Marlin2018Simple::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Simple::theoreticalEfficiency(Dist[i],12,4)*100. << ")";
+		res << "};" << std::endl;
+
+		res << "\\legend{No Overlap, Victim only, Specialized only, Victim + Specialized}" << std::endl;
 			
 		res << R"ML(
 			\end{axis} 
@@ -486,7 +520,7 @@ int main() {
     // Laplacian 0.25 entropy: efficiency vs unique dictionary size, overlaps 0 to 5
 
 
-	if (true) {
+	if (false) {
 
 		tex << R"ML(
 		\begin{figure}
@@ -550,7 +584,7 @@ int main() {
 	}
 
     // Laplacian 0.25 entropy: efficiency vs unique dictionary size, overlaps 0 to 5
-	if (true) {
+	if (false) {
 
 		tex << R"ML(
 		\begin{figure}
