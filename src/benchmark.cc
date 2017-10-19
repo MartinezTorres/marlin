@@ -218,7 +218,7 @@ static inline void testOnImages( std::shared_ptr<CODEC8> codec, std::ofstream &)
 		uncompressSpeed[file] = nUncomp*in.nBytes()/  uncompressTimer();
 		compressionRate[file] = double(compressed.nBytes())/double(in.nBytes());
 		
-//		printf("File: %s (%02.2lf)\n",file.c_str(), double(compressed.nBytes())/double(in.nBytes()));
+//		printf("File: %s (%02.2lf)\n",file.c_str(), 1./(double(compressed.nBytes())/double(in.nBytes())));
 	}
 	
 	double meanCompressionRate=0, meanCompressSpeed=0, meanUncompressSpeed=0;
@@ -232,7 +232,7 @@ static inline void testOnImages( std::shared_ptr<CODEC8> codec, std::ofstream &)
 //	std::cout << "U: " << int(meanUncompressSpeed/(1<<20)) << "MB/s" << std::endl;
 
 	
-	std::cout << "(" << meanCompressionRate << "," << (meanUncompressSpeed/(1<<20)) << ") [" << codec->name() << "]" << std::endl;
+	std::cout << "(" << 1./meanCompressionRate << "," << (meanUncompressSpeed/(1<<20)) << ") [" << codec->name() << "]" << std::endl;
 }
 
 using namespace std;
@@ -240,19 +240,27 @@ using namespace std;
 int main( int , char *[] ) {
 		
 	std::vector<shared_ptr<CODEC8>> C = {
-//		std::make_shared<Nibble>(),
+		std::make_shared<Nibble>(),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,   9),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  16),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,0),
-//		std::make_shared<Marlin2018>(Distribution::Laplace,12,4),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,6),
-//		std::make_shared<Marlin2018>(Distribution::Laplace,12,8),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::MARLIN,  12),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,12),
 //		std::make_shared<Marlin>(Distribution::Laplace, Marlin::TUNSTALL,16),
-/*		std::make_shared<Rice>(),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,2,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,6,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,7),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,2,7),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,4,7),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,6,7),
+		std::make_shared<Marlin2018>(Distribution::Laplace,16,0,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,16,2,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,16,4,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,16,6,11),
+		std::make_shared<Rice>(),
 		std::make_shared<RLE>(),
 		std::make_shared<Snappy>(),
 		std::make_shared<Nibble>(),
@@ -266,7 +274,7 @@ int main( int , char *[] ) {
 		std::make_shared<Huff0>(),
 		std::make_shared<Lz4>(),
 		std::make_shared<Zstd>(),
-		std::make_shared<CharLS>(),*/
+		std::make_shared<CharLS>(),
 	};
 	
 	for (auto c : C) 
