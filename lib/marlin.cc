@@ -93,7 +93,7 @@ namespace {
 			const uint8_t *srcEnd = src + srcSize;
 			
 			if (srcSize==0) return dst0-dst;
-						
+
 			NodeIdx nodeId = *src++;
 			if (srcSize > 16*WORD_SIZE+2) while (src < srcEnd-16*WORD_SIZE+2) {
 
@@ -188,6 +188,7 @@ namespace {
 					dst += v.back();
 				}
 			}
+			memset(dst, 0, dstSize - (dst-dst0));
 			return dst-dst0;
 		}
 	};
@@ -258,8 +259,7 @@ namespace {
 					double sum = 0.0;
 					for (size_t i=0; i<ALPHABET_SIZE; ++i)
 						P2[i] = sum = sum + Ps[i]/P1[i];
-				}
-				
+				}				
 
 				// Build the Dictionary
 				depq<Word> depqNodes;
@@ -337,10 +337,7 @@ namespace {
 
 				
 
-//				cx::array<double,ALPHABET_SIZE> symbolLength = {};
-//				cx::array<double,ALPHABET_SIZE> symbolP = {};
-				
-//				double meanLength = 0, meanLengthApprox = 0, sump=0, craz = 0, craz2=0;
+				double meanLength = 0, sump=0;
 				words.clear();
 				words.push_back(Word());
 				for (auto&& node : depqNodes) {
@@ -349,18 +346,11 @@ namespace {
 						word.push_back(a[s].symbol);
 					words.push_back(word);
 					
-/*					double p = node.p/P2[node.symbols.front()]*P3[node.symbols.front()];
-					for (auto&& s : node.symbols) {
-	//						symbolLength[a[s].symbol] += p/node.symbols.size();
-	//						symbolP     [a[s].symbol] += p;
-						symbolLength[a[s].symbol] += (1./NUM_WORDS)/node.symbols.size();
-						symbolP     [a[s].symbol] += (1./NUM_WORDS);
-					}
-					
-					meanLength += p*node.symbols.size();
-					meanLengthApprox += (1./NUM_WORDS)*node.symbols.size();
-					sump += p;*/
+					double p = node.p/P2[node.front()]*P3[node.front()];
+					meanLength += p*node.size();
+					sump += p;
 				}
+				printf("Eff: %lf %lf\n", 12./meanLength, sump);
 				
 /*				for (size_t i=0; i<ALPHABET_SIZE; ++i) {
 					craz += P[i]*symbolLength[i]/symbolP[i];
@@ -400,6 +390,217 @@ namespace {
 			encoder(words), decoder(words) {}
 	};
 	
+	struct DoubleSharedDictionaryEncoder {
+		
+		typedef uint16_t WordIdx;
+		typedef uint16_t NodeIdx;
+		
+		struct Node {
+			std::array<NodeIdx,ALPHABET_SIZE> child = {};
+			WordIdx code = {};
+		};            
+		cx::vector<Node, 2*NUM_WORDS> nodes = {};
+
+		// Words[0] is empty
+		constexpr DoubleSharedDictionaryEncoder(cx::array<cx::vector<Word,NUM_WORDS>,2>) {
+		}
+		
+		size_t encode(const uint8_t *src, size_t srcSize, uint8_t *dst) const {
+		}
+	};
+		
+	struct DoubleSharedDictionaryDecoder {
+		
+		typedef cx::array<uint8_t, WORD_SIZE+1>  Entry;
+		cx::vector<Entry, NUM_WORDS> decoderTable = {};
+
+		constexpr DoubleSharedDictionaryDecoder(cx::array<cx::vector<Word,NUM_WORDS>,2> ) {
+		}
+		
+		size_t decode(const uint8_t *src, size_t srcSize, uint8_t *dst, size_t dstSize) const {
+		}
+	};
+
+	struct MarlinV2 : public Codec {
+		
+		
+		const cx::array<double, ALPHABET_SIZE> P;
+		const cx::array<cx::vector<Word,NUM_WORDS>,2> words;
+		const DoubleSharedDictionaryEncoder encoder;
+		const DoubleSharedDictionaryDecoder decoder;
+		virtual size_t encode(const uint8_t *src, size_t srcSize, uint8_t *dst                ) const { return encoder.encode(src, srcSize, dst);          }
+		virtual size_t decode(const uint8_t *src, size_t srcSize, uint8_t *dst, size_t dstSize) const { return decoder.decode(src, srcSize, dst, dstSize); }
+		virtual double predict(const std::array<uint16_t, ALPHABET_SIZE>& hist, size_t) const {
+			
+			double ret = 0.0;
+			for (size_t i=0; i<ALPHABET_SIZE; i++)
+				ret += -std::log2(P[i])*hist[i];
+		
+			return ret/8;
+		}
+		
+		static cx::array<cx::vector<Word,NUM_WORDS>,2> getWords(const cx::array<double, ALPHABET_SIZE> &P) {
+			
+			printf("DD %lf\n", Distribution::entropy(P));
+				
+			cx::array<cx::vector<Word,NUM_WORDS>,2> words;
+			
+			// The formulas on the paper expect the alphabet to consist of symbols with decreasing order of probability.
+			struct A {
+				double p;
+				Symbol symbol;
+				constexpr bool operator>(const A& rhs) const { return p > rhs.p; }
+			};
+			
+			// States sorted by state number (most probable state first)
+			cx::array<A,ALPHABET_SIZE> a = {}; 
+			for (size_t i=0; i<ALPHABET_SIZE; ++i)
+				a[i] = { P[i]+1e-100 , Symbol(i) };
+
+			std::sort(a.begin(), a.end(), std::greater<A>());			
+			
+			
+			// Initial State Probability (Ps_i)
+			cx::array<double,ALPHABET_SIZE> Ps = {}; 
+			Ps.front() = 1.;
+			
+			// 1st Preprocessing
+			// Reverse cumulative symbol probability (divisor of the first term in Eq1)
+			cx::array<double,ALPHABET_SIZE> P1 = {};
+			P1[ALPHABET_SIZE-1] = a[ALPHABET_SIZE-1].p;
+			for (size_t i=ALPHABET_SIZE-1; i; i--)
+				P1[i-1] = P1[i] + a[i-1].p;
+
+			for (size_t StateUpdateIterations = 3; StateUpdateIterations; --StateUpdateIterations) {
+				
+				// 2nd Preprocessing
+				// Parts of eq2 that depend on the state
+				cx::array<double,ALPHABET_SIZE> P2 = {};
+				{
+					double sum = 0.0;
+					for (size_t i=0; i<ALPHABET_SIZE; ++i)
+						P2[i] = sum = sum + Ps[i]/P1[i];
+				}
+				
+				depq<Word> depqNodes; // Where 
+				// DICTIONARY INITIALIZATION
+				for (size_t n=0; n<ALPHABET_SIZE; ++n) {
+					
+					Word node = {};
+					node.push_back(n);
+					node.state = 0;
+					node.p = P2[n] * a[n].p;
+					
+					depqNodes.push(node);
+				}
+
+				/// EXPAND DICTIONARY FOR EACH STATE
+				for (size_t state = 0; state < words.size(); ++state) {
+					
+					// GROW THE DICTIONARY
+					while (depqNodes.size() < NUM_WORDS-1 and depqNodes.max().size() < WORD_SIZE) {
+						
+						Word node = depqNodes.max();
+						depqNodes.removeMax();
+						
+						Word newNode = {};
+						newNode = node;
+						newNode.push_back(node.state);
+
+						newNode.state = 0;
+						
+						newNode.p = node.p * a[node.state].p / P1[node.state];
+						depqNodes.push(newNode);
+						
+						node.p -= newNode.p;
+						node.state++;
+						
+						depqNodes.push(node);
+					}
+					
+					// Init words
+					words[state].clear();
+					
+					// Add words that start with zero
+					for (auto&& w : depqNodes)
+						if (w[0]==state or state==(words.size()-1))
+							words[state].push_back(w);
+					
+					// Add an empty word
+					words[state].push_back(Word());
+					
+					//Init with all nodes that do not start with zero:
+					depq<Word> depqNodes2;
+					for (auto&& w : depqNodes)
+						if (w[0]>state)
+							depqNodes2.push(w);
+					depqNodes = depqNodes2;
+				}
+
+				// Update probability state
+				{
+					cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T = {};
+					
+					for (size_t state = 0; state < ALPHABET_SIZE; ++state)
+						for (auto &&word : words[std::min(words.size()-1,state)])
+							if (state <= word.front())
+								T[state][word.state] += word.p /(P2[word.front()] * P1[state]);
+
+					for (size_t MaxwellIt = 3; MaxwellIt; --MaxwellIt) {
+						
+						cx::array<cx::array<double,ALPHABET_SIZE>,ALPHABET_SIZE> T2 = {};
+								
+						for (size_t i=0; i<ALPHABET_SIZE; ++i)
+							for (size_t j = 0; j<ALPHABET_SIZE; ++j)
+								for (size_t k=0; k<ALPHABET_SIZE; ++k)
+									T2[i][j] += T[i][k] * T[k][j];
+						
+						T = T2;
+					}
+					Ps = T[0];					
+				}
+				
+				// Estimate efficiency
+				{
+					
+					cx::array<double,ALPHABET_SIZE> P3 = {};
+					{
+						double sum = 0.0;
+						for (size_t i=0; i<ALPHABET_SIZE; ++i)
+							P3[i] = sum = sum + Ps[i]/P1[i];
+					}
+				
+					double meanLength = 0, sump = 0;
+					for (auto && wordStates : words) {
+						for (auto && word : wordStates) {
+					
+							//double p = word.p/P2[word.front()]*P3[word.front()];
+							double p = word.p;
+							meanLength += p*word.size();
+							sump += p;
+						}
+					}
+					
+					printf("Eff: %lf %lf\n", 12./meanLength, sump);
+				}
+			}
+			
+			// Swap symbols order for actual symbols
+			for (auto && wordStates : words)
+				for (auto && word : wordStates)
+					for (auto&& c : word)
+						c = a[c].symbol;
+			return words;
+		}	
+
+		MarlinV2(const cx::array<double, ALPHABET_SIZE> &P) :
+			P(P), words(getWords(P)),
+			encoder(words), decoder(words) {}
+	};
+	
+
+
+
 	struct CopyCodec : public Codec {
 		
 		virtual size_t encode(const uint8_t *src, size_t srcSize, uint8_t *dst) const {
@@ -437,6 +638,8 @@ namespace {
 		double e = 0.9;
 		for (size_t i=0; i<6; i++) {
 			printf("G %lf", e); ret.emplace_back( std::make_shared<T>(Distribution::getWithEntropy(Distribution::Gaussian<256>,e) ) );
+			printf("G2 %lf", e); MarlinV2(Distribution::getWithEntropy(Distribution::Gaussian<256>,e) );
+
 			printf("L %lf", e); ret.emplace_back( std::make_shared<T>(Distribution::getWithEntropy(Distribution::Laplace<256>,e) ) );
 			printf("E %lf", e); ret.emplace_back( std::make_shared<T>(Distribution::getWithEntropy(Distribution::Exponential<256>,e) ) );
 			printf("P %lf", e); ret.emplace_back( std::make_shared<T>(Distribution::getWithEntropy(Distribution::Poisson<256>,e) ) );

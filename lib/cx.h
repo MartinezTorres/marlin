@@ -35,6 +35,11 @@ namespace cx {
 		constexpr T &operator[](size_t i)       { return arr[i]; }
 		constexpr T  operator[](size_t i) const { return arr[i]; }
 
+		constexpr bool operator==(const vector<T,C> &rhs) const {
+			for (size_t i=0; i<C; i++) if (arr[i]!=rhs[i]) return false;
+			return true;
+		}
+
 		constexpr size_t size()     const { return sz; }
 		constexpr bool   empty()    const { return sz==0; }
 		constexpr size_t capacity() const { return C; }
