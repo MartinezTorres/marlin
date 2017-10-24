@@ -33,7 +33,7 @@ int main() {
 
 
 	// Same Dictionary Size, efficiency over H.
-	if (true) {
+	if (false) {
 	
 		tex << "\\input{results/ssse1.tex}\n";
 		ofstream res("results/ssse1.tex");
@@ -103,8 +103,188 @@ int main() {
 			\end{figure}
 			)ML";
 	}
-
+	
+	
+	// Same Dictionary Size, efficiency over H.
 	if (true) {
+		
+		tex << "\\input{results/ssse12.tex}\n";
+		ofstream res("results/ssse12.tex");
+		
+		
+		size_t overlap=0;
+		auto Dist = LaplacianPDF;
+
+		res << R"ML(
+		\begin{figure}
+		\centering
+		\begin{tikzpicture} 
+		\begin{axis}[
+			title={No Overlap, Only Shifting}, 
+			title style={yshift=-1mm},
+			height=3cm, width=6cm,
+			scale only axis, 
+			enlargelimits=false, 
+			xmin=0, xmax=100, 
+			ymin=80, ymax=100, 
+			ymajorgrids, major grid style={dotted, gray}, 
+			x tick label style={font={\footnotesize},yshift=1mm}, 
+			y tick label style={font={\footnotesize},xshift=-1mm},
+			ylabel={\emph{Efficiency(\%)}}, 
+			xlabel={\emph{Entropy (\%)}}, 
+			xlabel style={font={\footnotesize},xshift= 2mm}, 
+			ylabel style={font={\footnotesize},yshift=-2mm},
+			legend pos=outer north east,
+			legend style={nodes={scale=0.75, transform shape}}
+			])ML";
+			
+			
+		Marlin2018Compound::clearConfiguration();
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+
+		res << "\\addplot+[line width=2pt, gray!50, mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,0)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,1)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,2)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,3)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,4)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,5)*100. << ")";
+		res << "};" << std::endl;
+
+		res << "\\legend{12;0;0, 12;0;1, 12;0;2, 12;0;3, 12;0;4, 12;0;5}" << std::endl;
+			
+		res << R"ML(
+			\end{axis} 
+			\end{tikzpicture}
+			\caption{}
+			\label{fig:}
+			\end{figure}
+			)ML";
+	}
+	
+	
+	// Same Dictionary Size, efficiency over H.
+	if (true) {
+		
+		tex << "\\input{results/ssse13.tex}\n";
+		ofstream res("results/ssse13.tex");
+		
+		
+		size_t overlap=4;
+		auto Dist = LaplacianPDF;
+
+		res << R"ML(
+		\begin{figure}
+		\centering
+		\begin{tikzpicture} 
+		\begin{axis}[
+			title={Overlap + Shifting}, 
+			title style={yshift=-1mm},
+			height=3cm, width=6cm,
+			scale only axis, 
+			enlargelimits=false, 
+			xmin=0, xmax=100, 
+			ymin=80, ymax=100, 
+			ymajorgrids, major grid style={dotted, gray}, 
+			x tick label style={font={\footnotesize},yshift=1mm}, 
+			y tick label style={font={\footnotesize},xshift=-1mm},
+			ylabel={\emph{Efficiency(\%)}}, 
+			xlabel={\emph{Entropy (\%)}}, 
+			xlabel style={font={\footnotesize},xshift= 2mm}, 
+			ylabel style={font={\footnotesize},yshift=-2mm},
+			legend pos=outer north east,
+			legend style={nodes={scale=0.75, transform shape}}
+			])ML";
+			
+			
+		Marlin2018Compound::clearConfiguration();
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+
+		res << "\\addplot+[line width=2pt, gray!50, mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,0)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,1)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,2)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,3)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,4)*100. << ")";
+		res << "};" << std::endl;
+
+		Marlin2018Compound::setConfiguration("enableVictim",1.);
+		Marlin2018Compound::setConfiguration("shuffle",0.);
+		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
+		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,5)*100. << ")";
+		res << "};" << std::endl;
+
+		res << "\\legend{12;4;0, 12;4;1, 12;4;2, 12;4;3, 12;4;4, 12;4;5}" << std::endl;
+			
+		res << R"ML(
+			\end{axis} 
+			\end{tikzpicture}
+			\caption{}
+			\label{fig:}
+			\end{figure}
+			)ML";
+	}
+
+	if (false) {
 	
 		tex << "\\input{results/ssse2.tex}\n";
 		ofstream res("results/ssse2.tex");

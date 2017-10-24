@@ -452,6 +452,7 @@ int main(int argc, char **argv) {
 	options["--keySize"]=12;
 	options["--overlap"]=2;
 	options["--maxWordSize"]=256;
+	options["--testSize"]=1<<20;
 
 	std::vector<double> P;
 	for (int i=1; i<argc; i++) {
@@ -516,8 +517,9 @@ int main(int argc, char **argv) {
 //	Marlin2018Simple::setConfiguration("encoderFast",0);
 	Marlin2018Simple::setConfiguration("debug",1.);
 	Marlin2018Simple::setConfiguration("dedup",0.);
-	Marlin2018Simple::theoreticalEfficiency(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]);
-	//Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).benchmark(P,options["--testSize"]);
+//	Marlin2018Simple::theoreticalEfficiency(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]);
+	
+	Marlin2018Compound(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).benchmark(P,options["--testSize"]);
 /*	Marlin2018Simple::setConfiguration("dedup",1.);
 	Marlin2018Simple(P,options["--keySize"],options["--overlap"],options["--maxWordSize"]).test(P,options["--testSize"]);
 	Marlin2018Simple::setConfiguration("dedup",0.);

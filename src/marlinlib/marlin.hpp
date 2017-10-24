@@ -34,7 +34,7 @@ class Marlin2018Compound {
 	constexpr static const bool enableVictimDictionary = true;
 	constexpr static const double purgeProbabilityThreshold = 1e-2;
 	constexpr static const size_t iterationLimit = 5;
-	constexpr static const bool debug = false;
+	constexpr static const bool debug = true;
 
 	typedef uint8_t Symbol; // storage used to store an input symbol.
 	//typedef uint16_t WordIdx; // storage that suffices to store a word index.
@@ -336,9 +336,9 @@ class Marlin2018Compound {
 			for (auto &&w : *this)
 				meanLength += w.p * w.size();
 			
-			double shannonLimit = alphabet.originalEntropy/std::log2(alphabet.size());
+			double shannonLimit = alphabet.originalEntropy;
 
-			return shannonLimit / (keySize / (meanLength*std::log2(alphabet.size()))); // NEED TO ADD SHIFT HERE
+			return shannonLimit / (keySize/meanLength + alphabet.shift);
 		}
 		
 		Dictionary(const Alphabet &alphabet_, size_t keySize_, size_t overlap_, size_t maxWordSize_)
@@ -715,6 +715,44 @@ class Marlin2018Compound {
 		}
 		
 		template<typename T>
+		void decode8(const uint8_t *&in, const uint8_t *inEnd, uint8_t *&out, uint8_t *) const {
+			
+			uint8_t *o8 = out;
+			const uint32_t *i32    = (const uint32_t *)in;
+			const uint32_t *i32end = (const uint32_t *)inEnd;
+			
+			uint64_t mask = (1<<(keySize+overlap))-1;
+			const T *D = dedupVector ? (const T *)(*dedupVector)() : (const T *)decoderTable.data();
+			uint64_t value = start; 
+			while (i32<i32end) {
+				value = (value<<32) + *i32++;
+				{				
+					T v = D[(value>>24 ) & mask];
+					*((T *)o8) = v;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+				{				
+					T v = D[(value>>16) & mask];
+					*((T *)o8) = v;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+				{				
+					T v = D[(value>>8) & mask];
+					*((T *)o8) = v;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+				{				
+					T v = D[(value>>0) & mask];
+					*((T *)o8) = v;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+			}
+
+			in  = (const uint8_t *)i32;
+			out = (uint8_t *)o8;
+		}
+		
+		template<typename T>
 		void decode12(const uint8_t *&in, const uint8_t *inEnd, uint8_t *&out, uint8_t *) const {
 			
 			uint8_t *o8 = out;
@@ -826,6 +864,13 @@ class Marlin2018Compound {
 					case   8: return decode12<uint64_t>(in, inEnd, out, outEnd);
 				}
 			} 
+
+			if (keySize==8) {
+				switch (maxWordSize+1) {
+					case   4: return decode8<uint32_t>(in, inEnd, out, outEnd);
+					case   8: return decode8<uint64_t>(in, inEnd, out, outEnd);
+				}
+			} 
 			
 			switch (maxWordSize+1) {
 				case   4: return decodeA<uint32_t, 1>(in, inEnd, out, outEnd);
@@ -870,12 +915,16 @@ public:
 		getConfigurationStructure()[name] = val; 
 	}
 	
-	static double theoreticalEfficiency(const std::vector<double> &pdf, size_t keySize=12, size_t overlap=0, size_t shift=0, size_t maxWordSize = 1<<20) {
+	static double theoreticalEfficiency(const std::vector<double> &pdf, size_t keySize=12, size_t overlap=0, size_t shift = size_t(-1), size_t maxWordSize = 1<<20) {
+		if (shift==size_t(-1)) shift = getOptimalShift(pdf, keySize, overlap, maxWordSize);
 		Dictionary dictionary(Alphabet(pdf, shift), keySize, overlap, maxWordSize);
 		return dictionary.calcEfficiency();
 	}
 
-	static std::pair<double,size_t> theoreticalEfficiencyAndUniqueWords(const std::vector<double> &pdf, size_t keySize=12, size_t overlap=0, size_t shift=0, size_t maxWordSize = 1<<20) {
+	static std::pair<double,size_t> theoreticalEfficiencyAndUniqueWords(const std::vector<double> &pdf, size_t keySize=12, size_t overlap=0, size_t shift = size_t(-1), size_t maxWordSize = 1<<20) {
+		
+		if (shift==size_t(-1)) shift = getOptimalShift(pdf, keySize, overlap, maxWordSize);
+
 		Dictionary dictionary(Alphabet(pdf, shift), keySize, overlap, maxWordSize);
 		
 		double efficiency = dictionary.calcEfficiency();
@@ -887,9 +936,23 @@ public:
 	}
 	
 	const double efficiency;
+	
+	static size_t getOptimalShift(const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) {
+		
+		double best = Dictionary(Alphabet(pdf, 0), keySize, overlap, maxWordSize).calcEfficiency();
+		for (int shift=1; shift<4; shift++) {
+			double efficiency = Dictionary(Alphabet(pdf, shift), keySize, overlap, maxWordSize).calcEfficiency();
+			if (efficiency<best) return shift-1;
+			best = efficiency;
+		}
+		return 4;
+	}
 
-	Marlin2018Compound (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t shift_, size_t maxWordSize) : 
-		dictionary(Alphabet(pdf, shift_), keySize, overlap, maxWordSize),
+	Marlin2018Compound (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) :
+		Marlin2018Compound( pdf, keySize, overlap, getOptimalShift(pdf, keySize, overlap, maxWordSize), maxWordSize) {}
+
+	Marlin2018Compound (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t shift, size_t maxWordSize) :
+		dictionary(Alphabet(pdf, shift), keySize, overlap, maxWordSize),
 		efficiency(dictionary.calcEfficiency())  {}
 
     Marlin2018Compound() = delete;
@@ -998,7 +1061,7 @@ public:
 		const uint8_t *ip = (const uint8_t *)&*in.begin();
 		uint8_t *op = (uint8_t *)&*out.begin();
 		
-		// Store input size
+		// Store uncompressed size
 		*(uint32_t *)op = uint32_t(in.size());
 		op += sizeof(uint32_t);
 
@@ -1008,38 +1071,43 @@ public:
 		//2nd pass
 		uint64_t mask=0;
 		for (size_t i=0; i<8; i++)
-			mask |= ((1<<shift)-1)<<(8*i);
+			mask |= ((1ULL<<shift)-1)<<(8ULL*i);
 		
 		const uint64_t *i64    = (const uint64_t *)&*in.begin();
 		const uint64_t *i64end = (const uint64_t *)&*in.end();
+		
+//		std::cerr << shift << " " << mask << std::endl;
 
 		while (i64 != i64end) {
 			*(uint64_t *)op = _pext_u64(*i64++, mask);
 			op += shift;
 		}
 
-		out.resize((uint8_t *)&*out.end()-op);
+		out.resize(op-(uint8_t *)&*out.begin());
 	}
 
 	template<typename TIN, typename TOUT>
 	void decode(const TIN &in, TOUT &out) const { 
 
 		size_t shift = dictionary.alphabet.shift;
-		
-		const uint8_t *ip = (const uint8_t *)&*in.begin();
-		uint8_t *op = (uint8_t *)&*out.begin();
-		
-		// Recover input size
-		size_t inSize = *(const uint32_t *)ip;
-		ip += sizeof(uint32_t);
 
+		const uint8_t *ip = (const uint8_t *)&*in.begin();
+
+		// Recover input size
+		size_t uncompressedSize = *(const uint32_t *)ip;
+		ip += sizeof(uint32_t);
+		
+		out.resize(uncompressedSize);
+	
+		
 		//1st pass
-		decoderFast(ip, (const uint8_t *)&*in.end() - (inSize*shift/8), op, (uint8_t *)&*out.end());
+		uint8_t *op = (uint8_t *)&*out.begin();
+		decoderFast(ip, (const uint8_t *)&*in.end() - (uncompressedSize*shift/8), op, (uint8_t *)&*out.end());
 
 		//2nd pass
 		uint64_t mask=0;
 		for (size_t i=0; i<8; i++)
-			mask |= ((1<<shift)-1)<<(8*i);
+			mask |= ((1ULL<<shift)-1)<<(8ULL*i);
 		
 		uint64_t *o64    = (uint64_t *)&*out.begin();
 		uint64_t *o64end = (uint64_t *)&*out.end();
@@ -1049,7 +1117,7 @@ public:
 			ip += shift;
 		}
 
-		out.resize((uint8_t *)&*out.end()-op);
+		out.resize(op-(uint8_t *)&*out.begin());
 	}
 };
 
