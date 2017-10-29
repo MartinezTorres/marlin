@@ -12,103 +12,131 @@
 #include <util/distribution.hpp>
 #include <cassert>
 
-
-// Split encoding:
-// (a) High entropy parts of the code are stored as-is.
-//   - To simplify, we assume that high entropy lies on the n lowest bits.
-//   - We might consider as a special case negatives, by examining 2 complement.
-// (b) Low entropy parts of the code... well... this is already solved by the victim dictionary.
-
-// Mini Encoding:
-// Idea: use 8 bit dictionaries. Abuse the victim dictionary if needed. With overlap 4, the entire think should fit L1.
-
-// Loong word:
-// Fix word size to 7 as maximum, fill with zeros.
-
-// Split the victim? Round robin victim encoding.
-
-class Marlin2018Compound {
+namespace {
+namespace cx {
 	
-	// Configuration
-	constexpr static const bool enableDedup = true;	
-	constexpr static const bool enableVictimDictionary = true;
+	// VECTOR
+	template<typename T, size_t C> 
+	class vector {
+	protected:
+		std::array<T,C> arr;
+        size_t sz;
+	public:
+    		
+		constexpr T &operator[](size_t i)       { return arr[i]; }
+		constexpr T  operator[](size_t i) const { return arr[i]; }
+
+		constexpr size_t size()     const { return sz; }
+		constexpr bool   empty()    const { return sz==0; }
+		constexpr size_t capacity() const { return C; }
+
+		// Todo: unallocate unused objects
+        constexpr void   resize(size_t newSz) { sz = newSz; }
+        constexpr void   clear() { sz = 0; }
+		
+		constexpr       T* begin()        { return &arr[0]; }
+		constexpr const T* begin()  const { return &arr[0]; }
+		constexpr       T& front()        { return  arr[0]; }
+		constexpr const T& front()  const { return  arr[0]; }
+		constexpr       T* end()          { return &arr[sz]; }
+		constexpr const T* end()    const { return &arr[sz]; }
+		constexpr       T& back()         { return  arr[sz-1]; }
+		constexpr const T& back()   const { return  arr[sz-1]; }
+        
+        constexpr void push_back(const T &item) { arr[sz++] = item; }
+        constexpr void pop_back() { if (sz!=C) arr[sz] = T(); sz--; }
+	};
+
+}
+}
+
+
+// Simplified version, less configuration options
+namespace Marlin2018 {
+	
+	// Configuration Defaults
 	constexpr static const double purgeProbabilityThreshold = 1e-2;
-	constexpr static const size_t iterationLimit = 5;
+	constexpr static const size_t iterationLimit = 3;
 	constexpr static const bool debug = true;
 
-	typedef uint8_t Symbol; // storage used to store an input symbol.
-	//typedef uint16_t WordIdx; // storage that suffices to store a word index.
+	typedef uint8_t Symbol;
 
-	struct SymbolAndProbability {
-		Symbol symbol;
-		double p;
-		bool operator<(const SymbolAndProbability &rhs) const {
-			if (p!=rhs.p) return p>rhs.p; // Descending in probability
-			return symbol<rhs.symbol; // Ascending in symbol index
-		}
-	};
-	
-	struct Alphabet : public std::vector<SymbolAndProbability> {
-		
-		
-		double originalEntropy;
-		double shiftedEntropy;
-		const size_t shift;
-		
-		static double calcEntropy(const std::map<Symbol, double> &symbols) {
-			
-			double distEntropy=0;
-			for (auto &&s : symbols)
-				if (s.second>0.)
-					distEntropy += -s.second*std::log2(s.second);
-			return distEntropy;
-		}
-
-		static std::map<Symbol, double> vec2map( const std::vector<double> &symbols ) {
-			std::map<Symbol, double> ret;
-			for (size_t i=0; i<symbols.size(); i++)
-				ret[Symbol(i)] = symbols[i];
-			return ret;
-		}
-		
-		Alphabet(const std::map<Symbol, double> &symbols, size_t shift_) : shift(shift_) {
-			
-			originalEntropy = calcEntropy(symbols);
-			
-			std::map<Symbol, double> symbolsShifted;
-			for (auto &&symbol : symbols)
-				symbolsShifted[symbol.first>>shift] += symbol.second;
-
-			shiftedEntropy = calcEntropy(symbolsShifted);
-			
-			for (auto &&symbol : symbolsShifted)
-				this->push_back(SymbolAndProbability({symbol.first, symbol.second}));
-				
-			std::stable_sort(this->begin(),this->end());
-		}
-		
-		Alphabet(const std::vector<double> &symbols, size_t shift_) : 
-			Alphabet(vec2map(symbols), shift_) {}
-	};
-	
 	struct Word : std::vector<Symbol> {
+		
 		using std::vector<Symbol>::vector;
 		double p = 0;
 		Symbol state = 0;
 		
 		friend std::ostream& operator<< (std::ostream& stream, const Word& word) {
-			stream << "{";
-			for (size_t i=0; i<word.size(); i++) {
-				if (i) stream << ",";
-				stream << int(word[i]);
-			}
-			stream << "}";
+			for (auto &&s : word) 
+				if (uint(s)<=26) 
+					stream << 'a'+uint(s); 
+				else 
+					stream << " #" << uint(s);
 			return stream;
         }
 	};
-
+	
 	class Dictionary : public std::vector<Word> {
 		
+		struct SymbolAndProbability {
+			Symbol symbol;
+			double p;
+			constexpr bool operator<(const SymbolAndProbability &rhs) const {
+				if (p!=rhs.p) return p>rhs.p; // Descending in probability
+				return symbol<rhs.symbol; // Ascending in symbol index
+			}
+		};
+
+		struct Alphabet {
+			
+			const std::vector<SymbolAndProbability> marlinSymbols;
+					
+			const double originalEntropy;
+			const double shiftedEntropy;
+			
+			const size_t shift;
+			const double purgeProbability;
+
+			const std::array<SymbolAndProbability, sizeof(Symbol)<<8> symbolToMarlin;
+			
+			
+			static double calcEntropy(const std::map<Symbol, double> &symbols) {
+				
+				double distEntropy=0;
+				for (auto &&s : symbols)
+					if (s.second>0.)
+						distEntropy += -s.second*std::log2(s.second);
+				return distEntropy;
+			}
+
+			static std::map<Symbol, double> vec2map( const std::vector<double> &symbols ) {
+				std::map<Symbol, double> ret;
+				for (size_t i=0; i<symbols.size(); i++)
+					ret[Symbol(i)] = symbols[i];
+				return ret;
+			}
+			
+			Alphabet(const std::map<Symbol, double> &symbols, size_t shift_, double purgeProbability) : shift(shift_) {
+				
+				originalEntropy = calcEntropy(symbols);
+				
+				std::map<Symbol, double> symbolsShifted;
+				for (auto &&symbol : symbols)
+					symbolsShifted[symbol.first>>shift] += symbol.second;
+
+				shiftedEntropy = calcEntropy(symbolsShifted);
+				
+				for (auto &&symbol : symbolsShifted)
+					this->push_back(SymbolAndProbability({symbol.first, symbol.second}));
+					
+				std::stable_sort(this->begin(),this->end());
+			}
+			
+			Alphabet(const std::vector<double> &symbols, size_t shift_) : 
+				Alphabet(vec2map(symbols), shift_) {}
+		};
+					
 		struct Node;		
 		struct Node : std::vector<std::shared_ptr<Node>> {
 			double p=0;
@@ -135,9 +163,9 @@ class Marlin2018Compound {
 			std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
 			size_t retiredNodes=0;
 			
-			bool enableVictimDict = Marlin2018Compound::configuration("enableVictim", Marlin2018Compound::enableVictimDictionary);
+			bool enableVictimDict = Marlin2018::configuration("enableVictim", Marlin2018::enableVictimDictionary);
 			
-			double ppThres = Marlin2018Compound::purgeProbabilityThreshold/(1U<<keySize);
+			double ppThres = Marlin2018::purgeProbabilityThreshold/(1U<<keySize);
 
 			// DICTIONARY INITIALIZATION
 			std::shared_ptr<Node> root = std::make_shared<Node>();
@@ -180,7 +208,7 @@ class Marlin2018Compound {
 				//if (c==0) std::cerr << "pp" << 
 				root->back()->sz = 1;
 				
-				//if (isVictim or (not Marlin2018Compound::enableVictimDictionary) or root->back()->p>Marlin2018Compound::purgeProbabilityThreshold)
+				//if (isVictim or (not Marlin2018::enableVictimDictionary) or root->back()->p>Marlin2018::purgeProbabilityThreshold)
 				pushAndPrune(root->back());
 			}
 				
@@ -268,7 +296,7 @@ class Marlin2018Compound {
 				};
 				std::stable_sort(sortedDictionary.begin(), sortedDictionary.end(), cmp);
 				
-				if (Marlin2018Compound::configuration("shuffle",false))
+				if (Marlin2018::configuration("shuffle",false))
 					std::random_shuffle(sortedDictionary.begin(), sortedDictionary.end());
 					
 				
@@ -321,14 +349,6 @@ class Marlin2018Compound {
 			}		
 			putchar('\n');
 		}
-			
-		
-	public:
-
-		const Alphabet alphabet;
-		const size_t keySize;     // Non overlapping bits of the word index in the big dictionary.
-		const size_t overlap;     // Bits that overlap between keys.s
-		const size_t maxWordSize; // Maximum number of symbols that a word in the dictionary can have.
 
 		double calcEfficiency() const {
 		
@@ -339,10 +359,24 @@ class Marlin2018Compound {
 			double shannonLimit = alphabet.originalEntropy;
 
 			return shannonLimit / (keySize/meanLength + alphabet.shift);
-		}
+		}			
 		
-		Dictionary(const Alphabet &alphabet_, size_t keySize_, size_t overlap_, size_t maxWordSize_)
-			: alphabet(alphabet_), keySize(keySize_), overlap(overlap_), maxWordSize(maxWordSize_) {
+		
+		
+		
+	public:
+		const Alphabet alphabet;
+		const size_t keySize;     // Non overlapping bits of the word index in the big dictionary.
+		const size_t overlap;     // Bits that overlap between keys.
+		const size_t shift;       // Bits from the source that are stored raw by shifting.
+		const size_t maxWordSize; // Maximum number of symbols that a word in the dictionary can have.
+		const double efficiency;  // Theoretical efficiency of the dictionary.
+
+		Dictionary(const Alphabet &alphabet_,  const std::map<std::string, double> &configuration = std::map<std::string, double>())
+			: 
+			
+			
+			alphabet(alphabet), keySize(keySize_), overlap(overlap_), maxWordSize(maxWordSize_) {
 			
 			std::vector<std::vector<double>> Pstates;
 			for (auto k=0; k<(1<<overlap); k++) {
@@ -359,9 +393,9 @@ class Marlin2018Compound {
 				
 			*(std::vector<Word> *)this = arrangeAndFuse(dictionaries,victimDictionary);
 				
-			if (Marlin2018Compound::configuration("debug", Marlin2018Compound::debug)) print(*this);
+			if (Marlin2018::configuration("debug", Marlin2018::debug)) print(*this);
 			
-			size_t iterations= Marlin2018Compound::configuration("iterations", Marlin2018Compound::iterationLimit);
+			size_t iterations= Marlin2018::configuration("iterations", Marlin2018::iterationLimit);
 				
 			while (iterations--) {
 
@@ -386,7 +420,7 @@ class Marlin2018Compound {
 						victimDictionary = i;
 					}
 				}
-				if (Marlin2018Compound::configuration("debug", Marlin2018Compound::debug)) print(Pstates);
+				if (Marlin2018::configuration("debug", Marlin2018::debug)) print(Pstates);
 
 				dictionaries.clear();
 				for (auto k=0; k<(1<<overlap); k++)
@@ -394,14 +428,23 @@ class Marlin2018Compound {
 				
 				*(std::vector<Word> *)this = arrangeAndFuse(dictionaries,victimDictionary);
 				
-				if (Marlin2018Compound::configuration("debug", Marlin2018Compound::debug)) print(*this);
-				if (Marlin2018Compound::configuration("debug", Marlin2018Compound::debug)) printf("Efficiency: %3.4lf\n", calcEfficiency());		
+				if (Marlin2018::configuration("debug", Marlin2018::debug)) print(*this);
+				if (Marlin2018::configuration("debug", Marlin2018::debug)) printf("Efficiency: %3.4lf\n", calcEfficiency());		
 			}
-			if (Marlin2018Compound::configuration("debug", Marlin2018Compound::debug)) printf("Efficiency: %3.4lf\n", calcEfficiency());				
+			if (Marlin2018::configuration("debug", Marlin2018::debug)) printf("Efficiency: %3.4lf\n", calcEfficiency());				
 		}			
 	};
-	const Dictionary dictionary;
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////
+//	OLD
 	
+
+
 	struct Encoder { 
 
 		typedef uint32_t JumpIdx;
@@ -409,7 +452,7 @@ class Marlin2018Compound {
 		// FLAG_NEXT_WORD
 		// FLAG_INSERT_EMPTY_WORD
 		// Current Dictionary
-		// Where to jump next
+		// Where to jump next		
 		
 		constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(JumpIdx)-1);
 		constexpr static const size_t FLAG_INSERT_EMPTY_WORD = 1UL<<(8*sizeof(JumpIdx)-2);
@@ -611,22 +654,28 @@ class Marlin2018Compound {
 			jumpTable.clean(start, dict);
 		}
 		
-		void operator()(const uint8_t *&in, const uint8_t *inEnd, uint8_t *&out, uint8_t *outEnd) const {
-					
-			uint32_t *o32        = (uint32_t *)&*out;
-			uint32_t *o32end     = (uint32_t *)&*outEnd;
-			const uint8_t *i8    = in;
-			const uint8_t *i8end = inEnd;
+		void operator()(const uint8_t *&i8, const uint8_t *i8end, uint8_t *&o8, uint8_t *o8End) const {
 			
-			size_t shift = dict.alphabet.shift;
+			std::vector<size_t> rle;
+			
+			uint32_t *o32        = (uint32_t *)o8;
+			uint32_t *o32end     = (uint32_t *)o8End;
+			
 			uint64_t value=0; int32_t bits=0;
-			if (i8<i8end) {
+			if (i8<i8end) {				
 				
-				JumpIdx j0 = jumpTable(start, (*i8++)>>shift);
+				Symbol inputSymbol = dict.alphabet.map(*i8++);
+				if (inputSymbol==placeholder)
+					rle.emplace_back(i8-in-1);
+				
+				JumpIdx j0 = jumpTable(start, inputSymbol);
 				while (i8<i8end) {
 
+					inputSymbol = dict.alphabet.map(*i8++);
+					if (inputSymbol==placeholder)
+						rle.emplace_back(i8-in-1);
 
-					JumpIdx j1 = jumpTable(j0, (*i8++)>>shift);
+					JumpIdx j1 = jumpTable(j0, inputSymbol);
 					
 					if (j1 & FLAG_NEXT_WORD) {
 						value <<= dict.keySize;
@@ -667,12 +716,36 @@ class Marlin2018Compound {
 				}
 			}
 			
-			in  = (const uint8_t *)i8;
-			out = (uint8_t *)o32;
+			// Encode RLE
+			{
+				size_t last = 0;
+				for (auto &&pos : rle) {
+					while (pos-last >= 1ULL<<(32-(size_t(Symbol)<<8))) {
+						size_t p = last + (1ULL<<(32-(size_t(Symbol)<<8)))-1;
+						*o32++ = ((p-last)<<(size_t(Symbol)<<8)) + in[p];
+						last = p;						
+					}
+					*o32++ = ((pos-last)<<(size_t(Symbol)<<8)) + in[pos];
+					last = pos;
+				}
+			}
+			
+			// Encode residuals
+			o8 = (uint8_t *)o32;
+			uint64_t mask=0;
+			for (size_t i=0; i<8; i++)
+				mask |= ((1ULL<<dict.alphabet.shift)-1)<<(8ULL*i);
+			
+			const uint64_t *i64    = (const uint64_t *)in;
+			const uint64_t *i64end = (const uint64_t *)inEnd;
+
+			while (i64 != i64end) {
+				*(uint64_t *)op = _pext_u64(*i64++, mask);
+				o8 += dict.alphabet.shift;
+			}
 		}
 
 	};
-	const Encoder encoderFast = Encoder(dictionary);
 	
 	struct Decoder {
 
@@ -883,37 +956,42 @@ class Marlin2018Compound {
 				case 512: return decodeA<uint64_t,64>(in, inEnd, out, outEnd);
 				default: throw std::runtime_error ("unsupported maxWordSize");
 			}
+			
+			// Decode RLE
+			{
+				size_t pos = 0;
+				while (i32 != i32End) {
+					pos += ((*i32)>>(size_t(Symbol)<<8));
+					out[pos] = (*i32) & ((1<<(size_t(Symbol)<<8))-1);
+				}
+			}
+			
+			// Decode RAW
+			uint64_t mask=0;
+			for (size_t i=0; i<8; i++)
+				mask |= ((1ULL<<dict.alphabet.shift)-1)<<(8ULL*i);
+			
+			uint64_t *o64    = (uint64_t *)out;
+			uint64_t *o64end = (uint64_t *)outEnd;
+
+			while (o64 != (uint64_t *)outEnd) {
+				*o64++ += _pdep_u64(*(const uint64_t *)in, mask);
+				ip += dict.alphabet.shift;
+			}
 		}
 	};
-	const Decoder decoderFast = Decoder(dictionary);
-	
-	static std::map<std::string, double> &getConfigurationStructure() {
-		static std::map<std::string, double> c;
-		return c;
-	}
-
-	static double configuration(std::string name, double def) {
-		auto &&c = getConfigurationStructure();
-		if (not c.count(name)) c[name]=def;
-		return c[name];
-	}
-	
-public:
-
-	static void clearConfiguration() { 
-		getConfigurationStructure().clear();
-	}
-
-	static double configuration(std::string name) { 
 		
-		auto &&c = getConfigurationStructure();
-		if (not c.count(name)) return 0.;
-		return c[name];
+	static size_t getOptimalShift(const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) {
+		
+		double best = Dictionary(Alphabet(pdf, 0), keySize, overlap, maxWordSize).calcEfficiency();
+		for (int shift=1; shift<4; shift++) {
+			double efficiency = Dictionary(Alphabet(pdf, shift), keySize, overlap, maxWordSize).calcEfficiency();
+			if (efficiency<best) return shift-1;
+			best = efficiency;
+		}
+		return 4;
 	}
 	
-	static void setConfiguration(std::string name, double val) { 
-		getConfigurationStructure()[name] = val; 
-	}
 	
 	static double theoreticalEfficiency(const std::vector<double> &pdf, size_t keySize=12, size_t overlap=0, size_t shift = size_t(-1), size_t maxWordSize = 1<<20) {
 		if (shift==size_t(-1)) shift = getOptimalShift(pdf, keySize, overlap, maxWordSize);
@@ -937,33 +1015,16 @@ public:
 	
 	const double efficiency;
 	
-	static size_t getOptimalShift(const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) {
-		
-		double best = Dictionary(Alphabet(pdf, 0), keySize, overlap, maxWordSize).calcEfficiency();
-		for (int shift=1; shift<4; shift++) {
-			double efficiency = Dictionary(Alphabet(pdf, shift), keySize, overlap, maxWordSize).calcEfficiency();
-			if (efficiency<best) return shift-1;
-			best = efficiency;
-		}
-		return 4;
-	}
-
-	Marlin2018Compound (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t maxWordSize) :
-		Marlin2018Compound( pdf, keySize, overlap, getOptimalShift(pdf, keySize, overlap, maxWordSize), maxWordSize) {}
-
-	Marlin2018Compound (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t shift, size_t maxWordSize) :
+	Marlin2018 (const std::vector<double> &pdf, size_t keySize, size_t overlap, size_t shift, size_t maxWordSize) :
 		dictionary(Alphabet(pdf, shift), keySize, overlap, maxWordSize),
 		efficiency(dictionary.calcEfficiency())  {}
 
-    Marlin2018Compound() = delete;
-    Marlin2018Compound(const Marlin2018Compound& other) = delete;
-    Marlin2018Compound& operator= (const Marlin2018Compound& other) = delete;
 
-    Marlin2018Compound(Marlin2018Compound&& other) noexcept = default;
-    Marlin2018Compound& operator= (Marlin2018Compound&& other) noexcept = default;
+    Marlin2018(Marlin2018&& other) noexcept = default;
+    Marlin2018& operator= (Marlin2018&& other) noexcept = default;
 
     /** Destructor */
-    ~Marlin2018Compound() noexcept = default;
+    ~Marlin2018() noexcept = default;
 
 	std::map<std::string,double> benchmark(const std::vector<double> &pdf, size_t sz = 1<<20) const {
 		
@@ -1065,24 +1126,8 @@ public:
 		*(uint32_t *)op = uint32_t(in.size());
 		op += sizeof(uint32_t);
 
-		//1st pass
 		encoderFast(ip, (const uint8_t *)&*in.end(), op, (uint8_t *)&*out.end());
-
-		//2nd pass
-		uint64_t mask=0;
-		for (size_t i=0; i<8; i++)
-			mask |= ((1ULL<<shift)-1)<<(8ULL*i);
 		
-		const uint64_t *i64    = (const uint64_t *)&*in.begin();
-		const uint64_t *i64end = (const uint64_t *)&*in.end();
-		
-//		std::cerr << shift << " " << mask << std::endl;
-
-		while (i64 != i64end) {
-			*(uint64_t *)op = _pext_u64(*i64++, mask);
-			op += shift;
-		}
-
 		out.resize(op-(uint8_t *)&*out.begin());
 	}
 
@@ -1099,26 +1144,24 @@ public:
 		
 		out.resize(uncompressedSize);
 	
-		
-		//1st pass
 		uint8_t *op = (uint8_t *)&*out.begin();
 		decoderFast(ip, (const uint8_t *)&*in.end() - (uncompressedSize*shift/8), op, (uint8_t *)&*out.end());
 
-		//2nd pass
-		uint64_t mask=0;
-		for (size_t i=0; i<8; i++)
-			mask |= ((1ULL<<shift)-1)<<(8ULL*i);
-		
-		uint64_t *o64    = (uint64_t *)&*out.begin();
-		uint64_t *o64end = (uint64_t *)&*out.end();
-
-		while (o64 != o64end) {
-			*o64++ += _pdep_u64(*(const uint64_t *)ip, mask);
-			ip += shift;
-		}
-
 		out.resize(op-(uint8_t *)&*out.begin());
 	}
+
+
+	struct Codec {
+		
+		const Encoder encode;
+		const Decoder decode;
+		Codec(const Dictionary &dict, const std::map<std::string, double> &configuration = std::map<std::string, double>()) : 
+			encode(dict, configuration), 
+			decode(dict, configuration) {}
+			
+		Codec(const std::vector<double> &pdf, const std::map<std::string, double> &configuration = std::map<std::string, double>()) : 
+			Codec(Dictionary(pdf, configuration), configuration) {}
+	};
 };
 
 

@@ -6,7 +6,7 @@
 using namespace std;
 int main() {
 	
-	int skip=1;
+	int skip=6;
 	
 	std::vector<std::vector<double>> LaplacianPDF(101);
 	for (size_t i=0; i<LaplacianPDF.size(); i++)
@@ -242,35 +242,35 @@ int main() {
 		Marlin2018Compound::setConfiguration("shuffle",0.);
 		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
-			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,1)*100. << ")";
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],8,overlap,1)*100. << ")";
 		res << "};" << std::endl;
 
 		Marlin2018Compound::setConfiguration("enableVictim",1.);
 		Marlin2018Compound::setConfiguration("shuffle",0.);
 		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
-			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,2)*100. << ")";
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],8,overlap,2)*100. << ")";
 		res << "};" << std::endl;
 
 		Marlin2018Compound::setConfiguration("enableVictim",1.);
 		Marlin2018Compound::setConfiguration("shuffle",0.);
 		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
-			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,3)*100. << ")";
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],8,overlap,3)*100. << ")";
 		res << "};" << std::endl;
 
 		Marlin2018Compound::setConfiguration("enableVictim",1.);
 		Marlin2018Compound::setConfiguration("shuffle",0.);
 		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
-			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,4)*100. << ")";
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],8,overlap,4)*100. << ")";
 		res << "};" << std::endl;
 
 		Marlin2018Compound::setConfiguration("enableVictim",1.);
 		Marlin2018Compound::setConfiguration("shuffle",0.);
 		res << "\\addplot+[line width=1pt,mark=none] coordinates { ";
 		for (size_t i=1; i<LaplacianPDF.size()-1; i+=skip)
-			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],12,overlap,5)*100. << ")";
+			res << "(" << double(i*100.)/Dist.size() << "," << Marlin2018Compound::theoreticalEfficiency(Dist[i],8,overlap,5)*100. << ")";
 		res << "};" << std::endl;
 
 		res << "\\legend{12;4;0, 12;4;1, 12;4;2, 12;4;3, 12;4;4, 12;4;5}" << std::endl;
