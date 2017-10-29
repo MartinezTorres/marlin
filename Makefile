@@ -1,4 +1,4 @@
-CFLAGS += -std=gnu++14 -Wall -Wextra -Wcast-qual -Wcast-align -Wstrict-aliasing=1 -Wswitch-enum -Wundef -pedantic  -Wfatal-errors -Wshadow
+CFLAGS += -std=gnu++17 -Wall -Wextra -Wcast-qual -Wcast-align -Wstrict-aliasing=1 -Wswitch-enum -Wundef -pedantic  -Wfatal-errors -Wshadow
 
 CFLAGS += -I./src
 
@@ -39,7 +39,7 @@ LFLAGS += $(wildcard ./ext/*.a)
 CODECS :=  $(patsubst %.cc,%.o,$(wildcard ./src/codecs/*.cc))
 
 
-CXX = g++
+CXX = g++-7
 #CXX = clang++-3.3 -D__extern_always_inline=inline -fslp-vectorize
 #CXX = icpc -fast -auto-ilp32 -xHost -fopenmp
 

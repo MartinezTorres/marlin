@@ -59,24 +59,58 @@ namespace Marlin2018 {
 	constexpr static const size_t iterationLimit = 3;
 	constexpr static const bool debug = true;
 
-	typedef uint8_t Symbol;
+	//Marlin only encodes a subset of the possible source symbols.
+	//Marlin symbols are sorted by probability in descending order, 
+	//so the Marlin Symbol 0 is always corresponds to the probable alphabet symbol.
+	typedef uint8_t MarlinSymbol; 
+	typedef uint8_t SourceSymbol;
 
-	struct Word : std::vector<Symbol> {
-		
-		using std::vector<Symbol>::vector;
+	class Word {
+	protected:
+		std::array<MarlinSymbol,7> arr;
+        size_t sz = 0;
+	public:
 		double p = 0;
-		Symbol state = 0;
+		MarlinSymbol state = 0;
 		
 		friend std::ostream& operator<< (std::ostream& stream, const Word& word) {
 			for (auto &&s : word) 
-				if (uint(s)<=26) 
-					stream << 'a'+uint(s); 
+				if (s<=26) 
+					stream << char('a'+s); 
 				else 
 					stream << " #" << uint(s);
 			return stream;
         }
+    		
+		constexpr size_t size()     const { return sz; }
+		constexpr bool   empty()    const { return sz==0; }
+		constexpr size_t capacity() const { return std::numeric_limits<MarlinSymbol>::max(); }
+
+        constexpr void   resize(size_t newSz) { sz = newSz; }
+        constexpr void   clear() { sz = 0; }
+
+	// Minimal iterator required to achieve range for loop iteration
+		class const_iterator {
+			
+			using base = std::array<MarlinSymbol,7>::const_iterator;
+			base start, current;
+		public:
+			constexpr const_iterator(base start_, base current_) : start(start_), current(current_) {}
+
+			constexpr const_iterator &operator++() { ++current; return *this; }
+			constexpr bool operator!=(const const_iterator &rhs) { return current!=rhs.current; }
+			constexpr MarlinSymbol operator *() const { return current-start <= 7 ? *current : MarlinSymbol(0); }
+		};
+			
+		constexpr const const_iterator begin()  const { return const_iterator(arr.begin(), arr.begin()); }
+		constexpr const const_iterator end()    const { return const_iterator(arr.begin(), arr.begin()+sz); }
+		constexpr MarlinSymbol   front()  const { return *begin(); }
+		constexpr MarlinSymbol   back()   const { return *end(); }
+        
+        constexpr void push_back(MarlinSymbol s) { if (sz<7) arr[sz] = s; sz++; }
 	};
 	
+	// Needs to be built of constexpr classes so it can be created by the compiler if needed.
 	class Dictionary : public std::vector<Word> {
 		
 		struct SymbolAndProbability {
