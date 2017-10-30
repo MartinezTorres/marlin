@@ -21,10 +21,37 @@ namespace cx {
 	protected:
 		std::array<T,C> arr;
         size_t sz;
+        
+        // Limited iterator support
+        template<typename CT>
+        class base_iterator {
+			
+			CT *start, *current;
+		public:
+			constexpr base_iterator(CT *start_, CT *current_) : start(start_), current(current_) {}
+
+			constexpr bool operator==(const base_iterator &rhs) const { return current==rhs.current; }
+			constexpr bool operator!=(const base_iterator &rhs) const { return current!=rhs.current; }
+
+			constexpr base_iterator &operator++() { ++current; return *this; }
+			constexpr base_iterator &operator--() { --current; return *this; }
+			
+			constexpr typename std::enable_if<std::is_const<CT>::value, CT>::type operator *() const { 
+				return current-start < C ? *current : *start[C-1]; 
+			}
+			
+			constexpr typename std::enable_if<not std::is_const<CT>::value, CT>::type &operator *() { 
+				return current-start < C ? *current : *start[C-1]; 
+			}
+		};
 	public:
+
+		typedef base_iterator<T> iterator;
+		typedef base_iterator<const T> const_iterator;
+		
     		
-		constexpr T &operator[](size_t i)       { return arr[i]; }
-		constexpr T  operator[](size_t i) const { return arr[i]; }
+		constexpr T &operator[](size_t i)       { return arr[std::min(arr.size()-1,i)]; }
+		constexpr T  operator[](size_t i) const { return arr[std::min(arr.size()-1,i)]; }
 
 		constexpr size_t size()     const { return sz; }
 		constexpr bool   empty()    const { return sz==0; }
@@ -34,17 +61,25 @@ namespace cx {
         constexpr void   resize(size_t newSz) { sz = newSz; }
         constexpr void   clear() { sz = 0; }
 		
-		constexpr       T* begin()        { return &arr[0]; }
-		constexpr const T* begin()  const { return &arr[0]; }
+		constexpr       iterator begin()        { return       iterator(arr[0],arr[0]);  }
+		constexpr const_iterator begin()  const { return const_iterator(arr[0],arr[0]);  }
+		constexpr       iterator end()          { return       iterator(arr[0],arr[sz]); }
+		constexpr const_iterator end()    const { return const_iterator(arr[0],arr[sz]); }
 		constexpr       T& front()        { return  arr[0]; }
 		constexpr const T& front()  const { return  arr[0]; }
-		constexpr       T* end()          { return &arr[sz]; }
-		constexpr const T* end()    const { return &arr[sz]; }
-		constexpr       T& back()         { return  arr[sz-1]; }
-		constexpr const T& back()   const { return  arr[sz-1]; }
+		constexpr       T& back()         { return  arr[std::min(arr.size()-1,sz-1)]; }
+		constexpr const T& back()   const { return  arr[std::min(arr.size()-1,sz-1)]; }
         
-        constexpr void push_back(const T &item) { arr[sz++] = item; }
-        constexpr void pop_back() { if (sz!=C) arr[sz] = T(); sz--; }
+        constexpr void push_back(const T &item) { 
+			if (sz<arr.size()) 
+				arr[sz] = item;
+			sz++;
+		}
+        constexpr void pop_back() { 
+			if (sz<arr.size()) 
+				arr[sz] = T(); 
+			sz--; 
+		}
 	};
 
 }
@@ -65,11 +100,7 @@ namespace Marlin2018 {
 	typedef uint8_t MarlinSymbol; 
 	typedef uint8_t SourceSymbol;
 
-	class Word {
-	protected:
-		std::array<MarlinSymbol,7> arr;
-        size_t sz = 0;
-	public:
+	struct Word : public cx::vector<MarlinSymbol,7> {
 		double p = 0;
 		MarlinSymbol state = 0;
 		
@@ -81,33 +112,6 @@ namespace Marlin2018 {
 					stream << " #" << uint(s);
 			return stream;
         }
-    		
-		constexpr size_t size()     const { return sz; }
-		constexpr bool   empty()    const { return sz==0; }
-		constexpr size_t capacity() const { return std::numeric_limits<MarlinSymbol>::max(); }
-
-        constexpr void   resize(size_t newSz) { sz = newSz; }
-        constexpr void   clear() { sz = 0; }
-
-	// Minimal iterator required to achieve range for loop iteration
-		class const_iterator {
-			
-			using base = std::array<MarlinSymbol,7>::const_iterator;
-			base start, current;
-		public:
-			constexpr const_iterator(base start_, base current_) : start(start_), current(current_) {}
-
-			constexpr const_iterator &operator++() { ++current; return *this; }
-			constexpr bool operator!=(const const_iterator &rhs) { return current!=rhs.current; }
-			constexpr MarlinSymbol operator *() const { return current-start <= 7 ? *current : MarlinSymbol(0); }
-		};
-			
-		constexpr const const_iterator begin()  const { return const_iterator(arr.begin(), arr.begin()); }
-		constexpr const const_iterator end()    const { return const_iterator(arr.begin(), arr.begin()+sz); }
-		constexpr MarlinSymbol   front()  const { return *begin(); }
-		constexpr MarlinSymbol   back()   const { return *end(); }
-        
-        constexpr void push_back(MarlinSymbol s) { if (sz<7) arr[sz] = s; sz++; }
 	};
 	
 	// Needs to be built of constexpr classes so it can be created by the compiler if needed.
