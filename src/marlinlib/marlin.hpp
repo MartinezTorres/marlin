@@ -12,149 +12,63 @@
 #include <util/distribution.hpp>
 #include <cassert>
 
-namespace {
-namespace cx {
-	
-	// VECTOR
-	template<typename T, size_t C> 
-	class vector {
-	protected:
-		std::array<T,C> arr;
-        size_t sz;
-        
-        // Limited iterator support
-        template<typename CT>
-        class base_iterator {
-			
-			CT *start, *current;
-		public:
-			constexpr base_iterator(CT *start_, CT *current_) : start(start_), current(current_) {}
 
-			constexpr bool operator==(const base_iterator &rhs) const { return current==rhs.current; }
-			constexpr bool operator!=(const base_iterator &rhs) const { return current!=rhs.current; }
-
-			constexpr base_iterator &operator++() { ++current; return *this; }
-			constexpr base_iterator &operator--() { --current; return *this; }
-			
-			constexpr typename std::enable_if<std::is_const<CT>::value, CT>::type operator *() const { 
-				return current-start < C ? *current : *start[C-1]; 
-			}
-			
-			constexpr typename std::enable_if<not std::is_const<CT>::value, CT>::type &operator *() { 
-				return current-start < C ? *current : *start[C-1]; 
-			}
-		};
-	public:
-
-		typedef base_iterator<T> iterator;
-		typedef base_iterator<const T> const_iterator;
-		
-    		
-		constexpr T &operator[](size_t i)       { return arr[std::min(arr.size()-1,i)]; }
-		constexpr T  operator[](size_t i) const { return arr[std::min(arr.size()-1,i)]; }
-
-		constexpr size_t size()     const { return sz; }
-		constexpr bool   empty()    const { return sz==0; }
-		constexpr size_t capacity() const { return C; }
-
-		// Todo: unallocate unused objects
-        constexpr void   resize(size_t newSz) { sz = newSz; }
-        constexpr void   clear() { sz = 0; }
-		
-		constexpr       iterator begin()        { return       iterator(arr[0],arr[0]);  }
-		constexpr const_iterator begin()  const { return const_iterator(arr[0],arr[0]);  }
-		constexpr       iterator end()          { return       iterator(arr[0],arr[sz]); }
-		constexpr const_iterator end()    const { return const_iterator(arr[0],arr[sz]); }
-		constexpr       T& front()        { return  arr[0]; }
-		constexpr const T& front()  const { return  arr[0]; }
-		constexpr       T& back()         { return  arr[std::min(arr.size()-1,sz-1)]; }
-		constexpr const T& back()   const { return  arr[std::min(arr.size()-1,sz-1)]; }
-        
-        constexpr void push_back(const T &item) { 
-			if (sz<arr.size()) 
-				arr[sz] = item;
-			sz++;
-		}
-        constexpr void pop_back() { 
-			if (sz<arr.size()) 
-				arr[sz] = T(); 
-			sz--; 
-		}
-	};
-
-}
-}
-
-
-// Simplified version, less configuration options
-namespace Marlin2018 {
+// Constexpr version of Marlin2018 with less configuration options. 
+namespace Marlin {
 	
 	// Configuration Defaults
 	constexpr static const double purgeProbabilityThreshold = 1e-2;
 	constexpr static const size_t iterationLimit = 3;
 	constexpr static const bool debug = true;
 
-	//Marlin only encodes a subset of the possible source symbols.
-	//Marlin symbols are sorted by probability in descending order, 
-	//so the Marlin Symbol 0 is always corresponds to the probable alphabet symbol.
-	typedef uint8_t MarlinSymbol; 
-	typedef uint8_t SourceSymbol;
+	class Dictionary {
 
-	struct Word : public cx::vector<MarlinSymbol,7> {
-		double p = 0;
-		MarlinSymbol state = 0;
-		
-		friend std::ostream& operator<< (std::ostream& stream, const Word& word) {
-			for (auto &&s : word) 
-				if (s<=26) 
-					stream << char('a'+s); 
-				else 
-					stream << " #" << uint(s);
-			return stream;
-        }
-	};
-	
-	// Needs to be built of constexpr classes so it can be created by the compiler if needed.
-	class Dictionary : public std::vector<Word> {
-		
-		struct SymbolAndProbability {
-			Symbol symbol;
-			double p;
-			constexpr bool operator<(const SymbolAndProbability &rhs) const {
-				if (p!=rhs.p) return p>rhs.p; // Descending in probability
-				return symbol<rhs.symbol; // Ascending in symbol index
-			}
-		};
+		//Marlin only encodes a subset of the possible source symbols.
+		//Marlin symbols are sorted by probability in descending order, 
+		//so the Marlin Symbol 0 is always corresponds to the probable alphabet symbol.
+		typedef uint8_t MarlinSymbol; 
+		typedef uint8_t SourceSymbol;
 
-		struct Alphabet {
-			
-			const std::vector<SymbolAndProbability> marlinSymbols;
-					
-			const double originalEntropy;
-			const double shiftedEntropy;
-			
-			const size_t shift;
-			const double purgeProbability;
+		// The Alphabet Class acts as a translation layer between SourceSymbols and MarlinSymbols.
+		class Alphabet {
 
-			const std::array<SymbolAndProbability, sizeof(Symbol)<<8> symbolToMarlin;
+			struct SymbolAndProbability {
+				MarlinSymbol symbol;
+				double p;
+				constexpr bool operator<(const SymbolAndProbability &rhs) const {
+					if (p!=rhs.p) return p>rhs.p; // Descending in probability
+					return symbol<rhs.symbol; // Ascending in symbol index
+				}
+			};
+			
+			//const double originalEntropy;
+			//const double shiftedEntropy;
+			
+			//const size_t shift;
+			//const double purgeProbability;
+
+			const std::array<SymbolAndProbability, sizeof(MarlinSymbol)<<8> symbolToMarlin;
 			
 			
-			static double calcEntropy(const std::map<Symbol, double> &symbols) {
+/*			static double calcEntropy(const std::map<Symbol, double> &symbols) {
 				
 				double distEntropy=0;
 				for (auto &&s : symbols)
 					if (s.second>0.)
 						distEntropy += -s.second*std::log2(s.second);
 				return distEntropy;
-			}
+			}*/
 
-			static std::map<Symbol, double> vec2map( const std::vector<double> &symbols ) {
-				std::map<Symbol, double> ret;
+			static std::map<MarlinSymbol, double> vec2map( const std::vector<double> &symbols ) {
+				std::map<MarlinSymbol, double> ret;
 				for (size_t i=0; i<symbols.size(); i++)
-					ret[Symbol(i)] = symbols[i];
+					ret[MarlinSymbol(i)] = symbols[i];
 				return ret;
 			}
-			
+		public:
+		
+			const std::vector<SymbolAndProbability> marlinSymbols;
+			/*
 			Alphabet(const std::map<Symbol, double> &symbols, size_t shift_, double purgeProbability) : shift(shift_) {
 				
 				originalEntropy = calcEntropy(symbols);
@@ -172,9 +86,26 @@ namespace Marlin2018 {
 			}
 			
 			Alphabet(const std::vector<double> &symbols, size_t shift_) : 
-				Alphabet(vec2map(symbols), shift_) {}
+				Alphabet(vec2map(symbols), shift_) {}*/
 		};
 					
+
+		struct Word : std::vector<MarlinSymbol> {
+			double p = 0;
+			MarlinSymbol state = 0;
+
+			friend std::ostream& operator<< (std::ostream& stream, const Word& word) {
+				for (auto &&s : word) 
+					if (s<=26) 
+						stream << char('a'+s); 
+					else 
+						stream << " #" << uint(s);
+				return stream;
+			}
+		};
+		std::vector<Word> words;
+		
+		
 		struct Node;		
 		struct Node : std::vector<std::shared_ptr<Node>> {
 			double p=0;
@@ -182,79 +113,59 @@ namespace Marlin2018 {
 			size_t erased=0;
 		};
 
-		std::shared_ptr<Node> buildTree(std::vector<double> Pstates, bool isVictim) const {
+		std::shared_ptr<Node> buildTree(std::vector<double> Pstates) const {
+
+			// Normalizing the probabilities makes the algorithm more stable
+			double factor = std::numeric_limits<double>::min();
+			for (auto &&p : Pstates) factor += p;
+			for (auto &&p : Pstates) p/=factor;
+			for (auto &&p : Pstates) if (std::abs(p-1.)<0.0001) p=1.;
+			for (auto &&p : Pstates) if (std::abs(p-0.)<0.0001) p=0.;
+
 
 			std::vector<double> PN;
-			for (auto &&a : alphabet) PN.push_back(a.p);
-			for (size_t i=alphabet.size()-1; i; i--)
+			for (auto &&a : alphabet.marlinSymbols) PN.push_back(a.p);
+			for (size_t i=PN.size()-1; i; i--)
 				PN[i-1] += PN[i];
 
-			std::vector<double> Pchild(alphabet.size());
-			for (size_t i=0; i<alphabet.size(); i++)
-				Pchild[i] = alphabet[i].p/PN[i];
-
+			std::vector<double> Pchild(PN.size());
+			for (size_t i=0; i<PN.size(); i++)
+				Pchild[i] = alphabet.marlinSymbols[i].p/PN[i];
 			
 			auto cmp = [](const std::shared_ptr<Node> &lhs, const std::shared_ptr<Node> &rhs) { 
-				return lhs->p<rhs->p;};		
-//				return lhs->p*(1+std::pow(lhs->sz,1)) < rhs->p*(1+std::pow(rhs->sz,1));	};
+				return lhs->p<rhs->p;};
 
 			std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, decltype(cmp)> pq(cmp);
-			size_t retiredNodes=0;
-			
-			bool enableVictimDict = Marlin2018::configuration("enableVictim", Marlin2018::enableVictimDictionary);
-			
-			double ppThres = Marlin2018::purgeProbabilityThreshold/(1U<<keySize);
 
 			// DICTIONARY INITIALIZATION
 			std::shared_ptr<Node> root = std::make_shared<Node>();
 			root->erased = true;
 			
-			auto pushAndPrune = [this,&pq,&retiredNodes,&root, isVictim, ppThres, enableVictimDict](std::shared_ptr<Node> node) {
-				if (isVictim or 
-					(not enableVictimDict) or 
-					node->p>ppThres
-					//or node->size()>0
-					) {
-					if (node->sz<maxWordSize) {
-						pq.push(node);
-					} else {
-						retiredNodes++;
-					}
-				} else {
-					node->erased = true;
-					root->p += node->p;
-				}
-			};
-
-			
 			// Include empty word
 			pq.push(root); // Does not do anything, only uses a spot
 			
-			long double factor = 0.;
-			for (auto &&p : Pstates) factor += p;
-			for (auto &&p : Pstates) p/=factor;
-			for (auto &&p : Pstates) if (std::abs(p-1.)<0.0001) p=1.;
-			for (auto &&p : Pstates) if (std::abs(p-0.)<0.0001) p=0.;
-			
-
-			for (size_t c=0; c<alphabet.size(); c++) {			
+			for (size_t c=0; c<alphabet.marlinSymbols.size(); c++) {			
 					
 				root->push_back(std::make_shared<Node>());
 				double sum = 0;
 				for (size_t t = 0; t<=c; t++) sum += Pstates[t]/PN[t];
-				root->back()->p = sum * alphabet[c].p;
-				//if (c==0) std::cerr << "pp" << 
+				root->back()->p = sum * alphabet.marlinSymbols[c].p;
 				root->back()->sz = 1;
-				
-				//if (isVictim or (not Marlin2018::enableVictimDictionary) or root->back()->p>Marlin2018::purgeProbabilityThreshold)
-				pushAndPrune(root->back());
+				pq.push(root->back());
 			}
 				
 			// DICTIONARY GROWING
+			size_t retiredNodes=0;
 			while (not pq.empty() and (pq.size() + retiredNodes < (1U<<keySize))) {
 					
 				std::shared_ptr<Node> node = pq.top();
 				pq.pop();
+				
+				// retire words larger than maxWordSize that are meant to be extended by a symbol different than zero.
+				if (node->sz >= maxWordSize and not node->empty()) {
+					retiredNodes++;
+					continue;
+				}
 				
 				double p = node->p * Pchild[node->size()];
 				node->push_back(std::make_shared<Node>());
@@ -262,37 +173,21 @@ namespace Marlin2018 {
 				node->back()->sz = node->sz+1;
 
 				node->p -= p;
-				pushAndPrune(node->back());
-					
-				if (false or (node->size()<alphabet.size()-1)) {
-
-					pushAndPrune(node);
-						
-				} else {
-					node->erased = true;
-					node->p = 0;
-
-					node->push_back(std::make_shared<Node>());
-					node->back()->p = node->p;
-					node->back()->sz = node->sz+1;
-					pushAndPrune(node->back());
-				}
+				pq.push(node->back());
+				pq.push(node);
 			}
 
+			// Renormalize probabilities.
 			{
-				std::stack<std::shared_ptr<Node>> q;
-				q.emplace(root);
+				std::queue<std::shared_ptr<Node>> q(std::deque<std::shared_ptr<Node>>{ root });
 				while (not q.empty()) {
-					std::shared_ptr<Node> n = q.top();
+					q.front()->p *= factor;
+					for (auto &&child : *q.front()) 
+						q.push(child);
 					q.pop();
-					n->p *= factor;
-					for (size_t i = 0; i<n->size(); i++)
-						q.emplace(n->at(i));
 				}
 			}
 			return root;
-			
-			
 		}
 		
 		std::vector<Word> buildWords( const std::shared_ptr<Node> root) const {
@@ -310,7 +205,7 @@ namespace Marlin2018 {
 				for (size_t i = 0; i<n->size(); i++) {
 					
 					Word w2 = w;
-					w2.push_back(alphabet[i].symbol);
+					w2.push_back(alphabet.marlinSymbols[i].symbol);
 					w2.p = n->at(i)->p;
 					w2.state = n->at(i)->size();
 					
@@ -333,10 +228,6 @@ namespace Marlin2018 {
 					return lhs<rhs;
 				};
 				std::stable_sort(sortedDictionary.begin(), sortedDictionary.end(), cmp);
-				
-				if (Marlin2018::configuration("shuffle",false))
-					std::random_shuffle(sortedDictionary.begin(), sortedDictionary.end());
-					
 				
 				std::vector<Word> w(1<<keySize);
 				for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1<<overlap)) {
@@ -388,7 +279,7 @@ namespace Marlin2018 {
 			putchar('\n');
 		}
 
-		double calcEfficiency() const {
+/*		double calcEfficiency() const {
 		
 			double meanLength = 0;
 			for (auto &&w : *this)
@@ -397,7 +288,7 @@ namespace Marlin2018 {
 			double shannonLimit = alphabet.originalEntropy;
 
 			return shannonLimit / (keySize/meanLength + alphabet.shift);
-		}			
+		}*/
 		
 		
 		
