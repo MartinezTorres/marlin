@@ -20,6 +20,7 @@ namespace Marlin {
 	constexpr static const double purgeProbabilityThreshold = 1e-2;
 	constexpr static const size_t iterationLimit = 3;
 	constexpr static const bool debug = true;
+	constexpr static const size_t maxMarlinSymbols = 64;
 
 	class Dictionary {
 
@@ -33,7 +34,7 @@ namespace Marlin {
 		class Alphabet {
 
 			struct SymbolAndProbability {
-				MarlinSymbol symbol;
+				SourceSymbol symbol;
 				double p;
 				constexpr bool operator<(const SymbolAndProbability &rhs) const {
 					if (p!=rhs.p) return p>rhs.p; // Descending in probability
@@ -41,52 +42,56 @@ namespace Marlin {
 				}
 			};
 			
-			//const double originalEntropy;
-			//const double shiftedEntropy;
-			
-			//const size_t shift;
-			//const double purgeProbability;
-
-			const std::array<SymbolAndProbability, sizeof(MarlinSymbol)<<8> symbolToMarlin;
-			
-			
-/*			static double calcEntropy(const std::map<Symbol, double> &symbols) {
+			static double calcEntropy(const std::map<SourceSymbol, double> &symbols) {
 				
 				double distEntropy=0;
 				for (auto &&s : symbols)
 					if (s.second>0.)
 						distEntropy += -s.second*std::log2(s.second);
 				return distEntropy;
-			}*/
+			}
 
-			static std::map<MarlinSymbol, double> vec2map( const std::vector<double> &symbols ) {
-				std::map<MarlinSymbol, double> ret;
+			static std::map<SourceSymbol, double> vec2map( const std::vector<double> &symbols ) {
+				std::map<SourceSymbol, double> ret;
 				for (size_t i=0; i<symbols.size(); i++)
-					ret[MarlinSymbol(i)] = symbols[i];
+					ret[SourceSymbol(i)] = symbols[i];
 				return ret;
 			}
 		public:
 		
-			const std::vector<SymbolAndProbability> marlinSymbols;
-			/*
-			Alphabet(const std::map<Symbol, double> &symbols, size_t shift_, double purgeProbability) : shift(shift_) {
+			const size_t shift;
+			double sourceEntropy;
+			double rareSymbolProbability;
+			std::vector<SymbolAndProbability> rareSymbols;
+			std::vector<SymbolAndProbability> marlinSymbols;
+			
+			Alphabet(const std::map<SourceSymbol, double> &symbols, size_t shift_) : shift(shift_) {
 				
-				originalEntropy = calcEntropy(symbols);
+				sourceEntropy = calcEntropy(symbols);
 				
-				std::map<Symbol, double> symbolsShifted;
+				// Group symbols by their high bits
+				std::map<SourceSymbol, double> symbolsShifted;
 				for (auto &&symbol : symbols)
 					symbolsShifted[symbol.first>>shift] += symbol.second;
-
-				shiftedEntropy = calcEntropy(symbolsShifted);
 				
 				for (auto &&symbol : symbolsShifted)
-					this->push_back(SymbolAndProbability({symbol.first, symbol.second}));
+					marlinSymbols.push_back(SymbolAndProbability({symbol.first, symbol.second}));
 					
-				std::stable_sort(this->begin(),this->end());
+				std::stable_sort(marlinSymbols.begin(),marlinSymbols.end());
+				
+				rareSymbolProbability = 0;
+				while (marlinSymbols.size()>1 and 
+					(marlinSymbols.back().p<purgeProbabilityThreshold or marlinSymbols.size()>maxMarlinSymbols)) {
+					
+					rareSymbolProbability += marlinSymbols.back().p;
+					rareSymbols.push_back( marlinSymbols.back() );
+					marlinSymbols.front().p +=  marlinSymbols.back().p;
+					marlinSymbols.pop_back();
+				}
 			}
 			
 			Alphabet(const std::vector<double> &symbols, size_t shift_) : 
-				Alphabet(vec2map(symbols), shift_) {}*/
+				Alphabet(vec2map(symbols), shift_) {}
 		};
 					
 
@@ -196,7 +201,8 @@ namespace Marlin {
 			
 			std::stack<std::pair<std::shared_ptr<Node>, Word>> q;
 			Word rootWord; rootWord.p = root->p;
-			q.emplace(root, rootWord);
+			q.emplace(root, Word());
+			
 			while (not q.empty()) {
 				std::shared_ptr<Node> n = q.top().first;
 				Word w = q.top().second;
@@ -279,21 +285,31 @@ namespace Marlin {
 			putchar('\n');
 		}
 
-/*		double calcEfficiency() const {
+		double calcEfficiency() const {
 		
 			double meanLength = 0;
-			for (auto &&w : *this)
+			for (auto &&w : words)
 				meanLength += w.p * w.size();
 			
-			double shannonLimit = alphabet.originalEntropy;
+			double shannonLimit = alphabet.sourceEntropy;
+			
+			// The decoding algorithm has 4 steps:
+			double meanBitsPerSymbol = 0;                           // a memset
+			meanBitsPerSymbol += keySize/meanLength;                // Marlin VF
+			meanBitsPerSymbol += alphabet.shift;                    // Raw storing of lower bits
+			meanBitsPerSymbol += 32*alphabet.rareSymbolProbability; // Recovering rare symbols
 
-			return shannonLimit / (keySize/meanLength + alphabet.shift);
-		}*/
+			return shannonLimit / meanBitsPerSymbol;
+		}
 		
-		
-		
+		static std::map<std::string, double> setDefaults(std::map<std::string, double> conf) {
+			
+			
+			
+		}
 		
 	public:
+		const std::map<std::string, double> conf;
 		const Alphabet alphabet;
 		const size_t keySize;     // Non overlapping bits of the word index in the big dictionary.
 		const size_t overlap;     // Bits that overlap between keys.
@@ -302,10 +318,11 @@ namespace Marlin {
 		const double efficiency;  // Theoretical efficiency of the dictionary.
 
 		Dictionary(const Alphabet &alphabet_,  const std::map<std::string, double> &configuration = std::map<std::string, double>())
-			: 
-			
-			
-			alphabet(alphabet), keySize(keySize_), overlap(overlap_), maxWordSize(maxWordSize_) {
+			: conf(setDefaults(configuration)),
+			  alphabet(alphabet, conf.at("Shift")),
+			  keySize(conf.at("KeySize")), 
+			  overlap(conf.at("OverLap")),
+			  maxWordSize(conf.at("maxWordSize")) {
 			
 			std::vector<std::vector<double>> Pstates;
 			for (auto k=0; k<(1<<overlap); k++) {
