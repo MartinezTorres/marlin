@@ -617,7 +617,7 @@ namespace Marlin {
 			// Decode the Marlin Section
 			{
 
-				uint8_t *endMarlin = i8end - (o8end-o8start)*shift/8;
+				const uint8_t *endMarlin = i8end - (o8end-o8start)*shift/8;
 
 				const uint32_t overlappingMask = (1<<(8+O))-1;
 				const T clearSizeMask = T(-1)>>8;
@@ -628,7 +628,7 @@ namespace Marlin {
 						*o8++ = *i8++;
 					} else {
 						value = (value<<8) + in;
-						T v = D[value & overlappingMask];
+						T v = *(const T *)&D[value & overlappingMask];
 						*((T *)o8) = v & clearSizeMask;
 						o8 += v >> ((sizeof(T)-1)*8);
 					}
@@ -640,7 +640,7 @@ namespace Marlin {
 						*o8++ = *i8++;
 					} else {
 						value = (value<<8) + in;
-						T *v = &D[value & overlappingMask];
+						const T *v = (const T *)&D[value & overlappingMask];
 						memcpy(o8, v, *v >> ((sizeof(T)-1)*8));
 						o8 += *v >> ((sizeof(T)-1)*8);
 					}
@@ -698,9 +698,11 @@ namespace Marlin {
 
 	struct SingleDictionaryCodec {
 		
+		const double efficiency;
 		const Encoder encoder;
 		const Decoder decoder;
 		SingleDictionaryCodec(const Dictionary &dict, const std::map<std::string, double> &configuration = std::map<std::string, double>()) : 
+			efficiency(dict.efficiency),
 			encoder(dict, configuration), 
 			decoder(dict, configuration) {}
 			
@@ -724,118 +726,93 @@ namespace Marlin {
 			out.resize(uncompressedSize);
 			decoder(&*in.begin()+4,&*in.end(),&*out.begin(),&*out.end());
 		}
-	};
+		
+				
+		std::map<std::string,double> benchmark(const std::vector<double> &pdf, size_t sz = 1<<20) const {
+			
+			std::map<std::string,double> results;
+			
+			struct TestTimer {
+				timespec c_start, c_end;
+				void start() { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_start); };
+				void stop () { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_end); };
+				double operator()() { return (c_end.tv_sec-c_start.tv_sec) + 1.E-9*(c_end.tv_nsec-c_start.tv_nsec); }
+			};
+			TestTimer tEncode, tDecode;
+			
+			auto testData = Distribution::getResiduals(pdf, sz);
+			
+			typeof(testData)  compressedData, uncompressedData;
+			compressedData  .reserve(8*testData.size());
+			uncompressedData.reserve(8*testData.size());
 
-////////////////////////////////////////////////////////////////////////
-//	OLD
-	
-	
-	static double theoreticalEfficiency(const std::vector<double> &pdf, size_t keySize=12, size_t overlap=0, size_t shift = size_t(-1), size_t maxWordSize = 1<<20) {
-		if (shift==size_t(-1)) shift = getOptimalShift(pdf, keySize, overlap, maxWordSize);
-		Dictionary dictionary(Alphabet(pdf, shift), keySize, overlap, maxWordSize);
-		return dictionary.calcEfficiency();
-	}
-
-	static std::pair<double,size_t> theoreticalEfficiencyAndUniqueWords(const std::vector<double> &pdf, size_t keySize=12, size_t overlap=0, size_t shift = size_t(-1), size_t maxWordSize = 1<<20) {
-		
-		if (shift==size_t(-1)) shift = getOptimalShift(pdf, keySize, overlap, maxWordSize);
-
-		Dictionary dictionary(Alphabet(pdf, shift), keySize, overlap, maxWordSize);
-		
-		double efficiency = dictionary.calcEfficiency();
-		
-		std::sort(dictionary.begin(), dictionary.end());
-		size_t uniqueCount = std::unique(dictionary.begin(), dictionary.end()) - dictionary.begin();
-		
-		return std::make_pair(efficiency, uniqueCount);
-	}
-	
-	std::map<std::string,double> benchmark(const std::vector<double> &pdf, size_t sz = 1<<20) const {
-		
-		std::map<std::string,double> results;
-		
-		struct TestTimer {
-			timespec c_start, c_end;
-			void start() { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_start); };
-			void stop () { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_end); };
-			double operator()() { return (c_end.tv_sec-c_start.tv_sec) + 1.E-9*(c_end.tv_nsec-c_start.tv_nsec); }
-		};
-		TestTimer tEncode, tDecode;
-		
-		auto testData = Distribution::getResiduals(pdf, sz);
-		
-		typeof(testData)  compressedData, uncompressedData;
-		compressedData  .reserve(8*testData.size());
-		uncompressedData.reserve(8*testData.size());
-
-		compressedData.clear();
-		encode(testData,compressedData);
-		
-		// Encoding bechmark
-		tEncode.start();
-		compressedData.clear();
-		encode(testData,compressedData);
-		tEncode.stop();			
-
-		size_t encoderTimes = 1+(2/tEncode());
-		tEncode.start();
-		for (size_t t=0; t<encoderTimes; t++) {
 			compressedData.clear();
 			encode(testData,compressedData);
-		}
-		tEncode.stop();
-		
-		// Decoding benchmark
-		uncompressedData.resize(testData.size());
-		decode(compressedData,uncompressedData);
-		decode(compressedData,uncompressedData);
-		decode(compressedData,uncompressedData);
+			
+			// Encoding bechmark
+			tEncode.start();
+			compressedData.clear();
+			encode(testData,compressedData);
+			tEncode.stop();			
 
-		tDecode.start();
-//		uncompressedData.resize(testData.size());
-		decode(compressedData,uncompressedData);
-		tDecode.stop();
-
-		size_t decoderTimes = 1+(2/tDecode());
-		tDecode.start();
-		for (size_t t=0; t<decoderTimes; t++) {
-//			uncompressedData.resize(testData.size());
-			decode(compressedData,uncompressedData);
-		}
-		tDecode.stop();
-
-		// Speed calculation
-		results["encodingSpeed"] = encoderTimes*testData.size()/tEncode()/(1<<20);
-		results["decodingSpeed"] = decoderTimes*testData.size()/tDecode()/(1<<20);
-		if (configuration("debug",debug)) 
-			std::cerr << "Enc: " << results["encodingSpeed"] << "MiB/s Dec: " << results["decodingSpeed"] << "MiB/s" << std::endl;
-		
-		// Efficiency calculation
-		results["shannonLimit"] = Distribution::entropy(pdf)/std::log2(pdf.size());
-		results["empiricalEfficiency"] = results["shannonLimit"] / (compressedData.size()/double(testData.size()));
-		if (configuration("debug",debug)) 
-			std::cerr << testData.size() << " " << compressedData.size() << " " << efficiency <<  " " << results["empiricalEfficiency"] << " " << std::endl;
-		
-
-		if (testData!=uncompressedData) {
-
-			std::cerr << testData.size() << " " << uncompressedData.size() << std::endl;
-
-			for (size_t i=0; i<10; i++) std::cerr << int(testData[i]) << " | "; std::cerr << std::endl;
-			for (size_t i=0; i<10; i++) std::cerr << int(uncompressedData[i]) << " | "; std::cerr << std::endl;
-
-			for (size_t i=0,j=0; i<100000 and i<testData.size() and i<uncompressedData.size(); i++) {
-				j = j*2+int(testData[i]==uncompressedData[i]);
-				if (i%16==0)
-					std::cerr << "0123456789ABCDEF"[j%16] << (i%(64*16)?"":"\n");
+			size_t encoderTimes = 1+(2/tEncode());
+			tEncode.start();
+			for (size_t t=0; t<encoderTimes; t++) {
+				compressedData.clear();
+				encode(testData,compressedData);
 			}
-			std::cerr << std::endl;
+			tEncode.stop();
+			
+			// Decoding benchmark
+			uncompressedData.resize(testData.size());
+			decode(compressedData,uncompressedData);
+			decode(compressedData,uncompressedData);
+			decode(compressedData,uncompressedData);
+
+			tDecode.start();
+	//		uncompressedData.resize(testData.size());
+			decode(compressedData,uncompressedData);
+			tDecode.stop();
+
+			size_t decoderTimes = 1+(2/tDecode());
+			tDecode.start();
+			for (size_t t=0; t<decoderTimes; t++) {
+	//			uncompressedData.resize(testData.size());
+				decode(compressedData,uncompressedData);
+			}
+			tDecode.stop();
+
+			// Speed calculation
+			results["encodingSpeed"] = encoderTimes*testData.size()/tEncode()/(1<<20);
+			results["decodingSpeed"] = decoderTimes*testData.size()/tDecode()/(1<<20);
+			std::cerr << "Enc: " << results["encodingSpeed"] << "MiB/s Dec: " << results["decodingSpeed"] << "MiB/s" << std::endl;
+			
+			// Efficiency calculation
+			results["shannonLimit"] = Distribution::entropy(pdf)/std::log2(pdf.size());
+			results["empiricalEfficiency"] = results["shannonLimit"] / (compressedData.size()/double(testData.size()));
+			
+			std::cerr << testData.size() << " " << compressedData.size() << " " << efficiency <<  " " << results["empiricalEfficiency"] << " " << std::endl;
+			
+
+			if (testData!=uncompressedData) {
+
+				std::cerr << testData.size() << " " << uncompressedData.size() << std::endl;
+
+				for (size_t i=0; i<10; i++) { std::cerr << int(testData[i]) << " | "; } std::cerr << std::endl;
+				for (size_t i=0; i<10; i++) { std::cerr << int(uncompressedData[i]) << " | "; } std::cerr << std::endl;
+
+				for (size_t i=0,j=0; i<100000 and i<testData.size() and i<uncompressedData.size(); i++) {
+					j = j*2+int(testData[i]==uncompressedData[i]);
+					if (i%16==0)
+						std::cerr << "0123456789ABCDEF"[j%16] << (i%(64*16)?"":"\n");
+				}
+				std::cerr << std::endl;
+			}
+			
+			return results;
 		}
-		
-		return results;
-	}
-	
-};
+	};
+}
 
 
 
@@ -1958,8 +1935,8 @@ public:
 
 			std::cerr << testData.size() << " " << uncompressedData.size() << std::endl;
 
-			for (size_t i=0; i<10; i++) std::cerr << int(testData[i]) << " | "; std::cerr << std::endl;
-			for (size_t i=0; i<10; i++) std::cerr << int(uncompressedData[i]) << " | "; std::cerr << std::endl;
+			for (size_t i=0; i<10; i++) { std::cerr << int(testData[i]) << " | "; } std::cerr << std::endl;
+			for (size_t i=0; i<10; i++) { std::cerr << int(uncompressedData[i]) << " | "; } std::cerr << std::endl;
 
 			for (size_t i=0,j=0; i<100000 and i<testData.size() and i<uncompressedData.size(); i++) {
 				j = j*2+int(testData[i]==uncompressedData[i]);

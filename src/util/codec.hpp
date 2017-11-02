@@ -163,7 +163,7 @@ public:
 
 		out.resize(in.size()-1);
 		assert(in.back().size()==out.size());
-		uint8_t *head = in.back().begin();
+		const uint8_t *head = in.back().begin();
 		
 		std::vector<std::pair<std::pair<int64_t, int64_t>, size_t>> packets;
 		for (size_t i=0; i<out.size(); i++) {

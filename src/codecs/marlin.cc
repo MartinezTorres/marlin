@@ -366,9 +366,9 @@ struct MarlinPimpl : public CODEC8Z {
 		void uncompressA(const AlignedArray8 &in, AlignedArray8 &out) const  {
 			
 			uint8_t *o = out.begin();
-			const uint32_t *i = (const uint32_t *)in.begin();
+			const uint32_t *i = (const uint32_t *)&in[0];
 			
-			std::array<T,N>  *DD = (std::array<T,N> *)&data[0];
+			const std::array<T,N> *DD = (const std::array<T,N> *)&data[0];
 			uint64_t v32=0; uint32_t c=0;
 			while (o<out.end()) {
 				
@@ -377,19 +377,19 @@ struct MarlinPimpl : public CODEC8Z {
 					c   += 32;
 				}
 				{				
-					uint8_t *&&v = (uint8_t *)&DD[v32 & ((1<<dictSize2)-1)];
+					const uint8_t *&&v = (const uint8_t *)&DD[v32 & ((1<<dictSize2)-1)];
 					v32 >>= dictSize2;
 					c -= dictSize2;
 					for (size_t n=0; n<N; n++)
-						*(((T *)o)+n) = *(((T *)v)+n);
+						*(((T *)o)+n) = *(((const T *)v)+n);
 					o += v[N*sizeof(T)-1];
 				}
 				{				
-					uint8_t *&&v = (uint8_t *)&DD[v32 & ((1<<dictSize2)-1)];
+					const uint8_t *&&v = (const uint8_t *)&DD[v32 & ((1<<dictSize2)-1)];
 					v32 >>= dictSize2;
 					c -= dictSize2;
 					for (size_t n=0; n<N; n++)
-						*(((T *)o)+n) = *(((T *)v)+n);
+						*(((T *)o)+n) = *(((const T *)v)+n);
 					o += v[N*sizeof(T)-1];
 				}
 			}				
@@ -399,9 +399,9 @@ struct MarlinPimpl : public CODEC8Z {
 		void uncompress12(const AlignedArray8 &in, AlignedArray8 &out) const  {
 			
 			uint8_t *o = out.begin();
-			const uint8_t *i = (const uint8_t *)in.begin();
+			const uint8_t *i = (const uint8_t *)&in[0];
 			
-			T *D = (T *)data.begin();
+			const T *D = (const T *)&data.front();
 			while (o<out.end()) {
 				
 				uint64_t v64=0;

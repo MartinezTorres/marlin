@@ -54,17 +54,27 @@ public:
     ~AlignedArray() { if (ptr!=nullptr) free(ptr); }
 
     static constexpr size_t capacity() { return AACapacityBytes/sizeof(T); };
-    constexpr T & front() { return *begin(); }
-    constexpr T * begin() { return (T *)ptr; };
-    constexpr T * data() const { return (T *)ptr; };
-    constexpr T * end() { return ((T *)ptr)+sz; };
+
+
+    constexpr const T * data() const { return (T *)ptr; };
+
+    constexpr       T & front()       { return *begin(); }
+    constexpr const T & front() const { return *begin(); }
+    constexpr       T & back()        { return *(((T *)ptr)+sz); }
+    constexpr const T & back()  const { return *(((T *)ptr)+sz); }
+    
+    constexpr       T * begin()       { return (T *)ptr; };
+    constexpr const T * begin() const { return (T *)ptr; };
+    constexpr       T * end()         { return ((T *)ptr)+sz; };
+    constexpr const T * end()   const { return ((T *)ptr)+sz; };
 
 	void push_back(const T &t) { *(end()) = t; sz++; }
 
-    constexpr size_t size() { return sz; };
+    constexpr size_t size() const { return sz; };
     void resize(size_t newSize) { sz = newSize; }
 
 	constexpr T &operator[](size_t n) { return *(((T *)ptr)+n); }
+	constexpr const T &operator[](size_t n) const { return *(((T *)ptr)+n); }
 
 	AlignedArray &randomize() {
 

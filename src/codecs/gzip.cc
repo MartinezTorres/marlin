@@ -17,7 +17,7 @@ class GzipPimpl : public CODEC8AA {
 		deflateInit(&strm, level);
 		
 		strm.avail_in = in.size();
-		strm.next_in = (Bytef*)in.begin();
+		strm.next_in = const_cast<Bytef*>(&in[0]);
 		strm.avail_out = out.capacity();
 		strm.next_out = (Bytef*)out.begin();
 
@@ -37,7 +37,7 @@ class GzipPimpl : public CODEC8AA {
 		inflateInit(&strm);
 		
 		strm.avail_in = in.size();
-		strm.next_in = (Bytef*)in.begin();
+		strm.next_in = const_cast<Bytef*>(&in[0]);
 		strm.avail_out = out.capacity();
 		strm.next_out = (Bytef*)out.begin();
 
