@@ -59,6 +59,10 @@ ext:
 	@echo "CREATING $@"
 	@$(CXX) -c -o $@ $< $(CFLAGS)
 
+./src/codecs/marlinWiP.o: ./src/codecs/marlinWiP.cc ./src/codecs/marlinWiP.hpp ./src/util/*.hpp  ./src/marlinlib/marlin.hpp
+	@echo "CREATING $@"
+	@$(CXX) -c -o $@ $< $(CFLAGS)
+
 ./src/codecs/%.o: ./src/codecs/%.cc ./src/codecs/%.hpp ./src/util/*.hpp
 	@echo "CREATING $@"
 	@$(CXX) -c -o $@ $< $(CFLAGS)

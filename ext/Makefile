@@ -3,7 +3,7 @@
 all: gipfeli.a FiniteStateEntropy.a
 	@true
 
-EXTLIBFLAGS := -flto -Ofast -march=native
+EXTLIBFLAGS := -Ofast -march=native
 
 FSEFILES := fse_decompress fse_compress fseU16 huf_compress huf_decompress entropy_common
 FiniteStateEntropy.a:

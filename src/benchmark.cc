@@ -28,6 +28,7 @@
 #include <codecs/huf.hpp>
 #include <codecs/marlin.hpp>
 #include <codecs/marlin2018.hpp>
+#include <codecs/marlinWiP.hpp>
 
 struct TestTimer {
 	timespec c_start, c_end;
@@ -308,12 +309,18 @@ using namespace std;
 int main( int , char *[] ) {
 		
 	std::vector<shared_ptr<CODEC8>> C = {
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,11),
+		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,0,11),
+//		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,2,11),
+//		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,4,11),
+//		std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11),
+
+/*		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,2,11),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,16,0,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,6,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,16,2,11),
+		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,1,11),
+		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,3,11),
 		std::make_shared<Rice>(),
 		std::make_shared<RLE>(),
 		std::make_shared<Snappy>(),
@@ -325,12 +332,12 @@ int main( int , char *[] ) {
 		std::make_shared<Huff0>(),
 		std::make_shared<Lz4>(),
 		std::make_shared<Zstd>(),
-		std::make_shared<CharLS>(),
+		std::make_shared<CharLS>(),*/
 	};
 
-	Marlin2018Simple::setConfiguration("dedup",0.);
+/*	Marlin2018Simple::setConfiguration("dedup",0.);
 	C.push_back(std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11));
-	Marlin2018Simple::setConfiguration("dedup",1.);
+	Marlin2018Simple::setConfiguration("dedup",1.);*/
 
 
 	

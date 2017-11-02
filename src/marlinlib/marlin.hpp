@@ -14,7 +14,7 @@
 #include <cassert>
 
 
-namespace Marlin {
+namespace MarlinWiP {
 
 	class Dictionary {
 
@@ -24,28 +24,31 @@ namespace Marlin {
 		//Marlin only encodes a subset of the possible source symbols.
 		//Marlin symbols are sorted by probability in descending order, 
 		//so the Marlin Symbol 0 is always corresponds to the probable alphabet symbol.
-		typedef uint8_t MarlinSymbol; 
 		typedef uint8_t SourceSymbol;
+		typedef uint8_t MarlinSymbol; 
 		
 		static std::map<std::string, double> updateConf(
 			const std::map<SourceSymbol, double> &symbols, 
 			std::map<std::string, double> conf) {
+
+//			conf.emplace("S",3);
+//			conf.emplace("maxWordSize",7);
 			
 			conf.emplace("K",8);
 			conf.emplace("O",2);
 			
-			conf.emplace("debug",true);
-			conf.emplace("purgeProbabilityThreshold",1e-2);
-			conf.emplace("iterationLimit",3);
-			conf.emplace("maxMarlinSymbols",1U<<(size_t(conf["K"])-1));
+			conf.emplace("debug",3);
+			conf.emplace("purgeProbabilityThreshold",1e-4);
+			conf.emplace("iterations",3);
+			conf.emplace("maxMarlinSymbols",(1U<<(size_t(conf["K"])))-1);
 				
 			if (not conf.count("S")) {
 				conf["S"] = 0;
 				double best = Dictionary(symbols, conf).efficiency;
-				for (int s=1; s<5; s++) {
+				for (int s=1; s<6; s++) {
 					conf["S"] = s;
 					double e = Dictionary(symbols, conf).efficiency;
-					if (e<best) {
+					if (e<=best) {
 						conf["S"] = s-1;
 						break;
 					}
@@ -70,11 +73,11 @@ namespace Marlin {
 		class Alphabet {
 
 			struct SymbolAndProbability {
-				SourceSymbol symbol;
+				SourceSymbol sourceSymbol;
 				double p;
 				constexpr bool operator<(const SymbolAndProbability &rhs) const {
 					if (p!=rhs.p) return p>rhs.p; // Descending in probability
-					return symbol<rhs.symbol; // Ascending in symbol index
+					return sourceSymbol<rhs.sourceSymbol; // Ascending in symbol index
 				}
 			};
 			
@@ -89,15 +92,17 @@ namespace Marlin {
 			
 		public:
 		
+			const std::map<SourceSymbol, double> symbols;
 			const size_t shift;
-			double sourceEntropy;
+			const double sourceEntropy;
+			
 			double rareSymbolProbability;
-			std::vector<SymbolAndProbability> rareSymbols;
 			std::vector<SymbolAndProbability> marlinSymbols;
 			
-			Alphabet(const std::map<SourceSymbol, double> &symbols, std::map<std::string, double> conf) : shift(conf.at("S")) {
-				
-				sourceEntropy = calcEntropy(symbols);
+			Alphabet(std::map<SourceSymbol, double> symbols_, std::map<std::string, double> conf) : 
+				symbols(symbols_),
+				shift(conf.at("S")),
+				sourceEntropy(calcEntropy(symbols)) {
 				
 				// Group symbols by their high bits
 				std::map<SourceSymbol, double> symbolsShifted;
@@ -105,21 +110,20 @@ namespace Marlin {
 					symbolsShifted[symbol.first>>shift] += symbol.second;
 				
 				for (auto &&symbol : symbolsShifted)
-					marlinSymbols.push_back(SymbolAndProbability({symbol.first, symbol.second}));
+					marlinSymbols.push_back(SymbolAndProbability({SourceSymbol(symbol.first<<shift), symbol.second}));
 					
 				std::stable_sort(marlinSymbols.begin(),marlinSymbols.end());
 				
 				rareSymbolProbability = 0;
-				while (marlinSymbols.size()>1 and 
-					(marlinSymbols.back().p<conf.at("purgeProbabilityThreshold") or marlinSymbols.size()>conf.at("maxMarlinSymbols"))) {
+				while (marlinSymbols.size()>(1U<<size_t(conf.at("O"))) and 
+					(marlinSymbols.back().p<conf.at("purgeProbabilityThreshold") or
+					 marlinSymbols.size()>conf.at("maxMarlinSymbols"))) {
 					
 					rareSymbolProbability += marlinSymbols.back().p;
-					rareSymbols.push_back( marlinSymbols.back() );
 					marlinSymbols.front().p +=  marlinSymbols.back().p;
 					marlinSymbols.pop_back();
 				}
 			}
-			
 		};
 					
 
@@ -141,7 +145,6 @@ namespace Marlin {
 		};
 		
 
-
 		struct Node;
 		typedef std::shared_ptr<Node> SNode;	
 		struct Node : std::vector<SNode> {
@@ -149,7 +152,6 @@ namespace Marlin {
 			size_t sz=0;
 		};
 		
-
 
 
 		SNode buildTree(std::vector<double> Pstates) const {
@@ -202,14 +204,18 @@ namespace Marlin {
 					retiredNodes++;
 					continue;
 				}
+
+				if (node->sz == 255) {
+					retiredNodes++;
+					continue;
+				}
 				
 				double p = node->p * Pchild[node->size()];
 				node->push_back(std::make_shared<Node>());
 				node->back()->p = p;
 				node->back()->sz = node->sz+1;
-
-				node->p -= p;
 				pq.push(node->back());
+				node->p -= p;
 				pq.push(node);
 			}
 
@@ -243,7 +249,7 @@ namespace Marlin {
 				for (size_t i = 0; i<n->size(); i++) {
 					
 					Word w2 = w;
-					w2.push_back(alphabet.marlinSymbols[i].symbol);
+					w2.push_back(alphabet.marlinSymbols[i].sourceSymbol);
 					w2.p = n->at(i)->p;
 					w2.state = n->at(i)->size();
 					
@@ -288,8 +294,8 @@ namespace Marlin {
 		// Debug functions		
 		void print(std::vector<Word> dictionary) const {
 
-			if (not conf.at("debug")) return;
-			if (dictionary.size()>40) return;
+			if (conf.at("debug")<3) return;
+			if (conf.at("debug")<4 and dictionary.size()/(1U<<O) > 40) return;
 
 			for (size_t i=0; i<dictionary.size()/(1U<<O); i++) { 
 				
@@ -298,7 +304,15 @@ namespace Marlin {
 					auto idx = i + (k* (dictionary.size()/(1U<<O)));
 					auto &&w = dictionary[idx];
 					printf(" %02lX %01ld %2d %01.2le ",idx,i%(1U<<O),w.state,w.p);
-					for (size_t j=0; j<8; j++) putchar(j<w.size()?'a'+w[j]:' ');
+					for (size_t j=0; j<8; j++) {
+						if (j<w.size()) {
+							char a = 'a';
+							for (size_t x=0; alphabet.marlinSymbols[x].sourceSymbol != w[j]; x++, a++);
+							putchar(a);
+						} else {
+							putchar(' ');
+						}
+					}
 				}
 				putchar('\n');
 			}		
@@ -309,7 +323,7 @@ namespace Marlin {
 
 		void print(std::vector<std::vector<double>> Pstates) const {
 			
-			if (not conf.at("debug")) return;
+			if (conf.at("debug")<3) return;
 			for (size_t i=0; i<Pstates[0].size() and i<4; i++) { 
 				
 				printf("S: %02ld",i);
@@ -381,9 +395,10 @@ namespace Marlin {
 				ret = arrangeAndFuse(dictionaries);
 				
 				print(ret);
-				if (conf.at("debug")) printf("Efficiency: %3.4lf\n", calcEfficiency(ret));		
+				if (conf.at("debug")>2) printf("Efficiency: %3.4lf\n", calcEfficiency(ret));		
 			}
-			if (conf.at("debug")) printf("Efficiency: %3.4lf\n", calcEfficiency(ret));
+			if (conf.at("debug")>1) for (auto &&c : conf) std::cout << c.first << ": " << c.second << std::endl;
+			if (conf.at("debug")>0) printf("Efficiency: %3.4lf\n", calcEfficiency(ret));
 
 			return ret;
 		}
@@ -400,7 +415,7 @@ namespace Marlin {
 
 		Dictionary( const std::map<SourceSymbol, double> &symbols,
 			std::map<std::string, double> conf_ = std::map<std::string, double>()) 
-			: conf(updateConf(symbols, conf_)), alphabet(symbols, conf_) {}
+			: conf(updateConf(symbols, conf_)), alphabet(symbols, conf) {}
 		
 		
 		// Turns the vector into a map and uses the previous constructor
@@ -473,7 +488,7 @@ namespace Marlin {
 
 			Source2JumpTableShifted.fill(nMarlinSymbols);
 			for (size_t i=0; i<dict.alphabet.marlinSymbols.size(); i++)
-				Source2JumpTableShifted[dict.alphabet.marlinSymbols[i].symbol>>shift] = i;
+				Source2JumpTableShifted[dict.alphabet.marlinSymbols[i].sourceSymbol>>shift] = i;
 
 			
 			const size_t NumSections = 1<<dict.O;
@@ -506,7 +521,7 @@ namespace Marlin {
 				for (size_t i=k*SectionSize; i<(k+1)*SectionSize; i++)
 					for (size_t j=0; j<dict.alphabet.marlinSymbols.size(); j++)
 						if (jumpTable(i,j)==JumpIdx(-1)) // words that are not parent of anyone else.
-							jumpTable(i,j) = positions[i%NumSections][Word(1,MarlinSymbol(j))] + FLAG_NEXT_WORD;
+							jumpTable(i,j) = positions[i%NumSections][Word(1,dict.alphabet.marlinSymbols[j].sourceSymbol)] + FLAG_NEXT_WORD;
 							
 		}
 		
@@ -532,19 +547,20 @@ namespace Marlin {
 			// Encode Marlin, with rare symbols preceded by an empty word
 			{
 				
-				size_t maxTargetSize = std::max(0UL, (i8end-i8start)-((i8end-i8start)*shift/8) - 8);
+				ssize_t maxTargetSize = std::max(0UL, (i8end-i8start)-((i8end-i8start)*shift/8));
 				
 				JumpIdx j = 0;
-				while (i8<i8end and maxTargetSize) {				
+				while (i8<i8end and maxTargetSize>8) {				
 					
 					SourceSymbol ss = *i8++;
 					
 					MarlinSymbol ms = Source2JumpTable(ss);
 					bool rare = ms==nMarlinSymbols;
 					if (rare) {
-						if (j) *o8++ = j;
+						if (j) *o8++ = j; // Finish current word, if any;
 						*o8++ = j = 0;
-						*o8++ = ss;
+						*o8++ = (ss>>shift)<<shift;
+						maxTargetSize-=3;
 						continue;
 					}
 					
@@ -552,7 +568,7 @@ namespace Marlin {
 					j = jumpTable(j, ms);
 					
 					if (j & FLAG_NEXT_WORD) {
-						*o8++ = jOld;
+						*o8++ = jOld & 0xFF;
 						maxTargetSize--;
 					}
 				}
@@ -613,6 +629,9 @@ namespace Marlin {
 				memset(o8start,*i8start,o8end-o8start);
 				return o8end-o8start;
 			}
+
+			memset(o8start,mostCommonSourceSymbol,o8end-o8start);
+//			return o8end-o8start;
 			
 			// Decode the Marlin Section
 			{
@@ -620,17 +639,85 @@ namespace Marlin {
 				const uint8_t *endMarlin = i8end - (o8end-o8start)*shift/8;
 
 				const uint32_t overlappingMask = (1<<(8+O))-1;
-				const T clearSizeMask = T(-1)>>8;
-				uint32_t value = 0;
-				while (i8<endMarlin-sizeof(T)) {
-					uint8_t in = *i8++;
-					if (in==0) {
-						*o8++ = *i8++;
-					} else {
-						value = (value<<8) + in;
-						T v = *(const T *)&D[value & overlappingMask];
-						*((T *)o8) = v & clearSizeMask;
-						o8 += v >> ((sizeof(T)-1)*8);
+				constexpr const T clearSizeMask = T(-1)>>8;
+				uint64_t value = 0;
+
+				while (i8<endMarlin-8) {
+					
+					uint32_t v32 = (*(const uint32_t *)i8);
+					if (((v32 - 0x01010101UL) & ~v32 & 0x80808080UL)) { // Fast test for zero
+
+						uint8_t in = *i8++;
+						if (in==0) {
+							*o8++ = *i8++;
+							value = (value<<8) + 0;
+						} else {
+							value = (value<<8) + in;
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+						
+						in = *i8++;
+						if (in==0) {
+							*o8++ = *i8++;
+							value = (value<<8) + 0;
+						} else {
+							value = (value<<8) + in;
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+						
+						in = *i8++;
+						if (in==0) {
+							*o8++ = *i8++;
+							value = (value<<8) + 0;
+						} else {
+							value = (value<<8) + in;
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+						
+						in = *i8++;
+						if (in==0) {
+							*o8++ = *i8++;
+							value = (value<<8) + 0;
+						} else {
+							value = (value<<8) + in;
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+						
+					} else { // Has no zeroes! hurray!
+						i8+=4;
+						value = (value<<32) + __builtin_bswap32(v32);
+						{
+							T v = ((const T *)D)[(value>>24) & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+							
+						}
+
+						{
+							T v = ((const T *)D)[(value>>16) & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+
+						{
+							T v = ((const T *)D)[(value>>8) & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+
+						{
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
 					}
 				}
 				
@@ -640,15 +727,15 @@ namespace Marlin {
 						*o8++ = *i8++;
 					} else {
 						value = (value<<8) + in;
-						const T *v = (const T *)&D[value & overlappingMask];
-						memcpy(o8, v, *v >> ((sizeof(T)-1)*8));
+						const T *v = &((const T *)D)[value & overlappingMask];
+						memcpy(o8, v, std::min(sizeof(T)-1,size_t(*v >> ((sizeof(T)-1)*8))));
 						o8 += *v >> ((sizeof(T)-1)*8);
 					}
 				}				
 			}
 
 			// Decode residuals
-			{
+			if (shift) {
 				uint64_t mask=0;
 				for (size_t i=0; i<8; i++)
 					mask |= ((1ULL<<shift)-1)<<(8ULL*i);
@@ -660,6 +747,8 @@ namespace Marlin {
 					*o64++ += _pdep_u64(*(const uint64_t *)i8, mask);
 					i8 += shift;
 				}
+				
+				if (i8end-i8 != 0) std::cerr << " { " << i8end-i8 << " } "; // CURRENT PROBLEM IN THE CODE
 			}
 			return o8end-o8start;
 		}
@@ -673,7 +762,7 @@ namespace Marlin {
 			maxWordSize(dict.maxWordSize),
 			decoderTable(dict.words.size()*(maxWordSize+1)),
 			D(decoderTable.data()),
-			mostCommonSourceSymbol(dict.alphabet.marlinSymbols.front().symbol) {
+			mostCommonSourceSymbol(dict.alphabet.marlinSymbols.front().sourceSymbol) {
 				
 			
 			SourceSymbol *d = &decoderTable.front();
@@ -695,7 +784,6 @@ namespace Marlin {
 	};
 	
 
-
 	struct SingleDictionaryCodec {
 		
 		const double efficiency;
@@ -715,7 +803,7 @@ namespace Marlin {
 			if (out.size() < in.size() + 4) out.resize(in.size() + 4);
 
 			*(uint32_t *)&*out.begin() = uint32_t(in.size());
-			size_t sz = 4 + encoder(&*in.begin(),&*in.end(),&*out.begin()+4,&*out.end());
+			size_t sz = 4 + encoder((const uint8_t *)&*in.begin(),(const uint8_t *)&*in.end(),(uint8_t *)&*out.begin()+4,(uint8_t *)&*out.end());
 			out.resize(sz);
 		}
 
@@ -724,7 +812,7 @@ namespace Marlin {
 
 			size_t uncompressedSize = *(const uint32_t *)&*in.begin();
 			out.resize(uncompressedSize);
-			decoder(&*in.begin()+4,&*in.end(),&*out.begin(),&*out.end());
+			decoder((const uint8_t *)&*in.begin()+4,(const uint8_t *)&*in.end(),(uint8_t *)&*out.begin(),(uint8_t *)&*out.end());
 		}
 		
 				
