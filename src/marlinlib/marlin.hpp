@@ -37,10 +37,11 @@ namespace MarlinWiP {
 			conf.emplace("K",8);
 			conf.emplace("O",2);
 			
-			conf.emplace("debug",3);
-			conf.emplace("purgeProbabilityThreshold",1e-4);
+			conf.emplace("debug",99);
+			conf.emplace("purgeProbabilityThreshold",1e-3);
 			conf.emplace("iterations",3);
-			conf.emplace("maxMarlinSymbols",(1U<<(size_t(conf["K"])))-1);
+			conf.emplace("minMarlinSymbols", std::max(1U<<size_t(conf.at("O")),4U));
+			conf.emplace("maxMarlinSymbols",(1U<<size_t(conf.at("K")))-1);
 				
 			if (not conf.count("S")) {
 				conf["S"] = 0;
@@ -115,8 +116,8 @@ namespace MarlinWiP {
 				std::stable_sort(marlinSymbols.begin(),marlinSymbols.end());
 				
 				rareSymbolProbability = 0;
-				while (marlinSymbols.size()>(1U<<size_t(conf.at("O"))) and 
-					(marlinSymbols.back().p<conf.at("purgeProbabilityThreshold") or
+				while (marlinSymbols.size()>conf.at("minMarlinSymbols") and 
+					(rareSymbolProbability < conf.at("purgeProbabilityThreshold") or
 					 marlinSymbols.size()>conf.at("maxMarlinSymbols"))) {
 					
 					rareSymbolProbability += marlinSymbols.back().p;
@@ -572,15 +573,15 @@ namespace MarlinWiP {
 						maxTargetSize--;
 					}
 				}
-				*o8++ = j;
-				if (maxTargetSize == 0) { // Just encode the block uncompressed.
+				if (j) *o8++ = j;
+				if (maxTargetSize <= 8) { // Just encode the block uncompressed.
 					memcpy(o8start, i8start, i8end-i8start);
 					return i8end-i8start;
 				}
 			}
 			
 			// Encode residuals
-			{
+			if (shift) {
 				uint64_t mask=0;
 				for (size_t i=0; i<8; i++)
 					mask |= ((1ULL<<shift)-1)<<(8ULL*i);
@@ -612,7 +613,7 @@ namespace MarlinWiP {
 		const SourceSymbol mostCommonSourceSymbol;
 
 		
-		template<typename T>
+		template<typename T, size_t CO>
 		size_t decode8(const uint8_t * const i8start, const uint8_t * const i8end, uint8_t * const o8start, uint8_t * const o8end) const {
 			
 			      uint8_t *o8 = o8start;
@@ -638,14 +639,16 @@ namespace MarlinWiP {
 
 				const uint8_t *endMarlin = i8end - (o8end-o8start)*shift/8;
 
-				const uint32_t overlappingMask = (1<<(8+O))-1;
-				constexpr const T clearSizeMask = T(-1)>>8;
+//				const uint32_t overlappingMask = (1<<(8+O))-1;
+				constexpr const uint32_t overlappingMask = (1<<(8+CO))-1;
+//				constexpr const T clearSizeMask = T(-1)>>8;
+				constexpr const T clearSizeMask = 0;
 				uint64_t value = 0;
 
-				while (i8<endMarlin-8) {
+				while (i8<endMarlin-9) {
 					
 					uint32_t v32 = (*(const uint32_t *)i8);
-					if (((v32 - 0x01010101UL) & ~v32 & 0x80808080UL)) { // Fast test for zero
+/*					if (((v32 - 0x01010101UL) & ~v32 & 0x80808080UL)) { // Fast test for zero
 
 						uint8_t in = *i8++;
 						if (in==0) {
@@ -691,9 +694,10 @@ namespace MarlinWiP {
 							o8 += v >> ((sizeof(T)-1)*8);
 						}
 						
-					} else { // Has no zeroes! hurray!
+					} else { // Has no zeroes! hurray!*/
 						i8+=4;
-						value = (value<<32) + __builtin_bswap32(v32);
+						//clearSizeMask = 0;
+						value = (value<<32) +  v32; //__builtin_bswap32(v32);
 						{
 							T v = ((const T *)D)[(value>>24) & overlappingMask];
 							*((T *)o8) = v & clearSizeMask;
@@ -718,7 +722,7 @@ namespace MarlinWiP {
 							*((T *)o8) = v & clearSizeMask;
 							o8 += v >> ((sizeof(T)-1)*8);
 						}
-					}
+					//}
 				}
 				
 				while (i8<endMarlin) {
@@ -732,6 +736,8 @@ namespace MarlinWiP {
 						o8 += *v >> ((sizeof(T)-1)*8);
 					}
 				}				
+				//if (endMarlin-i8 != 0) std::cerr << " {" << endMarlin-i8 << "} "; // SOLVED! PROBLEM IN THE CODE
+				//if (o8end-o8 != 0) std::cerr << " [" << o8end-o8 << "] "; // SOLVED! PROBLEM IN THE CODE
 			}
 
 			// Decode residuals
@@ -747,8 +753,6 @@ namespace MarlinWiP {
 					*o64++ += _pdep_u64(*(const uint64_t *)i8, mask);
 					i8 += shift;
 				}
-				
-				if (i8end-i8 != 0) std::cerr << " { " << i8end-i8 << " } "; // CURRENT PROBLEM IN THE CODE
 			}
 			return o8end-o8start;
 		}
@@ -775,9 +779,24 @@ namespace MarlinWiP {
 		
 		size_t operator()(const uint8_t * const i8start, const uint8_t * const i8end, uint8_t * const o8start, uint8_t * const o8end) const {
 			
-			switch (maxWordSize) {
-				case   3: return decode8<uint32_t>(i8start, i8end, o8start, o8end);
-				case   7: return decode8<uint64_t>(i8start, i8end, o8start, o8end);
+			if (maxWordSize==3) {
+				switch (O) {
+					case   0: return decode8<uint32_t,0>(i8start, i8end, o8start, o8end);
+					case   1: return decode8<uint32_t,1>(i8start, i8end, o8start, o8end);
+					case   2: return decode8<uint32_t,2>(i8start, i8end, o8start, o8end);
+					case   3: return decode8<uint32_t,3>(i8start, i8end, o8start, o8end);
+					case   4: return decode8<uint32_t,4>(i8start, i8end, o8start, o8end);
+				}
+			}
+
+			if (maxWordSize==7) {
+				switch (O) {
+					case   0: return decode8<uint64_t,0>(i8start, i8end, o8start, o8end);
+					case   1: return decode8<uint64_t,1>(i8start, i8end, o8start, o8end);
+					case   2: return decode8<uint64_t,2>(i8start, i8end, o8start, o8end);
+					case   3: return decode8<uint64_t,3>(i8start, i8end, o8start, o8end);
+					case   4: return decode8<uint64_t,4>(i8start, i8end, o8start, o8end);
+				}
 			}
 			throw std::runtime_error ("unsupported maxWordSize");	
 		}

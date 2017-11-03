@@ -310,11 +310,12 @@ int main( int , char *[] ) {
 		
 	std::vector<shared_ptr<CODEC8>> C = {
 		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,0,11),
-//		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,2,11),
-//		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,4,11),
-//		std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11),
+		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,2,11),
+/*		std::make_shared<MarlinCodecWiP>(Distribution::Laplace,4,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11),
 
-/*		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,11),
+		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,2,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,16,0,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,6,11),
