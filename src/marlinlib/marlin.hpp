@@ -37,10 +37,10 @@ namespace MarlinWiP {
 			conf.emplace("K",8);
 			conf.emplace("O",2);
 			
-			conf.emplace("debug",99);
-			conf.emplace("purgeProbabilityThreshold",1e-3);
+			conf.emplace("debug",1);
+			conf.emplace("purgeProbabilityThreshold",1e-5);
 			conf.emplace("iterations",3);
-			conf.emplace("minMarlinSymbols", std::max(1U<<size_t(conf.at("O")),4U));
+			conf.emplace("minMarlinSymbols", std::max(1U<<size_t(conf.at("O")),8U));
 			conf.emplace("maxMarlinSymbols",(1U<<size_t(conf.at("K")))-1);
 				
 			if (not conf.count("S")) {
@@ -58,12 +58,17 @@ namespace MarlinWiP {
 			}
 			
 			if (not conf.count("maxWordSize")) {
+				conf["maxWordSize"] = 15;
+				double e15 = Dictionary(symbols, conf).efficiency;
 				conf["maxWordSize"] = 7;
 				double e7 = Dictionary(symbols, conf).efficiency;
 				conf["maxWordSize"] = 3;
 				double e3 = Dictionary(symbols, conf).efficiency;
-				if (e7>1.001*e3) {
+				if (e7>1.0001*e3) {
 					conf["maxWordSize"] = 7;
+				}
+				if (e15>1.0001*e7) {
+					conf["maxWordSize"] = 15;
 				}
 			}
 			
@@ -117,11 +122,11 @@ namespace MarlinWiP {
 				
 				rareSymbolProbability = 0;
 				while (marlinSymbols.size()>conf.at("minMarlinSymbols") and 
-					(rareSymbolProbability < conf.at("purgeProbabilityThreshold") or
-					 marlinSymbols.size()>conf.at("maxMarlinSymbols"))) {
+					  (marlinSymbols.size()>conf.at("maxMarlinSymbols") or
+					  rareSymbolProbability<conf.at("purgeProbabilityThreshold"))) {
 					
 					rareSymbolProbability += marlinSymbols.back().p;
-					marlinSymbols.front().p +=  marlinSymbols.back().p;
+//					marlinSymbols.front().p +=  marlinSymbols.back().p;
 					marlinSymbols.pop_back();
 				}
 			}
@@ -158,7 +163,7 @@ namespace MarlinWiP {
 		SNode buildTree(std::vector<double> Pstates) const {
 
 			// Normalizing the probabilities makes the algorithm more stable
-			double factor = std::numeric_limits<double>::min();
+			double factor = 1e-10;
 			for (auto &&p : Pstates) factor += p;
 			for (auto &&p : Pstates) p/=factor;
 			for (auto &&p : Pstates) if (std::abs(p-1.)<0.0001) p=1.;
@@ -167,6 +172,7 @@ namespace MarlinWiP {
 
 			std::vector<double> PN;
 			for (auto &&a : alphabet.marlinSymbols) PN.push_back(a.p);
+			PN.back() += alphabet.rareSymbolProbability;
 			for (size_t i=PN.size()-1; i; i--)
 				PN[i-1] += PN[i];
 
@@ -182,6 +188,7 @@ namespace MarlinWiP {
 			
 			// Include empty word
 			pq.push(root);
+			root->p = 1;
 			
 			for (size_t c=0; c<alphabet.marlinSymbols.size(); c++) {			
 					
@@ -189,6 +196,7 @@ namespace MarlinWiP {
 				double sum = 0;
 				for (size_t t = 0; t<=c; t++) sum += Pstates[t]/PN[t];
 				root->back()->p = sum * alphabet.marlinSymbols[c].p;
+				root->p -= root->back()->p;
 				root->back()->sz = 1;
 				pq.push(root->back());
 			}
@@ -211,6 +219,11 @@ namespace MarlinWiP {
 					continue;
 				}
 				
+				if (node->size() == alphabet.marlinSymbols.size()) {
+					retiredNodes++;
+					continue;					
+				}
+				
 				double p = node->p * Pchild[node->size()];
 				node->push_back(std::make_shared<Node>());
 				node->back()->p = p;
@@ -223,12 +236,15 @@ namespace MarlinWiP {
 			// Renormalize probabilities.
 			{
 				std::queue<SNode> q(std::deque<SNode>{ root });
+				double sum=0, num=0;
 				while (not q.empty()) {
+					sum += q.front()->p; num++;
 					q.front()->p *= factor;
 					for (auto &&child : *q.front()) 
 						q.push(child);
 					q.pop();
 				}
+				std::cerr << sum << " sum - num " << num << std::endl;
 			}
 			return root;
 		}
@@ -240,7 +256,9 @@ namespace MarlinWiP {
 			std::vector<Word> ret;
 			
 			std::stack<std::pair<SNode, Word>> q;
-			q.emplace(root, Word());
+			Word rootWord;
+			rootWord.p = root->p;
+			q.emplace(root, rootWord);
 			
 			while (not q.empty()) {
 				SNode n = q.top().first;
@@ -258,6 +276,8 @@ namespace MarlinWiP {
 					q.emplace(n->at(i), w2);
 				}
 			}
+			
+			std::cout << ret.size() << std::endl;
 			return ret;
 		}
 
@@ -278,7 +298,7 @@ namespace MarlinWiP {
 				// Note the +1, we keep the empty word in the first position.
 				std::stable_sort(sortedDictionary.begin()+1, sortedDictionary.end(), cmp);
 				
-				std::vector<Word> w(1U<<K);
+				std::vector<Word> w(1U<<K,Word());
 				for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1U<<O)) {
 					
 					if (j>=w.size()) 
@@ -341,15 +361,15 @@ namespace MarlinWiP {
 		
 			double meanLength = 0;
 			for (auto &&w : dictionary)
-				meanLength += w.p * w.size();
+					meanLength += w.p * w.size();
 			
 			double shannonLimit = alphabet.sourceEntropy;
 			
 			// The decoding algorithm has 4 steps:
 			double meanBitsPerSymbol = 0;                           // a memset
-			meanBitsPerSymbol += K/meanLength;                      // Marlin VF
+			meanBitsPerSymbol += (K/meanLength)*(1-alphabet.rareSymbolProbability);                      // Marlin VF
 			meanBitsPerSymbol += alphabet.shift;                    // Raw storing of lower bits
-			meanBitsPerSymbol += 32*alphabet.rareSymbolProbability; // Recovering rare symbols
+			meanBitsPerSymbol += 2*K*alphabet.rareSymbolProbability;// Recovering rare symbols
 
 			return shannonLimit / meanBitsPerSymbol;
 		}
@@ -798,7 +818,7 @@ namespace MarlinWiP {
 					case   4: return decode8<uint64_t,4>(i8start, i8end, o8start, o8end);
 				}
 			}
-			throw std::runtime_error ("unsupported maxWordSize");	
+			//throw std::runtime_error ("unsupported maxWordSize");	
 		}
 	};
 	
