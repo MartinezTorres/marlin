@@ -42,7 +42,7 @@ CXX = g++
 #CXX = clang++-3.3 -D__extern_always_inline=inline -fslp-vectorize
 #CXX = icpc -fast -auto-ilp32 -xHost -fopenmp
 
-all: data ./bin/benchmark
+all: data ./bin/benchmark ./bin/analyzeMarlin
 
 .PHONY: data ext show prof clean realclean
 

@@ -311,9 +311,9 @@ int main( int , char *[] ) {
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,0,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,2,11),
 		std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11),
-		std::make_shared<Marlin2018>(Distribution::Laplace,16,0,11),
-		std::make_shared<Marlin2018>(Distribution::Laplace,12,6,11),
-		std::make_shared<Marlin2018>(Distribution::Laplace,16,2,11),
+//		std::make_shared<Marlin2018>(Distribution::Laplace,16,0,11),
+//		std::make_shared<Marlin2018>(Distribution::Laplace,12,6,11),
+//		std::make_shared<Marlin2018>(Distribution::Laplace,16,2,11),
 		std::make_shared<Rice>(),
 		std::make_shared<RLE>(),
 		std::make_shared<Snappy>(),
@@ -328,23 +328,14 @@ int main( int , char *[] ) {
 		std::make_shared<CharLS>(),
 	};
 
+	// Testing marlin without deduplication
 	Marlin2018Simple::setConfiguration("dedup",0.);
 	C.push_back(std::make_shared<Marlin2018>(Distribution::Laplace,12,4,11));
 	Marlin2018Simple::setConfiguration("dedup",1.);
 
-
 	
 	for (auto c : C) 
 		testCorrectness(c);
-
-/*	testMarlinVsTunstall(ofstream("figA.tex"),{
-		C["marlin9"],
-		C["marlin12"],
-		C["marlin16"],
-		C["marlin9"],
-		C["marlin12"],
-		C["marlin16"],
-	);*/
 
 	ofstream tex("out.tex");
 	
