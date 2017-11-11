@@ -33,11 +33,12 @@ $ make
 ```
 
 This will create two executables:
-`bin/benchmark`: checks and compares multiple compression algorithms.
-`bin/analyzeMarlin`: analyzes multiple parameters of Marlin.
+
+-`bin/benchmark`: checks and compares multiple compression algorithms.
+
+-`bin/analyzeMarlin`: analyzes multiple parameters of Marlin.
 
 Please check the main function of both programs (in src/ folder) and select the tests/parameters you want to visualize.
-
 Both files generate a file named `out.tex` with the graphs. To visualize the graphs you need to install texlive:
 
 ```
