@@ -26,25 +26,18 @@ SOFTWARE.
 
 ***********************************************************************/
 
-#if defined (__cplusplus)
-extern "C" {
-#endif
 
 #ifndef MARLIN_H
 #define MARLIN_H
 
 #include <stddef.h>
+#include <stdint.h>
 
-struct MarlinDictionaryPimpl;
+#if defined (__cplusplus)
+extern "C" {
+#endif
 
-struct MarlinDictionary {
-	
-	const char name[16];
-	const double hist[256];
-	const double bps[256]; // Expected bits per symbol
-	
-	const struct MarlinDictionaryPimpl *pimpl;
-};
+struct MarlinDictionary;
 
 /*! 
  * Compresses src to dst using dictionary dict.
@@ -60,7 +53,7 @@ struct MarlinDictionary {
  *         1: if data is a repetition of a single byte
  *         positive: size of the compressed buffer
 */
-ssize_t Marlin_compress(void* dst, size_t dstCapacity, const void* src, size_t srcSize, const MarlinDictionary *dict);
+size_t Marlin_compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize, const MarlinDictionary *dict);
 
 /*! 
  * Uncompresses src to dst using dictionary dict.
@@ -74,7 +67,7 @@ ssize_t Marlin_compress(void* dst, size_t dstCapacity, const void* src, size_t s
  * \return negative: error occurred
  *         positive: number of uncompressed bytes (must match dstSize
 */
-ssize_t Marlin_decompress(void* dst, size_t dstSize, const void* src, size_t srcSize, const MarlinDictionary *dict);
+size_t Marlin_decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize, const MarlinDictionary *dict);
 
 /*! 
  * Builds an optimal for a 8 bit memoryless source. Dictionary must be freed with Marlin_free_dictionary.
@@ -111,22 +104,9 @@ MarlinDictionary **Marlin_get_prebuilt_dictionaries();
  * \return negative: error occurred
  *         positive: expected space used to compress hist using dictionary dict
 */
-inline double Marlin_estimate(const double hist[256], MarlinDictionary *dict) {
-	
-	if (!dict) return -1.;
-	
-	double ret = 0;
-	for (int i=0; i<256; i++)
-		ret += hist[i]*dict->bps[i];
-	
-	return ret;
-}
+double Marlin_estimate(const double hist[256], MarlinDictionary *dict);
 
-//ssize_t Marlin_compress(void* dst, size_t dstCapacity, const void* src, size_t srcSize);
-
-//ssize_t Marlin_decompress(void* dst, size_t dstCapacity, const void* src, size_t srcSize);
-
-//ssize_t Marlin_decompress_size(const void* src, size_t srcSize);
+#endif
 
 #if defined (__cplusplus)
 }
