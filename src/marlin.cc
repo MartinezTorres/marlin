@@ -577,6 +577,7 @@ namespace {
 							
 		}
 		
+		__attribute__ ((target ("bmi2")))
 		size_t operator()(const uint8_t * const i8start, const uint8_t * const i8end, uint8_t * const o8start, uint8_t * const o8end) const {
 			
 			assert(o8end-o8start >= i8end-i8start);
@@ -665,6 +666,7 @@ namespace {
 
 		
 		template<typename T, size_t CO>
+		__attribute__ ((target ("bmi2")))
 		size_t decode8(const uint8_t * const i8start, const uint8_t * const i8end, uint8_t * const o8start, uint8_t * const o8end) const {
 			
 			      uint8_t *o8 = o8start;
