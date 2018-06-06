@@ -1,19 +1,16 @@
-cmake_minimum_required(VERSION 3.1)
-project(Marlin VERSION 0.1)
+cmake_minimum_required(VERSION 3.5)
+project(Marlin VERSION 0.01)
 
 set(CMAKE_CXX_STANDARD 14)
 
 ################################
 # Marlin library
 
-add_library(marlin "src/marlin.cc")
-target_include_directories(marlin
-    PUBLIC 
-        $<INSTALL_INTERFACE:inc>    
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
+add_library(marlin src/marlin.cc)
+set_target_properties(marlin PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    PUBLIC_HEADER inc/marlin.h)
+target_include_directories(marlin PRIVATE inc)
 
 ################################
 # Samples
