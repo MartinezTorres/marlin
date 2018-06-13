@@ -39,8 +39,8 @@ static void shift8(const MarlinDictionary* dict, uint8_t* dst, const size_t dstS
 	const uint64_t *i64end = (const uint64_t *)(src+dstSize);
 
 	while (i64 != i64end) {
-		*(uint64_t *)o8 = _pext_u64(*i64++, mask);
-		o8 += dict->shift;
+		*(uint64_t *)dst = _pext_u64(*i64++, mask);
+		dst += dict->shift;
 	}
 }
 
@@ -50,7 +50,7 @@ ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCa
 	assert(dstCapacity >= srcSize);
 	
 	// Special case: empty! Nothing to compress.
-	if (i8start==i8end) return 0;
+	if (srcSize) return 0;
 
 	// Special case: the entire block is made of one symbol!
 	{
@@ -78,7 +78,7 @@ ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCa
 	// Encode Marlin, with rare symbols preceded by an empty word
 	{
 		
-		// if the encoder produces a size larger than this, it is worth to simply store the block uncompressed.
+		// if the encoder produces a size larger than this, it is simply better to store the block uncompressed.
 		size_t maxTargetSize = std::max(0UL, srcSize-srcSize*dict->shift/8);
 
 		JumpIdx j = 0;
