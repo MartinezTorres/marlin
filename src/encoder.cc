@@ -28,15 +28,17 @@ SOFTWARE.
 
 #include "dictionary.h"
 
+
+
 __attribute__ ((target ("bmi2")))
-static void shift8(const MarlinDictionary* dict, uint8_t* dst, const size_t dstSize, const uint8_t* src, const size_t srcSize) {
+static void shift8(const MarlinDictionary* dict, uint8_t* dst, const uint8_t* src, const size_t srcSize) {
 	
 	uint64_t mask=0;
 	for (size_t i=0; i<8; i++)
 		mask |= ((1ULL<<dict->shift)-1)<<(8ULL*i);
 
 	const uint64_t *i64    = (const uint64_t *)src;
-	const uint64_t *i64end = (const uint64_t *)(src+dstSize);
+	const uint64_t *i64end = (const uint64_t *)(src+srcSize);
 
 	while (i64 != i64end) {
 		*(uint64_t *)dst = _pext_u64(*i64++, mask);
@@ -64,54 +66,53 @@ ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCa
 		}
 	}
 
+
+		  uint8_t *o8    = dst;
+	const uint8_t *i8    = src;
+	const uint8_t *i8end = src + srcSize;
+
 	// Special case: if srcSize is not multiple of 8, we force it to be.
-	while (srcSize % 8 != 0) {
-		*dst++ = *src++;
-		srcSize--; dstCapacity--;
+	while ( (i8end-i8) % 8 != 0) {
+		*o8++ = *i8++;
 	}
 
-		  uint8_t *o8 = dst;
-	const uint8_t *i8 = src;
-		  uint8_t *o8end = dst + dstCapacity;
-	const uint8_t *i8end = src + srcSize;
 
 	// Encode Marlin, with rare symbols preceded by an empty word
 	{
 		
 		// if the encoder produces a size larger than this, it is simply better to store the block uncompressed.
-		size_t maxTargetSize = std::max(0UL, srcSize-srcSize*dict->shift/8);
+		size_t maxTargetSize = std::max(size_t(8), srcSize-srcSize*dict->shift/8) - 8;
 
-		JumpIdx j = 0;
-		while (i8<i8end and maxTargetSize>8) {				
+		JumpIdx j = 0; 
+		while (i8<i8end) {				
 			
 			SourceSymbol ss = *i8++;
 			
-			MarlinSymbol ms = Source2JumpTable(ss);
-			bool rare = ms==nMarlinSymbols;
-			if (rare) {
+			MarlinSymbol ms = Source2JumpTableShifted[ss>>dict->shift];
+			bool isRareSymbol = ms==nMarlinSymbols;
+			if (isRareSymbol) {
 				if (j) *o8++ = j; // Finish current word, if any;
 				*o8++ = j = 0;
-				*o8++ = (ss>>shift)<<shift;
+				*o8++ = ss & ((1<<dict->shift)-1);
 				maxTargetSize-=3;
+				if (i8end-i8 > maxTargetSize) { // Just encode the block uncompressed.
+					memcpy(dst, src, srcSize);
+					return srcSize;
+				}
 				continue;
 			}
 			
 			JumpIdx jOld = j;
 			j = jumpTable(j, ms);
 			
-			if (j & FLAG_NEXT_WORD) {
+			if (j & FLAG_NEXT_WORD) 
 				*o8++ = jOld & 0xFF;
-				maxTargetSize--;
-			}
 		}
 		if (j) *o8++ = j;
-		
-		if (maxTargetSize <= 8) { // Just encode the block uncompressed.
-			memcpy(dst, src, srcSize);
-			return i8end-i8start;
-		}
 	}
 
 	// Encode residuals
-	return shift8(dict, dst, dstSize, src + srcSize - dstSize*dict->shift / 8, dstSize*dict->shift / 8 );
+	shift8(dict, o8, src, srcSize);
+	
+	return o8 - dst; 
 }

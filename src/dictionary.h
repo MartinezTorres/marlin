@@ -47,11 +47,33 @@ SOFTWARE.
 typedef uint8_t SourceSymbol;
 typedef uint8_t MarlinSymbol;
 
-namespace {
+typedef uint32_t JumpIdx; // Structured as: FLAG_NEXT_WORD Where to jump next		
+constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(JumpIdx)-1);
 
-	typedef uint32_t JumpIdx; // Structured as: FLAG_NEXT_WORD Where to jump next		
+struct MarlinDictionary {
+	
+	/// DICTIONARY
+	//Marlin only encodes a subset of the possible source symbols.
+	//Marlin symbols are sorted by probability in descending order, 
+	//so the Marlin Symbol 0 is always corresponds to the most probable alphabet symbol.
 
-		class JumpTable {
+		
+	// Decoder
+	const size_t shift;
+	const size_t O;
+	const size_t maxWordSize;
+	
+	std::vector<SourceSymbol> decoderTable;
+	const SourceSymbol * const D;
+	const SourceSymbol mostCommonSourceSymbol;
+	
+	// Encoder
+	const size_t nMarlinSymbols;
+	std::vector<JumpIdx> jumpTable;		
+	std::array<MarlinSymbol, 1U<<(sizeof(SourceSymbol)*8)> Source2JumpTableShifted;
+
+
+/*		class JumpTable {
 
 			constexpr static const size_t unalignment = 8; // Too much aligned reads break cache
 			const size_t alphaStride;  // Bit stride of the jump table corresponding to the word dimension
@@ -75,38 +97,16 @@ namespace {
 			constexpr JumpIdx operator()(const T0 &word, const T1 &nextLetter) const { 
 				return table[(word&((1<<wordStride)-1))+(nextLetter*((1<<wordStride)+unalignment))];
 			}
-		};	
-}
-
-struct MarlinDictionary {
-	
-	/// DICTIONARY
-	//Marlin only encodes a subset of the possible source symbols.
-	//Marlin symbols are sorted by probability in descending order, 
-	//so the Marlin Symbol 0 is always corresponds to the most probable alphabet symbol.
-
-		
-	// Decoder
-	const size_t shift;
-	const size_t O;
-	const size_t maxWordSize;
-	
-	std::vector<SourceSymbol> decoderTable;
-	const SourceSymbol * const D;
-	const SourceSymbol mostCommonSourceSymbol;
-	
-	// Encoder
-		
-	constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(JumpIdx)-1);
-		
+		};
 		JumpTable jumpTable;
 
+		const size_t shift;
 		const size_t nMarlinSymbols;
 		std::array<MarlinSymbol, 1U<<(sizeof(SourceSymbol)*8)> Source2JumpTableShifted;
 		MarlinSymbol Source2JumpTable(SourceSymbol ss) const {
 			return Source2JumpTableShifted[ss>>shift];
 		}
-	
+	*/
 };
 
 
