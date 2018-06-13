@@ -32,12 +32,13 @@ SOFTWARE.
 
 #include <stddef.h>
 #include <stdint.h>
+#include <unistd.h>
+
+struct MarlinDictionary;
 
 #if defined (__cplusplus)
 extern "C" {
 #endif
-
-struct MarlinDictionary;
 
 /*! 
  * Compresses src to dst using dictionary dict.
@@ -53,7 +54,7 @@ struct MarlinDictionary;
  *         1: if data is a repetition of a single byte
  *         positive: size of the compressed buffer
 */
-size_t Marlin_compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize, const MarlinDictionary *dict);
+ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize);
 
 /*! 
  * Uncompresses src to dst using dictionary dict.
@@ -67,7 +68,7 @@ size_t Marlin_compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, siz
  * \return negative: error occurred
  *         positive: number of uncompressed bytes (must match dstSize
 */
-size_t Marlin_decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize, const MarlinDictionary *dict);
+ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize);
 
 /*! 
  * Builds an optimal for a 8 bit memoryless source. Dictionary must be freed with Marlin_free_dictionary.

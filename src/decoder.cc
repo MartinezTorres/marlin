@@ -28,84 +28,24 @@ SOFTWARE.
 
 #include "dictionary.h"
 
-namespace {
 
-
-	class Decoder {
-
-		using SourceSymbol = Dictionary::SourceSymbol;
-		using MarlinSymbol = Dictionary::MarlinSymbol;
-		
-		const size_t shift;
-		const size_t O;
-		const size_t maxWordSize;
-		
-		std::vector<SourceSymbol> decoderTable;
-		const SourceSymbol * const D;
-		const SourceSymbol mostCommonSourceSymbol;
-
-		
-		
-	public:
-		
-		
-		Decoder(const Dictionary &dict, const Configuration &) :
-			shift(dict.alphabet.shift),
-			O(dict.O),
-			maxWordSize(dict.maxWordSize),
-			decoderTable(dict.words.size()*(maxWordSize+1)),
-			D(decoderTable.data()),
-			mostCommonSourceSymbol(dict.alphabet.marlinSymbols.front().sourceSymbol) {
-				
-			
-			SourceSymbol *d = &decoderTable.front();
-			for (size_t i=0; i<dict.words.size(); i++) {
-				for (size_t j=0; j<maxWordSize; j++)
-					*d++ = (dict.words[i].size()>j ? dict.words[i][j] : SourceSymbol(0));
-				*d++ = dict.words[i].size();
-			}
-		}
-		
-	};
-	
-}
-
-
-
-
-
-template<typename T, size_t CO>
-__attribute__ ((target ("bmi2")))
-static ssize_t decode8(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) {
+template<typename T>
+static ssize_t decode8(const MarlinDictionary* dict, uint8_t* dst, const size_t dstSize, const uint8_t* src, const size_t srcSize) {
 	
 		  uint8_t *o8 = dst;
 	const uint8_t *i8 = src;
-	
-	// Special case, same size! this means the block is uncompressed.
-	if (dstSize == srcSize) {
-		memcpy(dst, src, dstSize);
-		return dstSize;
-	}
-
-	// Special case, size 1! this means the block consists all of just one symbol.
-	if (srcSize == 1) {
-		memset(dst, *src, dstSize);
-		return dstSize;
-	}
-
-	if (shift)
-		memset(o8start, mostCommonSourceSymbol, dstSize);
+	const uint8_t *i8end = src + srcSize;
 	
 	// Decode the Marlin Section
 	{
 
-		const uint8_t *endMarlin = i8end - (o8end-o8start)*shift/8;
+		const uint8_t *endMarlin = src + dstSize - dstSize * dict->shift / 8;
 
-//				const uint32_t overlappingMask = (1<<(8+O))-1;
-		constexpr const uint32_t overlappingMask = (1<<(8+CO))-1;
+		const uint32_t overlappingMask = (1<<(8+dict->O))-1;
 //				constexpr const T clearSizeMask = T(-1)>>8;
-		constexpr const T clearSizeMask = 0;
+		const T clearSizeMask = 0; // TODO: Check this value
 		uint64_t value = 0;
+		const SourceSymbol * const D = dict->D;
 
 		while (i8<endMarlin-9) {
 			
@@ -202,45 +142,62 @@ static ssize_t decode8(const MarlinDictionary *dict, uint8_t* dst, size_t dstSiz
 		//if (o8end-o8 != 0) std::cerr << " [" << o8end-o8 << "] "; // SOLVED! PROBLEM IN THE CODE
 	}
 
-	// Decode residuals
-	if (shift) {
-		uint64_t mask=0;
-		for (size_t i=0; i<8; i++)
-			mask |= ((1ULL<<shift)-1)<<(8ULL*i);
-		
-		uint64_t *o64    = (uint64_t *)o8start;
-		uint64_t *o64end = (uint64_t *)o8end;
-
-		while (o64 != o64end) {
-			*o64++ += _pdep_u64(*(const uint64_t *)i8, mask);
-			i8 += shift;
-		}
-	}
-
-	return o8end-o8start;
+	return o8-dst;
 }
+
+__attribute__ ((target ("bmi2")))
+static ssize_t shift8(const MarlinDictionary* dict, uint8_t* dst, const size_t dstSize, const uint8_t* src, const size_t srcSize) {
+	
+	// Decode residuals
+	uint64_t mask=0;
+	for (size_t i=0; i<8; i++)
+		mask |= ((1ULL<<dict->shift)-1)<<(8ULL*i);
+	
+	uint64_t *o64    = (uint64_t *)dst;
+	uint64_t *o64end = (uint64_t *)(dst+dstSize);
+
+	while (o64 != o64end) {
+		*o64++ += _pdep_u64(*(const uint64_t *)src, mask);
+		src += dict->shift;
+	}
+	
+	return dstSize;
+}
+
+
 
 ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) {
 	
-	if (dict->maxWordSize==3) {
-		switch (dict->O) {
-			case   0: return decode8<uint32_t,0>(dict, dst, dstSize, src, srcSize);
-			case   1: return decode8<uint32_t,1>(dict, dst, dstSize, src, srcSize);
-			case   2: return decode8<uint32_t,2>(dict, dst, dstSize, src, srcSize);
-			case   3: return decode8<uint32_t,3>(dict, dst, dstSize, src, srcSize);
-			case   4: return decode8<uint32_t,4>(dict, dst, dstSize, src, srcSize);
-		}
+	// Special case, same size! this means the block is uncompressed.
+	if (dstSize == srcSize) {
+		memcpy(dst, src, dstSize);
+		return dstSize;
 	}
 
-	if (dict->maxWordSize==7) {
-		switch (dict->O) {
-			case   0: return decode8<uint64_t,0>(dict, dst, dstSize, src, srcSize);
-			case   1: return decode8<uint64_t,1>(dict, dst, dstSize, src, srcSize);
-			case   2: return decode8<uint64_t,2>(dict, dst, dstSize, src, srcSize);
-			case   3: return decode8<uint64_t,3>(dict, dst, dstSize, src, srcSize);
-			case   4: return decode8<uint64_t,4>(dict, dst, dstSize, src, srcSize);
-		}
+	// Special case: the entire block is made of one symbol!
+	if (srcSize == 1) {
+		memset(dst, *src, dstSize);
+		return dstSize;
 	}
-	return -1;
+
+	// Special case: if dstSize is not multiple of 8, we force it to be.
+	while (dstSize % 8 != 0) {
+		*dst++ = *src++;
+		dstSize--; srcSize--;
+	}
+	
+	// Initialization, which might be optional
+	memset(dst, dict->mostCommonSourceSymbol, dstSize);
+	
+	if (dict->maxWordSize==3) {
+		decode8<uint32_t>(dict, dst, dstSize, src, srcSize);
+	} else if (dict->maxWordSize==7) {
+		decode8<uint64_t>(dict, dst, dstSize, src, srcSize);
+	} else {
+		return -1;
+		//decode8Generic(dict, dst, dstSize, src, srcSize);
+	}
+	
+	return shift8(dict, dst, dstSize, src + srcSize - dstSize*dict->shift / 8, dstSize*dict->shift / 8 );
 }
 

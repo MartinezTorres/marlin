@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 14)
 ################################
 # Marlin library
 
-add_library(marlin src/marlin.cc)
+add_library(marlin src/decoder.cc src/encoder.cc)
 set_target_properties(marlin PROPERTIES
     VERSION ${PROJECT_VERSION}
     PUBLIC_HEADER inc/marlin.h)
