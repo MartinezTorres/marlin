@@ -46,9 +46,10 @@ SOFTWARE.
 
 struct MarlinDictionary {
 	
-	
-	
-};
+	virtual ssize_t compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) = 0;
+	virtual ssize_t decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) = 0;
+	virtual ~MarlinDictionary() {};
+}
 
 namespace {
 	
