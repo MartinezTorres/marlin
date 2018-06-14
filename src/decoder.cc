@@ -29,6 +29,11 @@ SOFTWARE.
 #include "dictionary.h"
 
 
+static void initDecoderFields(const MarlinDictionary* dict) {
+}
+
+
+
 template<typename T>
 static ssize_t decode8(const MarlinDictionary* dict, uint8_t* dst, const size_t dstSize, const uint8_t* src, const size_t srcSize) {
 	
@@ -167,6 +172,8 @@ static ssize_t shift8(const MarlinDictionary* dict, uint8_t* dst, const size_t d
 
 
 ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) {
+	
+	initDecoderFields(dict);
 	
 	// Special case, same size! this means the block is uncompressed.
 	if (dstSize == srcSize) {

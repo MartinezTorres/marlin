@@ -28,7 +28,10 @@ SOFTWARE.
 
 #include "dictionary.h"
 
-
+static void initEncoderFields(const MarlinDictionary* dict) {
+	
+	
+}
 
 __attribute__ ((target ("bmi2")))
 static void shift8(const MarlinDictionary* dict, uint8_t* dst, const uint8_t* src, const size_t srcSize) {
@@ -48,6 +51,8 @@ static void shift8(const MarlinDictionary* dict, uint8_t* dst, const uint8_t* sr
 
 ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) {
 
+	initEncoderFields(dict);
+	
 	// Assertions
 	assert(dstCapacity >= srcSize);
 	
@@ -88,8 +93,8 @@ ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCa
 			
 			SourceSymbol ss = *i8++;
 			
-			MarlinSymbol ms = Source2JumpTableShifted[ss>>dict->shift];
-			bool isRareSymbol = ms==nMarlinSymbols;
+			MarlinSymbol ms = dict->Source2JumpTableShifted[ss>>dict->shift];
+			bool isRareSymbol = ms==dict->nMarlinSymbols;
 			if (isRareSymbol) {
 				if (j) *o8++ = j; // Finish current word, if any;
 				*o8++ = j = 0;
@@ -103,7 +108,7 @@ ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCa
 			}
 			
 			JumpIdx jOld = j;
-			j = jumpTable(j, ms);
+			j = dict->jump(j, ms);
 			
 			if (j & FLAG_NEXT_WORD) 
 				*o8++ = jOld & 0xFF;

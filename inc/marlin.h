@@ -34,10 +34,19 @@ SOFTWARE.
 #include <stdint.h>
 #include <unistd.h>
 
-struct MarlinDictionary;
 
 #if defined (__cplusplus)
+
+struct MarlinDictionary {
+	
+	virtual ssize_t compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) = 0;
+	virtual ssize_t decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) = 0;
+	virtual ~MarlinDictionary() {};
+}
+
 extern "C" {
+# else
+struct MarlinDictionary;
 #endif
 
 /*! 
@@ -105,7 +114,7 @@ MarlinDictionary **Marlin_get_prebuilt_dictionaries();
  * \return negative: error occurred
  *         positive: expected space used to compress hist using dictionary dict
 */
-double Marlin_estimate(const double hist[256], MarlinDictionary *dict);
+double Marlin_estimate_space(const double hist[256], MarlinDictionary *dict);
 
 #endif
 
