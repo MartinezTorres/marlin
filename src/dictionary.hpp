@@ -43,26 +43,64 @@ SOFTWARE.
 #include <algorithm>
 
 #include <cassert>
-
+ 
+	
 struct MarlinDictionary {
-	
-	virtual ssize_t compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) = 0;
-	virtual ssize_t decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) = 0;
-	virtual ~MarlinDictionary() {};
-}
 
-namespace {
+	// Main Typedefs
+	typedef uint8_t  SourceSymbol; // Type taht store the raw symbols from the source.
+	typedef uint32_t WordIdx;      // Structured as: FLAG_NEXT_WORD Where to jump next	
 	
-struct Dictionary : public MarlinDictionary {
-
 	// Configuration map
 	typedef std::map<std::string, double> Configuration;
 	const Configuration conf;
 
-	// Main Typedefs
-	typedef uint8_t SourceSymbol;
-	typedef uint8_t MarlinSymbol;
-	typedef uint32_t WordIdx; // Structured as: FLAG_NEXT_WORD Where to jump next	
+	static std::map<std::string, double> updateConf( // Sets default configurations
+		const std::map<SourceSymbol, double> &symbols, 
+		std::map<std::string, double> conf) {
+		
+		conf.emplace("K",8);
+		conf.emplace("O",2);
+		
+		conf.emplace("debug",1);
+		conf.emplace("purgeProbabilityThreshold",1e-5);
+		conf.emplace("iterations",3);
+		conf.emplace("minMarlinSymbols", std::max(1U<<size_t(conf.at("O")),8U));
+		conf.emplace("maxMarlinSymbols",(1U<<size_t(conf.at("K")))-1);
+			
+		if (not conf.count("shift")) {
+			conf["shift"] = 0;
+			double best = MarlinDictionary(symbols, conf).efficiency;
+			for (int s=1; s<6; s++) {
+				conf["shift"] = s;
+				double e = MarlinDictionary(symbols, conf).efficiency;
+				if (e<=best) {
+					conf["shift"] = s-1;
+					break;
+				}
+				best = e;
+			}
+		}
+		
+		if (not conf.count("maxWordSize")) {
+			conf["maxWordSize"] = 15;
+			double e15 = MarlinDictionary(symbols, conf).efficiency;
+			conf["maxWordSize"] = 7;
+			double e7 = MarlinDictionary(symbols, conf).efficiency;
+			conf["maxWordSize"] = 3;
+			double e3 = MarlinDictionary(symbols, conf).efficiency;
+			if (e7>1.0001*e3) {
+				conf["maxWordSize"] = 7;
+			}
+			if (e15>1.0001*e7) {
+				conf["maxWordSize"] = 15;
+			}
+		}
+		
+		return conf;
+	}	
+
+
 
 	// The Alphabet Class acts as a translation layer between SourceSymbols and MarlinSymbols.
 	class Alphabet {
@@ -94,7 +132,7 @@ struct Dictionary : public MarlinDictionary {
 		double rareSymbolProbability;
 		std::vector<SymbolAndProbability> marlinSymbols;
 		
-		Alphabet(std::map<SourceSymbol, double> symbols_, Configuration conf) : 
+		Alphabet(std::map<SourceSymbol, double> symbols_, std::map<std::string, double> conf) : 
 			symbols(symbols_),
 			shift(conf.at("S")),
 			sourceEntropy(calcEntropy(symbols)) {
@@ -121,13 +159,10 @@ struct Dictionary : public MarlinDictionary {
 		}
 	};
 				
-
-	struct Word : std::vector<SourceSymbol> {		
-
+	struct Word : std::vector<SourceSymbol> {
 		using std::vector<SourceSymbol>::vector;
-
 		double p = 0;
-		MarlinSymbol state = 0;
+		SourceSymbol state = 0;
 
 		friend std::ostream& operator<< (std::ostream& stream, const Word& word) {
 			for (auto &&s : word) 
@@ -139,10 +174,6 @@ struct Dictionary : public MarlinDictionary {
 		}
 	};
 		
-
-
-
-	
 	/// DICTIONARY
 	//Marlin only encodes a subset of the possible source symbols.
 	//Marlin symbols are sorted by probability in descending order, 
@@ -155,22 +186,38 @@ struct Dictionary : public MarlinDictionary {
 	const std::vector<Word> words = buildDictionary();      // All dictionary words.
 	const double efficiency       = calcEfficiency(words);  // Theoretical efficiency of the dictionary.
 
+	double calcEfficiency(std::vector<Word> dictionary) const;
+	std::vector<Word> buildDictionary() const;
 
 	// Decoder
-	std::vector<SourceSymbol> decoderTableVector;
-	const SourceSymbol * const decoderTablePointer;
-//	const SourceSymbol mostCommonSourceSymbol;
+//	const std::vector<SourceSymbol> decoderTableVector = buildDecoderTable();	
+//	const SourceSymbol * const decoderTablePointer = &decoderTableVector.front();
+	const SourceSymbol mostCommonSourceSymbol = alphabet.marlinSymbols.front().sourceSymbol;
 	
 	// Encoder
-//	const size_t nMarlinSymbols;
-	std::vector<WordIdx> encoderTableVector;	//table(((1<<wordStride)+unalignment)*(1<<alphaStride),JumpIdx(-1))
-	const WordIdx* const encoderTablePointer;	
-//	std::array<MarlinSymbol, 1U<<(sizeof(SourceSymbol)*8)> Source2JumpTableShifted;
-//constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(WordIdx)-1);
+//	const std::vector<WordIdx> encoderTableVector = buildEncoderTable();	
+//	const WordIdx* const encoderTablePointer = &encoderTableVector.front();	
 
+
+
+	MarlinDictionary( const std::map<SourceSymbol, double> &symbols,
+		std::map<std::string, double> conf_ = std::map<std::string, double>()) 
+		: conf(updateConf(symbols, conf_)), alphabet(symbols, conf) {}
+	
+	
+	// Turns the vector into a map and uses the previous constructor
+	MarlinDictionary( const std::vector<double> &symbols,
+		std::map<std::string, double> conf_ = std::map<std::string, double>()) 
+		: MarlinDictionary(
+		[&symbols](){
+			std::map<SourceSymbol, double> ret;
+			for (size_t i=0; i<symbols.size(); i++)
+				ret.emplace(SourceSymbol(i), symbols[i]);
+			return ret;
+		}()
+		, conf_) {}
 };
 
-}
 
 
 #endif //MARLIN_DICTIONARY_H

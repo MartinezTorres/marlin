@@ -105,10 +105,11 @@ MarlinDictionary **Marlin_get_prebuilt_dictionaries();
  * \return negative: error occurred
  *         positive: expected space used to compress hist using dictionary dict
 */
-double Marlin_estimate_space(const double hist[256], MarlinDictionary *dict);
-
-#endif
+double Marlin_estimate_space(MarlinDictionary *dict, const double hist[256]);
 
 #if defined (__cplusplus)
 }
 #endif
+
+#endif
+

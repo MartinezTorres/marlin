@@ -26,16 +26,157 @@ SOFTWARE.
 
 ***********************************************************************/
 
-#include "dictionary.h"
-
-
-static void initDecoderFields(const MarlinDictionary* dict) {
-}
+//#include "decode.h"
+#include "dictionary.hpp"
 
 
 
+/*		template<typename T, size_t CO>
+		__attribute__ ((target ("bmi2")))
+		size_t decode8(const uint8_t * const i8start, const uint8_t * const i8end, uint8_t * const o8start, uint8_t * const o8end) const {
+			
+			      uint8_t *o8 = o8start;
+			const uint8_t *i8 = i8start;
+			
+			// Special case, same size! this means the block is uncompressed.
+			if (i8end-i8start == o8end-o8start) {
+				memcpy(o8start,i8start,i8end-i8start);
+				return o8end-o8start;
+			}
+
+			// Special case, size 1! this means the block consists all of just one symbol.
+			if (i8end-i8start == 1) {
+				memset(o8start,*i8start,o8end-o8start);
+				return o8end-o8start;
+			}
+
+			memset(o8start,mostCommonSourceSymbol,o8end-o8start);
+//			return o8end-o8start;
+			
+			// Decode the Marlin Section
+			{
+
+				const uint8_t *endMarlin = i8end - (o8end-o8start)*shift/8;
+
+//				const uint32_t overlappingMask = (1<<(8+O))-1;
+				constexpr const uint32_t overlappingMask = (1<<(8+CO))-1;
+//				constexpr const T clearSizeMask = T(-1)>>8;
+				constexpr const T clearSizeMask = 0;
+				uint64_t value = 0;
+
+				while (i8<endMarlin-9) {
+					
+					uint32_t v32 = (*(const uint32_t *)i8);
+					if (((v32 - 0x01010101UL) & ~v32 & 0x80808080UL)) { // Fast test for zero
+
+						uint8_t in = *i8++;
+						if (in==0) {
+							*o8++ = *i8++;
+							value = (value<<8) + 0;
+						} else {
+							value = (value<<8) + in;
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+						
+						in = *i8++;
+						if (in==0) {
+							*o8++ = *i8++;
+							value = (value<<8) + 0;
+						} else {
+							value = (value<<8) + in;
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+						
+						in = *i8++;
+						if (in==0) {
+							*o8++ = *i8++;
+							value = (value<<8) + 0;
+						} else {
+							value = (value<<8) + in;
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+						
+						in = *i8++;
+						if (in==0) {
+							*o8++ = *i8++;
+							value = (value<<8) + 0;
+						} else {
+							value = (value<<8) + in;
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+						
+					} else { // Has no zeroes! hurray!
+						i8+=4;
+						//clearSizeMask = 0;
+						value = (value<<32) +  v32; //__builtin_bswap32(v32);
+						{
+							T v = ((const T *)D)[(value>>24) & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+							
+						}
+
+						{
+							T v = ((const T *)D)[(value>>16) & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+
+						{
+							T v = ((const T *)D)[(value>>8) & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+
+						{
+							T v = ((const T *)D)[value & overlappingMask];
+							*((T *)o8) = v & clearSizeMask;
+							o8 += v >> ((sizeof(T)-1)*8);
+						}
+					//}
+				}
+				
+				while (i8<endMarlin) {
+					uint8_t in = *i8++;
+					if (in==0) {
+						*o8++ = *i8++;
+					} else {
+						value = (value<<8) + in;
+						const T *v = &((const T *)D)[value & overlappingMask];
+						memcpy(o8, v, std::min(sizeof(T)-1,size_t(*v >> ((sizeof(T)-1)*8))));
+						o8 += *v >> ((sizeof(T)-1)*8);
+					}
+				}				
+				//if (endMarlin-i8 != 0) std::cerr << " {" << endMarlin-i8 << "} "; // SOLVED! PROBLEM IN THE CODE
+				//if (o8end-o8 != 0) std::cerr << " [" << o8end-o8 << "] "; // SOLVED! PROBLEM IN THE CODE
+			}
+
+			// Decode residuals
+			if (shift) {
+				uint64_t mask=0;
+				for (size_t i=0; i<8; i++)
+					mask |= ((1ULL<<shift)-1)<<(8ULL*i);
+				
+				uint64_t *o64    = (uint64_t *)o8start;
+				uint64_t *o64end = (uint64_t *)o8end;
+
+				while (o64 != o64end) {
+					*o64++ += _pdep_u64(*(const uint64_t *)i8, mask);
+					i8 += shift;
+				}
+			}
+			return o8end-o8start;
+		}*/
 template<typename T>
-static ssize_t decode8(const MarlinDictionary* dict, uint8_t* dst, const size_t dstSize, const uint8_t* src, const size_t srcSize) {
+static ssize_t decodeMarlin8(const uint8_t* const D, const uint8_t O, uint8_t shift, uint8_t* dst, const size_t dstSize, const uint8_t* src, const size_t srcSize) {
 	
 		  uint8_t *o8 = dst;
 	const uint8_t *i8 = src;
@@ -44,92 +185,41 @@ static ssize_t decode8(const MarlinDictionary* dict, uint8_t* dst, const size_t 
 	// Decode the Marlin Section
 	{
 
-		const uint8_t *endMarlin = src + dstSize - dstSize * dict->shift / 8;
+		const uint8_t *endMarlin = src + dstSize - dstSize * shift / 8;
 
-		const uint32_t overlappingMask = (1<<(8+dict->O))-1;
-//				constexpr const T clearSizeMask = T(-1)>>8;
-		const T clearSizeMask = 0; // TODO: Check this value
+		const uint32_t overlappingMask = (1<<(8+O))-1;
+		constexpr const T clearSizeMask = T(-1)>>8; // TODO: Check this value
 		uint64_t value = 0;
-		const SourceSymbol * const D = dict->D;
 
 		while (i8<endMarlin-9) {
 			
 			uint32_t v32 = (*(const uint32_t *)i8);
-/*					if (((v32 - 0x01010101UL) & ~v32 & 0x80808080UL)) { // Fast test for zero
-
-				uint8_t in = *i8++;
-				if (in==0) {
-					*o8++ = *i8++;
-					value = (value<<8) + 0;
-				} else {
-					value = (value<<8) + in;
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
+			i8+=4;
+			value = (value<<32) +  v32; //__builtin_bswap32(v32);
+			{
+				T v = ((const T *)D)[(value>>24) & overlappingMask];
+				*((T *)o8) = v & clearSizeMask;
+				o8 += v >> ((sizeof(T)-1)*8);
 				
-				in = *i8++;
-				if (in==0) {
-					*o8++ = *i8++;
-					value = (value<<8) + 0;
-				} else {
-					value = (value<<8) + in;
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
-				
-				in = *i8++;
-				if (in==0) {
-					*o8++ = *i8++;
-					value = (value<<8) + 0;
-				} else {
-					value = (value<<8) + in;
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
-				
-				in = *i8++;
-				if (in==0) {
-					*o8++ = *i8++;
-					value = (value<<8) + 0;
-				} else {
-					value = (value<<8) + in;
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
-				
-			} else { // Has no zeroes! hurray!*/
-				i8+=4;
-				//clearSizeMask = 0;
-				value = (value<<32) +  v32; //__builtin_bswap32(v32);
-				{
-					T v = ((const T *)D)[(value>>24) & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-					
-				}
+			}
 
-				{
-					T v = ((const T *)D)[(value>>16) & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
+			{
+				T v = ((const T *)D)[(value>>16) & overlappingMask];
+				*((T *)o8) = v & clearSizeMask;
+				o8 += v >> ((sizeof(T)-1)*8);
+			}
 
-				{
-					T v = ((const T *)D)[(value>>8) & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
+			{
+				T v = ((const T *)D)[(value>>8) & overlappingMask];
+				*((T *)o8) = v & clearSizeMask;
+				o8 += v >> ((sizeof(T)-1)*8);
+			}
 
-				{
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
-			//}
+			{
+				T v = ((const T *)D)[value & overlappingMask];
+				*((T *)o8) = v & clearSizeMask;
+				o8 += v >> ((sizeof(T)-1)*8);
+			}
 		}
 		
 		while (i8<endMarlin) {
@@ -151,29 +241,25 @@ static ssize_t decode8(const MarlinDictionary* dict, uint8_t* dst, const size_t 
 }
 
 __attribute__ ((target ("bmi2")))
-static ssize_t shift8(const MarlinDictionary* dict, uint8_t* dst, const size_t dstSize, const uint8_t* src, const size_t srcSize) {
+static ssize_t decodeShift(uint8_t shift, uint8_t* dst, const size_t dstSize, const uint8_t* src) {
 	
 	// Decode residuals
 	uint64_t mask=0;
 	for (size_t i=0; i<8; i++)
-		mask |= ((1ULL<<dict->shift)-1)<<(8ULL*i);
+		mask |= ((1ULL<<shift)-1)<<(8ULL*i);
 	
 	uint64_t *o64    = (uint64_t *)dst;
 	uint64_t *o64end = (uint64_t *)(dst+dstSize);
 
 	while (o64 != o64end) {
 		*o64++ += _pdep_u64(*(const uint64_t *)src, mask);
-		src += dict->shift;
+		src += shift;
 	}
 	
 	return dstSize;
 }
 
-
-
 ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) {
-	
-	initDecoderFields(dict);
 	
 	// Special case, same size! this means the block is uncompressed.
 	if (dstSize == srcSize) {
@@ -196,15 +282,16 @@ ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dst
 	// Initialization, which might be optional
 	memset(dst, dict->mostCommonSourceSymbol, dstSize);
 	
-	if (dict->maxWordSize==3) {
-		decode8<uint32_t>(dict, dst, dstSize, src, srcSize);
-	} else if (dict->maxWordSize==7) {
-		decode8<uint64_t>(dict, dst, dstSize, src, srcSize);
+	if (dict->K==8 and dict->maxWordSize==3) {
+		decodeMarlin8<uint32_t>(dict->decoderTablePointer, dict->O, dict->shift, dst, dstSize, src, srcSize);
+	} else if (dict->K==8 and dict->maxWordSize==7) {
+		decodeMarlin8<uint64_t>(dict->decoderTablePointer, dict->O, dict->shift, dst, dstSize, src, srcSize);
 	} else {
 		return -1;
-		//decode8Generic(dict, dst, dstSize, src, srcSize);
+		//decodeGeneric(dict, dst, dstSize, src, srcSize);
 	}
 	
-	return shift8(dict, dst, dstSize, src + srcSize - dstSize*dict->shift / 8, dstSize*dict->shift / 8 );
+	return decodeShift(dict->shift, dst, dstSize, src + srcSize - dstSize*dict->shift / 8);
 }
+
 

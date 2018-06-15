@@ -26,61 +26,40 @@ SOFTWARE.
 
 ***********************************************************************/
 
-#include "decoder.h"
-#include "encoder.h"
 
 #include <marlin.h>
 
-struct MarlinDictionary {
-	
-//	const std::string name;
-//	const double hist[256];
-//	const double bps[256]; // Expected bits per symbol
-	
-	const double efficiency;
-	const Encoder encoder;
-	const Decoder decoder;
-	
-	MarlinDictionary(const Dictionary &dict, const Configuration &configuration = Configuration()) : 
-			efficiency(dict.efficiency),
-			encoder(dict, configuration), 
-			decoder(dict, configuration) {}
-			
-	MarlinDictionary(const std::vector<double> &pdf, const Configuration &configuration = Configuration()) : 
-			MarlinDictionary(Dictionary(pdf, configuration), configuration) {}
-	
-};
+#include "dictionary.hpp"
 
+#include <iostream>
+#include <vector>
+#include <map>
+#include <cmath>
+#include <cstring>
+#include <queue>
+#include <stack>
 
-////////////////////////////////////////////////////////////////////////
-//
-// Local Methods
+#include <memory>
+#include <algorithm>
 
+#include <cassert>
+ 
 
 ////////////////////////////////////////////////////////////////////////
 //
 // Public Methods
 
-size_t Marlin_compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize, const MarlinDictionary *dict) {
-	
-	return dict->encoder(src, src+srcSize, dst, dst+dstCapacity);
-}
+ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize);
 
-size_t Marlin_decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize, const MarlinDictionary *dict) {
-	
-	return dict->decoder(src, src+srcSize, dst, dst+dstSize);
-}
+ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize);
 
-MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256], size_t indexSizeBits, size_t indexOverlapBits, size_t maxWordSizeSymbols, size_t rawStorageBits) {
-}
+MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256], size_t indexSizeBits, size_t indexOverlapBits, size_t maxWordSizeSymbols, size_t rawStorageBits);
 
-void Marlin_free_dictionary(MarlinDictionary *&dict) {
-	
-	free(dict);
-	dict = nullptr;
-}
+void Marlin_free_dictionary(MarlinDictionary *dict);
 
-double Marlin_estimate_size(const double hist[256], MarlinDictionary *dict) {
+MarlinDictionary **Marlin_get_prebuilt_dictionaries();
+
+double Marlin_estimate_space(MarlinDictionary *dict, const double hist[256]) {
 	
 	double ret = 0;
 	//for (int i=0; i<256; i++)
