@@ -30,6 +30,8 @@ SOFTWARE.
 
 namespace {
 	
+	using Word = MarlinDictionary::Word;
+	
 	struct Node;
 	typedef std::shared_ptr<Node> SNode;	
 	struct Node : std::vector<SNode> {
@@ -39,7 +41,7 @@ namespace {
 	
 
 
-	SNode buildTree(std::vector<double> Pstates) const {
+	SNode buildTree(const MarlinDictionary &dict, std::vector<double> Pstates) {
 
 		// Normalizing the probabilities makes the algorithm more stable
 		double factor = 1e-10;
@@ -50,14 +52,14 @@ namespace {
 
 
 		std::vector<double> PN;
-		for (auto &&a : alphabet.marlinSymbols) PN.push_back(a.p);
-		PN.back() += alphabet.rareSymbolProbability;
+		for (auto &&a : dict.alphabet.marlinSymbols) PN.push_back(a.p);
+		PN.back() += dict.alphabet.rareSymbolProbability;
 		for (size_t i=PN.size()-1; i; i--)
 			PN[i-1] += PN[i];
 
 		std::vector<double> Pchild(PN.size());
 		for (size_t i=0; i<PN.size(); i++)
-			Pchild[i] = alphabet.marlinSymbols[i].p/PN[i];
+			Pchild[i] = dict.alphabet.marlinSymbols[i].p/PN[i];
 		
 		auto cmp = [](const SNode &lhs, const SNode &rhs) { return lhs->p<rhs->p;};
 		std::priority_queue<SNode, std::vector<SNode>, decltype(cmp)> pq(cmp);
@@ -69,12 +71,12 @@ namespace {
 		pq.push(root);
 		root->p = 1;
 		
-		for (size_t c=0; c<alphabet.marlinSymbols.size(); c++) {			
+		for (size_t c=0; c<dict.alphabet.marlinSymbols.size(); c++) {			
 				
 			root->push_back(std::make_shared<Node>());
 			double sum = 0;
 			for (size_t t = 0; t<=c; t++) sum += Pstates[t]/PN[t];
-			root->back()->p = sum * alphabet.marlinSymbols[c].p;
+			root->back()->p = sum * dict.alphabet.marlinSymbols[c].p;
 			root->p -= root->back()->p;
 			root->back()->sz = 1;
 			pq.push(root->back());
@@ -82,13 +84,13 @@ namespace {
 			
 		// DICTIONARY GROWING
 		size_t retiredNodes=0;
-		while (not pq.empty() and (pq.size() + retiredNodes < (1U<<K))) {
+		while (not pq.empty() and (pq.size() + retiredNodes < (1U<<dict.K))) {
 				
 			SNode node = pq.top();
 			pq.pop();
 			
 			// retire words larger than maxWordSize that are meant to be extended by a symbol different than zero.
-			if (node->sz >= maxWordSize and not node->empty()) {
+			if (node->sz >= dict.maxWordSize and not node->empty()) {
 				retiredNodes++;
 				continue;
 			}
@@ -98,7 +100,7 @@ namespace {
 				continue;
 			}
 			
-			if (node->size() == alphabet.marlinSymbols.size()) {
+			if (node->size() == dict.alphabet.marlinSymbols.size()) {
 				retiredNodes++;
 				continue;					
 			}
@@ -130,7 +132,7 @@ namespace {
 
 
 	
-	std::vector<Word> buildChapterWords( const SNode root) const {
+	std::vector<Word> buildChapterWords(const MarlinDictionary &dict, const SNode root) {
 	
 		std::vector<Word> ret;
 		
@@ -147,7 +149,7 @@ namespace {
 			for (size_t i = 0; i<n->size(); i++) {
 				
 				Word w2 = w;
-				w2.push_back(alphabet.marlinSymbols[i].sourceSymbol);
+				w2.push_back(dict.alphabet.marlinSymbols[i].sourceSymbol);
 				w2.p = n->at(i)->p;
 				w2.state = n->at(i)->size();
 				
@@ -162,12 +164,12 @@ namespace {
 
 
 	
-	std::vector<Word> arrangeAndFuse( const std::vector<SNode> chapters) const {
+	std::vector<Word> arrangeAndFuse(const MarlinDictionary &dict, const std::vector<SNode> chapters) {
 
 		std::vector<Word> ret;
 		for (auto &&chapter : chapters) {
 			
-			std::vector<Word> sortedDictionary = buildChapterWords(chapter);
+			std::vector<Word> sortedDictionary = buildChapterWords(dict, chapter);
 			
 			auto cmp = [](const Word &lhs, const Word &rhs) { 
 				if (lhs.state != rhs.state) return lhs.state<rhs.state;
@@ -177,8 +179,8 @@ namespace {
 			// Note the +1, we keep the empty word in the first position.
 			std::stable_sort(sortedDictionary.begin()+1, sortedDictionary.end(), cmp);
 			
-			std::vector<Word> w(1U<<K,Word());
-			for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1U<<O)) {
+			std::vector<Word> w(1U<<dict.K,Word());
+			for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1U<<dict.O)) {
 				
 				if (j>=w.size()) 
 					j=++k;
@@ -192,22 +194,22 @@ namespace {
 	
 
 	// Debug functions		
-	void print(std::vector<Word> dictionary) const {
+	void print(const MarlinDictionary &dict, std::vector<Word> words) {
 
-		if (conf.at("debug")<3) return;
-		if (conf.at("debug")<4 and dictionary.size()/(1U<<O) > 40) return;
+		if (dict.conf.at("debug")<3) return;
+		if (dict.conf.at("debug")<4 and words.size()/(1U<<dict.O) > 40) return;
 
-		for (size_t i=0; i<dictionary.size()/(1U<<O); i++) { 
+		for (size_t i=0; i<words.size()/(1U<<dict.O); i++) { 
 			
-			for (size_t k=0; k<(1U<<O); k++) {
+			for (size_t k=0; k<(1U<<dict.O); k++) {
 				
-				auto idx = i + (k* (dictionary.size()/(1U<<O)));
-				auto &&w = dictionary[idx];
-				printf(" %02lX %01ld %2d %01.2le ",idx,i%(1U<<O),w.state,w.p);
+				auto idx = i + (k* (words.size()/(1U<<dict.O)));
+				auto &&w = words[idx];
+				printf(" %02lX %01ld %2d %01.2le ",idx,i%(1U<<dict.O),w.state,w.p);
 				for (size_t j=0; j<8; j++) {
 					if (j<w.size()) {
 						char a = 'a';
-						for (size_t x=0; alphabet.marlinSymbols[x].sourceSymbol != w[j]; x++, a++);
+						for (size_t x=0; dict.alphabet.marlinSymbols[x].sourceSymbol != w[j]; x++, a++);
 						putchar(a);
 					} else {
 						putchar(' ');
@@ -221,9 +223,9 @@ namespace {
 
 
 
-	void print(std::vector<std::vector<double>> Pstates) const {
+	void print(const MarlinDictionary &dict, std::vector<std::vector<double>> Pstates) {
 		
-		if (conf.at("debug")<3) return;
+		if (dict.conf.at("debug")<3) return;
 		for (size_t i=0; i<Pstates[0].size() and i<4; i++) { 
 			
 			printf("S: %02ld",i);
@@ -237,71 +239,71 @@ namespace {
 }
 
 
-	double MarlinDictionary::calcEfficiency(std::vector<Word> dictionary) const {
-	
-		double meanLength = 0;
-		for (auto &&w : dictionary)
-				meanLength += w.p * w.size();
-		
-		double shannonLimit = alphabet.sourceEntropy;
-		
-		// The decoding algorithm has 4 steps:
-		double meanBitsPerSymbol = 0;                           // a memset
-		meanBitsPerSymbol += (K/meanLength)*(1-alphabet.rareSymbolProbability);                      // Marlin VF
-		meanBitsPerSymbol += alphabet.shift;                    // Raw storing of lower bits
-		meanBitsPerSymbol += 2*K*alphabet.rareSymbolProbability;// Recovering rare symbols
+double MarlinDictionary::calcEfficiency(std::vector<MarlinDictionary::Word> dictionary) const {
 
-		return shannonLimit / meanBitsPerSymbol;
+	double meanLength = 0;
+	for (auto &&w : dictionary)
+			meanLength += w.p * w.size();
+	
+	double shannonLimit = alphabet.sourceEntropy;
+	
+	// The decoding algorithm has 4 steps:
+	double meanBitsPerSymbol = 0;                           // a memset
+	meanBitsPerSymbol += (K/meanLength)*(1-alphabet.rareSymbolProbability);                      // Marlin VF
+	meanBitsPerSymbol += alphabet.shift;                    // Raw storing of lower bits
+	meanBitsPerSymbol += 2*K*alphabet.rareSymbolProbability;// Recovering rare symbols
+
+	return shannonLimit / meanBitsPerSymbol;
+}
+
+
+
+std::vector<MarlinDictionary::Word> MarlinDictionary::buildDictionary() const {
+	
+	std::vector<std::vector<double>> Pstates;
+	for (size_t k=0; k<(1U<<O); k++) {
+		std::vector<double> PstatesSingle(alphabet.marlinSymbols.size(), 0.);
+		PstatesSingle[0] = 1./(1U<<O);
+		Pstates.push_back(PstatesSingle);
 	}
-
 	
-
-	std::vector<Word> MarlinDictionary::buildDictionary() const {
+	std::vector<SNode> dictionaries;
+	for (size_t k=0; k<(1U<<O); k++)
+		dictionaries.push_back(buildTree(*this,Pstates[k]));
 		
-		std::vector<std::vector<double>> Pstates;
-		for (size_t k=0; k<(1U<<O); k++) {
-			std::vector<double> PstatesSingle(alphabet.marlinSymbols.size(), 0.);
-			PstatesSingle[0] = 1./(1U<<O);
-			Pstates.push_back(PstatesSingle);
+	std::vector<Word> ret = arrangeAndFuse(*this, dictionaries);
+		
+	print(*this, ret);
+	
+	size_t iterations = conf.at("iterations");
+		
+	while (iterations--) {
+
+		// UPDATING STATE PROBABILITIES
+		{
+			for (auto &&pk : Pstates)
+				for (auto &&p : pk)
+					p = 0.;
+
+			for (size_t i=0; i<ret.size(); i++)
+				Pstates[i%(1U<<O)][ret[i].state] += ret[i].p;
 		}
 		
-		std::vector<SNode> dictionaries;
+		print(*this, Pstates);
+
+		dictionaries.clear();
 		for (size_t k=0; k<(1U<<O); k++)
-			dictionaries.push_back(buildTree(Pstates[k]));
-			
-		std::vector<Word> ret = arrangeAndFuse(dictionaries);
-			
-		print(ret);
+			dictionaries.push_back(buildTree(*this,Pstates[k]));
 		
-		size_t iterations = conf.at("iterations");
-			
-		while (iterations--) {
-
-			// UPDATING STATE PROBABILITIES
-			{
-				for (auto &&pk : Pstates)
-					for (auto &&p : pk)
-						p = 0.;
-
-				for (size_t i=0; i<ret.size(); i++)
-					Pstates[i%(1U<<O)][ret[i].state] += ret[i].p;
-			}
-			
-			print(Pstates);
-
-			dictionaries.clear();
-			for (size_t k=0; k<(1U<<O); k++)
-				dictionaries.push_back(buildTree(Pstates[k]));
-			
-			ret = arrangeAndFuse(dictionaries);
-			
-			print(ret);
-			if (conf.at("debug")>2) printf("Efficiency: %3.4lf\n", calcEfficiency(ret));		
-		}
-		if (conf.at("debug")>1) for (auto &&c : conf) std::cout << c.first << ": " << c.second << std::endl;
-		if (conf.at("debug")>0) printf("Efficiency: %3.4lf\n", calcEfficiency(ret));
-
-		return ret;
+		ret = arrangeAndFuse(*this, dictionaries);
+		
+		print(*this, ret);
+		if (conf.at("debug")>2) printf("Efficiency: %3.4lf\n", calcEfficiency(ret));		
 	}
+	if (conf.at("debug")>1) for (auto &&c : conf) std::cout << c.first << ": " << c.second << std::endl;
+	if (conf.at("debug")>0) printf("Efficiency: %3.4lf\n", calcEfficiency(ret));
+
+	return ret;
+}
 
 

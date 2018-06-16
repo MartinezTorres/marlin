@@ -26,12 +26,7 @@ SOFTWARE.
 
 ***********************************************************************/
 
-#include "dictionary.h"
-
-static void initEncoderFields(const MarlinDictionary* dict) {
-	
-	
-}
+#include "dictionary.hpp"
 
 __attribute__ ((target ("bmi2")))
 static void shift8(const MarlinDictionary* dict, uint8_t* dst, const uint8_t* src, const size_t srcSize) {

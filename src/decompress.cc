@@ -26,7 +26,6 @@ SOFTWARE.
 
 ***********************************************************************/
 
-//#include "decode.h"
 #include "dictionary.hpp"
 
 
@@ -174,7 +173,7 @@ SOFTWARE.
 				}
 			}
 			return o8end-o8start;
-		}*/
+		}
 template<typename T>
 static ssize_t decodeMarlin8(const uint8_t* const D, const uint8_t O, uint8_t shift, uint8_t* dst, const size_t dstSize, const uint8_t* src, const size_t srcSize) {
 	
@@ -293,5 +292,5 @@ ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dst
 	
 	return decodeShift(dict->shift, dst, dstSize, src + srcSize - dstSize*dict->shift / 8);
 }
-
+*/
 
