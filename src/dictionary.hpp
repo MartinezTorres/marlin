@@ -49,6 +49,7 @@ struct MarlinDictionary {
 
 	// Main Typedefs
 	typedef uint8_t  SourceSymbol; // Type taht store the raw symbols from the source.
+	typedef uint8_t  MarlinSymbol; 
 	
 	// Configuration map
 	typedef std::map<std::string, double> Configuration;
@@ -62,15 +63,6 @@ struct MarlinDictionary {
 	// The Alphabet Class acts as a translation layer between SourceSymbols and MarlinSymbols.
 	class Alphabet {
 
-		struct SymbolAndProbability {
-			SourceSymbol sourceSymbol;
-			double p;
-			constexpr bool operator<(const SymbolAndProbability &rhs) const {
-				if (p!=rhs.p) return p>rhs.p; // Descending in probability
-				return sourceSymbol<rhs.sourceSymbol; // Ascending in symbol index
-			}
-		};
-		
 		static double calcEntropy(const std::map<SourceSymbol, double> &symbols) {
 			
 			double distEntropy=0;
@@ -82,17 +74,20 @@ struct MarlinDictionary {
 		
 	public:
 	
-		const std::map<SourceSymbol, double> symbols;
-		const size_t shift;
+		const std::map<SourceSymbol, double> sourceSymbolProbability;
 		const double sourceEntropy;
 		
 		double rareSymbolProbability;
+		std::vector<double> marlinToSource;
 		std::vector<SymbolAndProbability> marlinSymbols;
+
 		
-		Alphabet(std::map<SourceSymbol, double> symbols_, std::map<std::string, double> conf) : 
-			symbols(symbols_),
-			shift(conf.at("S")),
+		Alphabet(std::map<SourceSymbol, double> sourceSymbols,const  Configuration &conf) : 
+			sourceSymbols(sourceSymbols)
 			sourceEntropy(calcEntropy(symbols)) {
+
+			size_t shift = conf.at("shift"));
+
 			
 			// Group symbols by their high bits
 			std::map<SourceSymbol, double> symbolsShifted;
@@ -152,7 +147,7 @@ struct MarlinDictionary {
 	const SourceSymbol mostCommonSourceSymbol = alphabet.marlinSymbols.front().sourceSymbol;
 
 	std::shared_ptr<std::vector<SourceSymbol>> buildDecompressorTable() const;
-	ssize_t compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) const;
+	ssize_t decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) const;
 	
 	// Compressor
 	typedef uint32_t WordIdx;      // Structured as: FLAG_NEXT_WORD Where to jump next	
@@ -160,7 +155,7 @@ struct MarlinDictionary {
 	const WordIdx* const compressorTablePoointer = compressorTableVector->data();	
 
 	std::shared_ptr<std::vector<WordIdx>> buildCompressorTable() const;
-	ssize_t decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) const;
+	ssize_t compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) const;
 
 
 	MarlinDictionary( const std::map<SourceSymbol, double> &symbols,

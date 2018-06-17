@@ -28,26 +28,32 @@ SOFTWARE.
 
 #include "dictionary.hpp"
 
-__attribute__ ((target ("bmi2")))
-static void shift8(const MarlinDictionary* dict, uint8_t* dst, const uint8_t* src, const size_t srcSize) {
-	
-	uint64_t mask=0;
-	for (size_t i=0; i<8; i++)
-		mask |= ((1ULL<<dict->shift)-1)<<(8ULL*i);
+namespace {
 
-	const uint64_t *i64    = (const uint64_t *)src;
-	const uint64_t *i64end = (const uint64_t *)(src+srcSize);
+	__attribute__ ((target ("bmi2")))
+	void shift8(const MarlinDictionary &dict, uint8_t* dst, const uint8_t* src, const size_t srcSize) {
+		
+		uint64_t mask=0;
+		for (size_t i=0; i<8; i++)
+			mask |= ((1ULL<<dict.shift)-1)<<(8ULL*i);
 
-	while (i64 != i64end) {
-		*(uint64_t *)dst = _pext_u64(*i64++, mask);
-		dst += dict->shift;
+		const uint64_t *i64    = (const uint64_t *)src;
+		const uint64_t *i64end = (const uint64_t *)(src+srcSize);
+
+		while (i64 != i64end) {
+			*(uint64_t *)dst = _pext_u64(*i64++, mask);
+			dst += dict.shift;
+		}
 	}
+	
+	
 }
 
-ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) {
 
-	initEncoderFields(dict);
-	
+//std::shared_ptr<std::vector<MarlinDictionary::WordIdx>> MarlinDictionary::buildCompressorTable() const
+
+ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) const {
+
 	// Assertions
 	assert(dstCapacity >= srcSize);
 	
@@ -81,19 +87,19 @@ ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCa
 	{
 		
 		// if the encoder produces a size larger than this, it is simply better to store the block uncompressed.
-		size_t maxTargetSize = std::max(size_t(8), srcSize-srcSize*dict->shift/8) - 8;
+		size_t maxTargetSize = std::max(size_t(8), srcSize-srcSize*shift/8) - 8;
 
-		JumpIdx j = 0; 
+		WordIdx j = 0; 
 		while (i8<i8end) {				
 			
 			SourceSymbol ss = *i8++;
 			
-			MarlinSymbol ms = dict->Source2JumpTableShifted[ss>>dict->shift];
-			bool isRareSymbol = ms==dict->nMarlinSymbols;
+			MarlinSymbol ms = Source2JumpTableShifted[ss>>shift];
+			bool isRareSymbol = ms==nMarlinSymbols;
 			if (isRareSymbol) {
 				if (j) *o8++ = j; // Finish current word, if any;
 				*o8++ = j = 0;
-				*o8++ = ss & ((1<<dict->shift)-1);
+				*o8++ = ss & ((1<<shift)-1);
 				maxTargetSize-=3;
 				if (i8end-i8 > maxTargetSize) { // Just encode the block uncompressed.
 					memcpy(dst, src, srcSize);
@@ -102,8 +108,8 @@ ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCa
 				continue;
 			}
 			
-			JumpIdx jOld = j;
-			j = dict->jump(j, ms);
+			WordIdx jOld = j;
+			j = jump(j, ms);
 			
 			if (j & FLAG_NEXT_WORD) 
 				*o8++ = jOld & 0xFF;
