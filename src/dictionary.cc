@@ -245,8 +245,10 @@ std::vector<MarlinDictionary::MarlinSymbol> MarlinDictionary::buildMarlinAlphabe
 	
 	// Group symbols by their high bits
 	std::map<SourceSymbol, double> symbolsShifted;
-	for (auto &&symbol : sourceAlphabet)
-		symbolsShifted[symbol.first>>shift] += symbol.second;
+	for (size_t i=0; i<sourceAlphabet.size(); i++)
+		symbolsShifted[i>>shift] += sourceAlphabet[i];
+//	for (auto &&symbol : sourceAlphabet)
+//		symbolsShifted[symbol.first>>shift] += symbol.second;
 	
 	std::vector<MarlinSymbol> ret;
 	for (auto &&symbol : symbolsShifted)
@@ -277,10 +279,9 @@ double MarlinDictionary::calcEfficiency() const {
 			meanLength += w.p * w.size();
 	
 	double sourceEntropy = 0;
-	for (auto &&s : sourceAlphabet)
-		if (s.second>0.)
-			sourceEntropy += -s.second*std::log2(s.second);
-	
+	for (size_t i=0; i<sourceAlphabet.size(); i++)
+		if (sourceAlphabet[i]>0.)
+			sourceEntropy += -sourceAlphabet[i]*std::log2(sourceAlphabet[i]);
 		
 	// The decoding algorithm has 4 steps:
 	double meanBitsPerSymbol = 0;                           // a memset

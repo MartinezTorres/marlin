@@ -72,7 +72,7 @@ public:
 	const size_t maxWordSize      = conf.at("maxWordSize"); // Maximum number of symbols per word.
 
 	/// ALPHABETS
-	const std::map<SourceSymbol, double> sourceAlphabet;	
+	const std::vector<double> sourceAlphabet;	
 	const std::vector<MarlinSymbol> marlinAlphabet = buildMarlinAlphabet();
 		
 	/// DICTIONARY
@@ -97,25 +97,18 @@ public:
 
 
 	/// CONSTRUCTORS
-	MarlinDictionary( const std::map<SourceSymbol, double> &sourceAlphabet_,
-		Configuration conf_ = Configuration()) 
-		: conf(updateConf(sourceAlphabet_, conf_)), sourceAlphabet(sourceAlphabet_) {}
+//	MarlinDictionary( const std::map<SourceSymbol, double> &sourceAlphabet_,
+//		Configuration conf_ = Configuration()) 
+//		: conf(updateConf(sourceAlphabet_, conf_)), sourceAlphabet(sourceAlphabet_) {}
 	
 	// Turns the vector into a map and uses the previous constructor
 	MarlinDictionary( const std::vector<double> &sourceAlphabet_,
 		Configuration conf_ = Configuration()) 
-		: MarlinDictionary(
-		[&sourceAlphabet_](){
-			std::map<SourceSymbol, double> ret;
-			for (size_t i=0; i<sourceAlphabet_.size(); i++)
-				ret.emplace(SourceSymbol(i), sourceAlphabet_[i]);
-			return ret;
-		}()
-		, conf_) {}
+		: conf(updateConf(sourceAlphabet_, conf_)), sourceAlphabet(sourceAlphabet_) {}
 		
 private:
 	// Sets default configurations
-	static std::map<std::string, double> updateConf(const std::map<SourceSymbol, double> &sourceAlphabet, Configuration conf);
+	static std::map<std::string, double> updateConf(const std::vector<double> &sourceAlphabet, Configuration conf);
 
 	std::vector<MarlinSymbol> buildMarlinAlphabet() const;
 	

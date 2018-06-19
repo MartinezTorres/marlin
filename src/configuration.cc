@@ -30,7 +30,7 @@ SOFTWARE.
 
 
 std::map<std::string, double> MarlinDictionary::updateConf( 
-	const std::map<MarlinDictionary::SourceSymbol, double> &symbols, 
+	const std::vector<double> &sourceAlphabet, 
 	MarlinDictionary::Configuration conf) {
 	
 	conf.emplace("K",8);
@@ -44,10 +44,10 @@ std::map<std::string, double> MarlinDictionary::updateConf(
 		
 	if (not conf.count("shift")) {
 		conf["shift"] = 0;
-		double best = MarlinDictionary(symbols, conf).efficiency;
+		double best = MarlinDictionary(sourceAlphabet, conf).efficiency;
 		for (int s=1; s<6; s++) {
 			conf["shift"] = s;
-			double e = MarlinDictionary(symbols, conf).efficiency;
+			double e = MarlinDictionary(sourceAlphabet, conf).efficiency;
 			if (e<=best) {
 				conf["shift"] = s-1;
 				break;
@@ -58,11 +58,11 @@ std::map<std::string, double> MarlinDictionary::updateConf(
 	
 	if (not conf.count("maxWordSize")) {
 		conf["maxWordSize"] = 15;
-		double e15 = MarlinDictionary(symbols, conf).efficiency;
+		double e15 = MarlinDictionary(sourceAlphabet, conf).efficiency;
 		conf["maxWordSize"] = 7;
-		double e7 = MarlinDictionary(symbols, conf).efficiency;
+		double e7 = MarlinDictionary(sourceAlphabet, conf).efficiency;
 		conf["maxWordSize"] = 3;
-		double e3 = MarlinDictionary(symbols, conf).efficiency;
+		double e3 = MarlinDictionary(sourceAlphabet, conf).efficiency;
 		if (e7>1.0001*e3) {
 			conf["maxWordSize"] = 7;
 		}
