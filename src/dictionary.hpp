@@ -64,7 +64,6 @@ public:
 		double p = 0;
 		SourceSymbol state = 0;
 	};
-
 	
 	/// BASIC CONFIGURATION
 	const size_t K                = conf.at("K");           // Non overlapping bits of codeword.
@@ -75,8 +74,7 @@ public:
 	/// ALPHABETS
 	const std::map<SourceSymbol, double> sourceAlphabet;	
 	const std::vector<MarlinSymbol> marlinAlphabet = buildMarlinAlphabet();
-	
-	
+		
 	/// DICTIONARY
 	//Marlin only encodes a subset of the possible source symbols.
 	//Marlin symbols are sorted by probability in descending order, 
@@ -96,8 +94,6 @@ public:
 	const WordIdx* const compressorTablePoointer = compressorTableVector->data();	
 
 	ssize_t compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) const;
-
-
 
 
 	/// CONSTRUCTORS

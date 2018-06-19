@@ -29,60 +29,6 @@ SOFTWARE.
 #include "dictionary.hpp"
 
 namespace {
-	
-		// The Alphabet Class acts as a translation layer between SourceSymbols and MarlinSymbols.
-/*	struct Alphabet {
-
-		static double calcEntropy(const std::map<SourceSymbol, double> &symbols) {
-			
-			double distEntropy=0;
-			for (auto &&s : symbols)
-				if (s.second>0.)
-					distEntropy += -s.second*std::log2(s.second);
-			return distEntropy;
-		}
-		
-		
-	public:
-
-	
-		const std::map<SourceSymbol, double> sourceSymbols;
-		const double sourceEntropy;
-		
-		double rareSymbolProbability;
-		std::vector<double> marlinToSource;
-		std::vector<SymbolAndProbability> marlinSymbols;
-
-		
-		Alphabet(std::map<SourceSymbol, double> sourceSymbols,const  Configuration &conf) : 
-			sourceSymbols(sourceSymbols)
-			sourceEntropy(calcEntropy(symbols)) {
-
-			size_t shift = conf.at("shift"));
-
-			
-			// Group symbols by their high bits
-			std::map<SourceSymbol, double> symbolsShifted;
-			for (auto &&symbol : symbols)
-				symbolsShifted[symbol.first>>shift] += symbol.second;
-			
-			for (auto &&symbol : symbolsShifted)
-				marlinSymbols.push_back(SymbolAndProbability({SourceSymbol(symbol.first<<shift), symbol.second}));
-				
-			std::stable_sort(marlinSymbols.begin(),marlinSymbols.end());
-			
-			rareSymbolProbability = 0;
-			while (marlinSymbols.size()>conf.at("minMarlinSymbols") and 
-				  (marlinSymbols.size()>conf.at("maxMarlinSymbols") or
-				  rareSymbolProbability<conf.at("purgeProbabilityThreshold"))) {
-				
-				rareSymbolProbability += marlinSymbols.back().p;
-//					marlinSymbols.front().p +=  marlinSymbols.back().p;
-				marlinSymbols.pop_back();
-			}
-		}
-	};*/
-	
 
 	using Word = MarlinDictionary::Word;
 	
@@ -96,7 +42,7 @@ namespace {
 
 	SNode buildTree(const MarlinDictionary &dict, std::vector<double> Pstates) {
 
-		// Normalizing the probabilities makes the algorithm more stable
+		// Normalizing the state probabilities makes the algorithm more stable
 		double factor = 1e-10;
 		for (auto &&p : Pstates) factor += p;
 		for (auto &&p : Pstates) p/=factor;
@@ -106,7 +52,7 @@ namespace {
 
 		std::vector<double> PN;
 		for (auto &&a : dict.marlinAlphabet) PN.push_back(a.p);
-		PN.back() += dict.alphabet.rareSymbolProbability;
+//		PN.back() += dict.alphabet.rareSymbolProbability;
 		for (size_t i=PN.size()-1; i; i--)
 			PN[i-1] += PN[i];
 
@@ -114,7 +60,11 @@ namespace {
 		for (size_t i=0; i<PN.size(); i++)
 			Pchild[i] = dict.marlinAlphabet[i].p/PN[i];
 		
-		auto cmp = [](const SNode &lhs, const SNode &rhs) { return lhs->p<rhs->p;};
+		auto cmp = [](const SNode &lhs, const SNode &rhs) { 
+			if (std::abs(lhs->p - rhs->p) > 1e-10)
+				return lhs->p<rhs->p;
+			return false;
+		};
 		std::priority_queue<SNode, std::vector<SNode>, decltype(cmp)> pq(cmp);
 
 		// DICTIONARY INITIALIZATION
@@ -298,21 +248,23 @@ std::vector<MarlinDictionary::MarlinSymbol> MarlinDictionary::buildMarlinAlphabe
 	for (auto &&symbol : sourceAlphabet)
 		symbolsShifted[symbol.first>>shift] += symbol.second;
 	
-	std::vector<MarlinDictionary::MarlinSymbol> ret;
+	std::vector<MarlinSymbol> ret;
 	for (auto &&symbol : symbolsShifted)
-		ret.push_back(MarlinDictionary::MarlinSymbol{SourceSymbol(symbol.first<<shift), symbol.second});
+		ret.push_back(MarlinSymbol{SourceSymbol(symbol.first<<shift), symbol.second});
 		
-//	std::stable_sort(ret.begin(),ret.end());
+	std::stable_sort(ret.begin(),ret.end(), 
+		[](const MarlinSymbol& lhs, const MarlinSymbol& rhs) { 
+			if (lhs.p!=rhs.p) return lhs.p>rhs.p; // Descending in probability
+			return lhs.sourceSymbol<rhs.sourceSymbol; // Ascending in symbol index
+		}
+	);
 	
-/*	rareSymbolProbability = 0;
-	while (marlinSymbols.size()>conf.at("minMarlinSymbols") and 
-		  (marlinSymbols.size()>conf.at("maxMarlinSymbols") or
-		  rareSymbolProbability<conf.at("purgeProbabilityThreshold"))) {
+	while (ret.size()>conf.at("minMarlinSymbols") and 
+		  (ret.size()>conf.at("maxMarlinSymbols") or
+		  ret.back().p<conf.at("purgeProbabilityThreshold"))) {
 		
-		rareSymbolProbability += marlinSymbols.back().p;
-//					marlinSymbols.front().p +=  marlinSymbols.back().p;
-		marlinSymbols.pop_back();
-	}	*/	
+		ret.pop_back();
+	}
 	return ret;
 };
 
@@ -321,7 +273,7 @@ std::vector<MarlinDictionary::MarlinSymbol> MarlinDictionary::buildMarlinAlphabe
 double MarlinDictionary::calcEfficiency() const {
 
 	double meanLength = 0;
-	for (auto &&w : dictionary)
+	for (auto &&w : words)
 			meanLength += w.p * w.size();
 	
 	double sourceEntropy = 0;
@@ -332,9 +284,9 @@ double MarlinDictionary::calcEfficiency() const {
 		
 	// The decoding algorithm has 4 steps:
 	double meanBitsPerSymbol = 0;                           // a memset
-	meanBitsPerSymbol += (K/meanLength)*(1-alphabet.rareSymbolProbability);                      // Marlin VF
-	meanBitsPerSymbol += alphabet.shift;                    // Raw storing of lower bits
-	meanBitsPerSymbol += 2*K*alphabet.rareSymbolProbability;// Recovering rare symbols
+//	meanBitsPerSymbol += (K/meanLength)*(1-alphabet.rareSymbolProbability);                      // Marlin VF
+//	meanBitsPerSymbol += alphabet.shift;                    // Raw storing of lower bits
+//	meanBitsPerSymbol += 2*K*alphabet.rareSymbolProbability;// Recovering rare symbols
 
 	return sourceEntropy / meanBitsPerSymbol;
 }

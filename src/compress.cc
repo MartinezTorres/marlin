@@ -58,7 +58,7 @@ ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8
 	assert(dstCapacity >= srcSize);
 	
 	// Special case: empty! Nothing to compress.
-	if (srcSize) return 0;
+	if (srcSize==0) return 0;
 
 	// Special case: the entire block is made of one symbol!
 	{
@@ -82,6 +82,10 @@ ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8
 		*o8++ = *i8++;
 	}
 
+
+	{
+		
+	}
 
 	// Encode Marlin, with rare symbols preceded by an empty word
 	{
