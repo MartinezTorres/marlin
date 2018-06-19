@@ -89,15 +89,14 @@ public:
 	ssize_t decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) const;
 	
 	/// COMPRESSOR STUFF
-	typedef uint32_t WordIdx;      // Structured as: FLAG_NEXT_WORD Where to jump next	
-	const std::shared_ptr<std::vector<WordIdx>> compressorTableVector = buildCompressorTable();	
-	const WordIdx* const compressorTablePoointer = compressorTableVector->data();	
+	typedef uint32_t CompressorTableIdx;      // Structured as: FLAG_NEXT_WORD Where to jump next	
+	const std::shared_ptr<std::vector<CompressorTableIdx>> compressorTableVector = buildCompressorTable();	
+	const CompressorTableIdx* const compressorTablePointer = compressorTableVector->data();	
 
 	ssize_t compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) const;
 
 
 	/// CONSTRUCTORS
-
 	MarlinDictionary( const std::map<SourceSymbol, double> &sourceAlphabet_,
 		Configuration conf_ = Configuration()) 
 		: conf(updateConf(sourceAlphabet_, conf_)), sourceAlphabet(sourceAlphabet_) {}
@@ -124,7 +123,7 @@ private:
 	double calcEfficiency() const;
 
 	std::shared_ptr<std::vector<SourceSymbol>> buildDecompressorTable() const;
-	std::shared_ptr<std::vector<WordIdx>> buildCompressorTable() const;
+	std::shared_ptr<std::vector<CompressorTableIdx>> buildCompressorTable() const;
 };
 
 

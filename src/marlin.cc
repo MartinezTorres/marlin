@@ -28,32 +28,26 @@ SOFTWARE.
 
 
 #include <marlin.h>
-
 #include "dictionary.hpp"
-
-#include <iostream>
-#include <vector>
-#include <map>
-#include <cmath>
-#include <cstring>
-#include <queue>
-#include <stack>
-
-#include <memory>
-#include <algorithm>
-
-#include <cassert>
- 
 
 ////////////////////////////////////////////////////////////////////////
 //
 // Public Methods
 
-ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize);
+ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) {
+	
+	return dict->compress(dst,dstCapacity,src,srcSize);
+}
 
-ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize);
+ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) {
+	
+	return dict->decompress(dst,dstSize,src,srcSize);
+}
 
-MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256], size_t indexSizeBits, size_t indexOverlapBits, size_t maxWordSizeSymbols, size_t rawStorageBits);
+MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256], size_t indexSizeBits, size_t indexOverlapBits, size_t maxWordSizeSymbols, size_t rawStorageBits) {
+	
+	
+}
 
 void Marlin_free_dictionary(MarlinDictionary *dict);
 

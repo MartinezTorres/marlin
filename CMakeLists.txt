@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 14)
 ################################
 # Marlin library
 
-add_library(marlin src/configuration.cc src/dictionary.cc src/marlin.cc src/compress.cc )
+add_library(marlin src/configuration.cc src/dictionary.cc src/marlin.cc src/compress.cc src/decompress.cc)
 set_target_properties(marlin PROPERTIES
     VERSION ${PROJECT_VERSION}
     PUBLIC_HEADER inc/marlin.h)
