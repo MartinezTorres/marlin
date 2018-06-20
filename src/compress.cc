@@ -26,7 +26,11 @@ SOFTWARE.
 
 ***********************************************************************/
 
-#include "dictionary.hpp"
+#include <marlin.h>
+
+#include <cstring>
+#include <algorithm>
+#include <cassert>
 
 namespace {
 
@@ -72,13 +76,13 @@ namespace {
 }
 
 
-std::shared_ptr<std::vector<MarlinDictionary::CompressorTableIdx>> MarlinDictionary::buildCompressorTable() const {
+std::unique_ptr<std::vector<MarlinDictionary::CompressorTableIdx>> MarlinDictionary::buildCompressorTable() const {
 	
 	using MarlinIdx = SourceSymbol;
 
 	MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
 
-	std::shared_ptr<std::vector<CompressorTableIdx>> ret = std::make_shared<std::vector<CompressorTableIdx>>();
+	auto ret = std::make_unique<std::vector<CompressorTableIdx>>();
 	JumpTable jump(K, O, unrepresentedSymbolToken);
 	jump.initTable(*ret);
 

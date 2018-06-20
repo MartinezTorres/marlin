@@ -109,6 +109,77 @@ double Marlin_estimate_space(MarlinDictionary *dict, const double hist[256]);
 
 #if defined (__cplusplus)
 }
+
+#include <vector>
+#include <map>
+#include <memory>
+	
+struct MarlinDictionary {
+public:
+
+	/// Configuration map
+	typedef std::map<std::string, double> Configuration;
+	const Configuration conf;
+
+
+	/// Main Typedefs
+	typedef uint8_t  SourceSymbol; // Type taht store the raw symbols from the source.
+	struct MarlinSymbol {
+		SourceSymbol sourceSymbol;
+		double p;
+	};
+	struct Word : std::vector<SourceSymbol> {
+		using std::vector<SourceSymbol>::vector;
+		double p = 0;
+		SourceSymbol state = 0;
+	};
+	
+	/// BASIC CONFIGURATION
+	const size_t K                = conf.at("K");           // Non overlapping bits of codeword.
+	const size_t O                = conf.at("O");           // Bits that overlap between codewprds.
+	const size_t shift            = conf.at("shift");       // Bits that can be stored raw
+	const size_t maxWordSize      = conf.at("maxWordSize"); // Maximum number of symbols per word.
+
+	/// ALPHABETS
+	const std::vector<double> sourceAlphabet;	
+	const std::vector<MarlinSymbol> marlinAlphabet = buildMarlinAlphabet();
+		
+	/// DICTIONARY
+	//Marlin only encodes a subset of the possible source symbols.
+	//Marlin symbols are sorted by probability in descending order, 
+	//so the Marlin Symbol 0 is always corresponds to the most probable alphabet symbol.
+	const std::vector<Word> words = buildDictionary(); // All dictionary words.
+	const double efficiency       = calcEfficiency();  // Theoretical efficiency of the dictionary.
+	
+	/// DECOMPRESSOR STUFF
+	const std::unique_ptr<std::vector<SourceSymbol>> decompressorTableVector = buildDecompressorTable();	
+	const SourceSymbol* const decompressorTablePointer = decompressorTableVector->data();
+	ssize_t decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) const;
+	
+	/// COMPRESSOR STUFF
+	typedef uint32_t CompressorTableIdx;      // Structured as: FLAG_NEXT_WORD Where to jump next	
+	const std::unique_ptr<std::vector<CompressorTableIdx>> compressorTableVector = buildCompressorTable();	
+	const CompressorTableIdx* const compressorTablePointer = compressorTableVector->data();	
+	ssize_t compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) const;
+
+
+	/// CONSTRUCTORS
+	MarlinDictionary( const std::vector<double> &sourceAlphabet_,
+		Configuration conf_ = Configuration()) 
+		: conf(updateConf(sourceAlphabet_, conf_)), sourceAlphabet(sourceAlphabet_) {}
+		
+private:
+	// Sets default configurations
+	static std::map<std::string, double> updateConf(const std::vector<double> &sourceAlphabet, Configuration conf);
+
+	std::vector<MarlinSymbol> buildMarlinAlphabet() const;
+	
+	std::vector<Word> buildDictionary() const;
+	double calcEfficiency() const;
+
+	std::unique_ptr<std::vector<SourceSymbol>> buildDecompressorTable() const;
+	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTable() const;
+};
 #endif
 
 #endif

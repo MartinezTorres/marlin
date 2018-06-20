@@ -26,7 +26,14 @@ SOFTWARE.
 
 ***********************************************************************/
 
-#include "dictionary.hpp"
+#include <marlin.h>
+
+#include <cstring>
+#include <algorithm>
+#include <cassert>
+#include <iostream>
+#include <queue>
+#include <stack>
 
 namespace {
 

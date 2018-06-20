@@ -26,8 +26,7 @@ SOFTWARE.
 
 ***********************************************************************/
 
-#include "dictionary.hpp"
-
+#include <marlin.h>
 
 std::map<std::string, double> MarlinDictionary::updateConf( 
 	const std::vector<double> &sourceAlphabet, 
