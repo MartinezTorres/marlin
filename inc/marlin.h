@@ -83,7 +83,7 @@ ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dst
  * \return null: error occurred
  *         otherwise: newly allocated dictionary
 */
-MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256], size_t indexSizeBits, size_t indexOverlapBits, size_t maxWordSizeSymbols, size_t rawStorageBits);
+MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256]);
 
 /*! 
  * Frees a previously built Marlin Dictionary
@@ -115,7 +115,6 @@ double Marlin_estimate_space(MarlinDictionary *dict, const double hist[256]);
 #include <memory>
 	
 struct MarlinDictionary {
-public:
 
 	/// Configuration map
 	typedef std::map<std::string, double> Configuration;
@@ -128,10 +127,12 @@ public:
 		SourceSymbol sourceSymbol;
 		double p;
 	};
-	struct Word : std::vector<SourceSymbol> {
-		using std::vector<SourceSymbol>::vector;
+
+	typedef uint8_t  MarlinIdx; // Type taht store the raw symbols from the source.
+	struct Word : std::vector<MarlinIdx> {
+		using std::vector<MarlinIdx>::vector;
 		double p = 0;
-		SourceSymbol state = 0;
+		MarlinIdx state = 0;
 	};
 	
 	/// BASIC CONFIGURATION
@@ -155,12 +156,21 @@ public:
 	const std::unique_ptr<std::vector<SourceSymbol>> decompressorTableVector = buildDecompressorTable();	
 	const SourceSymbol* const decompressorTablePointer = decompressorTableVector->data();
 	ssize_t decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) const;
+	ssize_t decompress(const std::vector<uint8_t> &src, std::vector<uint8_t> &dst) const {
+		return decompress(dst.data(), dst.size(), src.data(), src.size());
+	}
 	
 	/// COMPRESSOR STUFF
 	typedef uint32_t CompressorTableIdx;      // Structured as: FLAG_NEXT_WORD Where to jump next	
 	const std::unique_ptr<std::vector<CompressorTableIdx>> compressorTableVector = buildCompressorTable();	
 	const CompressorTableIdx* const compressorTablePointer = compressorTableVector->data();	
 	ssize_t compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) const;
+	ssize_t compress(const std::vector<uint8_t> &src, std::vector<uint8_t> &dst) const {
+		ssize_t r = compress(dst.data(), dst.capacity(), src.data(), src.size());
+		if (r<0) return r;
+		dst.resize(r);
+		return dst.size();
+	}
 
 
 	/// CONSTRUCTORS

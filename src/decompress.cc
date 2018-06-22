@@ -145,7 +145,39 @@ size_t decompress8(const MarlinDictionary::SourceSymbol* const D, const uint8_t 
 	return o8end-o8start;
 }
 
+
+
+size_t decompressSlow(const MarlinDictionary& dict, const uint8_t * const i8start, const uint8_t * const i8end, uint8_t * const o8start, uint8_t * const o8end) {
 	
+		  uint8_t *o8 = o8start;
+	const uint8_t *i8 = i8start;
+	
+	uint64_t value = 0;
+	uint64_t valueBits = dict.O;
+	while (o8 < o8end) {
+
+		while (valueBits < dict.K+dict.O) {
+			value += uint64_t(*i8++) << (64-8-valueBits);
+			valueBits += 8;
+			//printf("%016lX:", value);
+		}
+		
+		size_t wordIdx = value >> (64-(dict.K+dict.O));
+		value = value << dict.K;
+		valueBits -= dict.K;
+
+			//printf("%02X:", wordIdx);
+			
+		
+		
+		for (auto &&c : dict.words[wordIdx])
+			*o8++ = dict.marlinAlphabet[c].sourceSymbol;
+	}
+	printf("\n");
+
+	return o8end-o8start;
+}
+
 __attribute__ ((target ("bmi2")))
 static ssize_t shift8(uint8_t shift, uint8_t* dst, const size_t dstSize, const uint8_t* src) {
 	
@@ -173,11 +205,13 @@ std::unique_ptr<std::vector<MarlinDictionary::SourceSymbol>> MarlinDictionary::b
 	SourceSymbol *d = &ret->front();
 	for (size_t i=0; i<words.size(); i++) {
 		for (size_t j=0; j<maxWordSize; j++)
-			*d++ = (words[i].size()>j ? words[i][j] : SourceSymbol(0));
+			*d++ = (words[i].size()>j ? marlinAlphabet[words[i][j]].sourceSymbol : SourceSymbol(0));
 		*d++ = words[i].size();
 	}
 	return ret;
 }
+
+
 
 ssize_t MarlinDictionary::decompress(uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) const {
 	
@@ -201,16 +235,17 @@ ssize_t MarlinDictionary::decompress(uint8_t* dst, size_t dstSize, const uint8_t
 	
 	// Initialization, which might be optional
 	memset(dst, marlinAlphabet.front().sourceSymbol, dstSize);
-	
-	if (K==8 and maxWordSize==3) {
+
+	if (false) {
+		decompressSlow(*this, src, src+srcSize, dst, dst+dstSize);
+	} else if (K==8 and maxWordSize==3) {
 		decompress8<uint32_t>(decompressorTablePointer, O, shift, src, src+srcSize, dst, dst+dstSize);
 	} else if (K==8 and maxWordSize==7) {
 		decompress8<uint64_t>(decompressorTablePointer, O, shift, src, src+srcSize, dst, dst+dstSize);
 	} else {
-		return -1;
-		//decodeGeneric(dict, dst, dstSize, src, srcSize);
+		decompressSlow(*this, src, src+srcSize, dst, dst+dstSize);
 	}
-	
+			
 	return shift8(shift, dst, dstSize, src + srcSize - dstSize*shift / 8);
 }
 	

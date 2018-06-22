@@ -30,7 +30,6 @@ SOFTWARE.
 
 #include <cstring>
 #include <algorithm>
-#include <cassert>
 
 namespace {
 
@@ -77,15 +76,15 @@ namespace {
 
 
 std::unique_ptr<std::vector<MarlinDictionary::CompressorTableIdx>> MarlinDictionary::buildCompressorTable() const {
-	
+
 	using MarlinIdx = SourceSymbol;
 
 	MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
 
 	auto ret = std::make_unique<std::vector<CompressorTableIdx>>();
-	JumpTable jump(K, O, unrepresentedSymbolToken);
+	JumpTable jump(K, O, unrepresentedSymbolToken+1);
 	jump.initTable(*ret);
-
+	
 	std::array<MarlinIdx, 1U<<(sizeof(MarlinIdx)*8)> source2marlin;
 	source2marlin.fill(unrepresentedSymbolToken);
 	for (size_t i=0; i<marlinAlphabet.size(); i++)
@@ -99,7 +98,7 @@ std::unique_ptr<std::vector<MarlinDictionary::CompressorTableIdx>> MarlinDiction
 	for (size_t k=0; k<NumChapters; k++)
 		for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++)
 			positions[k][words[i]] = i;
-
+			
 	// Link each possible word to its continuation
 	for (size_t k=0; k<NumChapters; k++) {
 		for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++) {
@@ -110,7 +109,7 @@ std::unique_ptr<std::vector<MarlinDictionary::CompressorTableIdx>> MarlinDiction
 				word.pop_back();
 				if (not positions[k].count(word)) throw(std::runtime_error("This word has no parent. SHOULD NEVER HAPPEN!!!"));
 				size_t parentIdx = positions[k][word];
-				jump(&ret->front(), parentIdx, source2marlin[lastSymbol]) = wordIdx;
+				jump(&ret->front(), parentIdx, lastSymbol) = wordIdx;
 				wordIdx = parentIdx;
 			}
 		}
@@ -120,19 +119,21 @@ std::unique_ptr<std::vector<MarlinDictionary::CompressorTableIdx>> MarlinDiction
 	for (size_t k=0; k<NumChapters; k++)
 		for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++)
 			for (size_t j=0; j<marlinAlphabet.size(); j++)
-				if (jump(&ret->front(),i,j)==CompressorTableIdx(-1)) // words that are not parent of anyone else.
-					jump(&ret->front(),i,j) = positions[i%NumChapters][Word(1,marlinAlphabet[j].sourceSymbol)] + FLAG_NEXT_WORD;
-						
+				if (jump(&ret->front(),i,j) == CompressorTableIdx(-1)) // words that are not parent of anyone else.
+					jump(&ret->front(),i,j) = positions[i%NumChapters][Word(1,j)] + FLAG_NEXT_WORD;
+										
 	return ret;
 }
 
 ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) const {
 
+
 	// Assertions
-	assert(dstCapacity >= srcSize);
+	if (dstCapacity < srcSize) return -1;
 	
 	// Special case: empty! Nothing to compress.
 	if (srcSize==0) return 0;
+
 
 	// Special case: the entire block is made of one symbol!
 	{
@@ -156,18 +157,17 @@ ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8
 		*o8++ = *i8++;
 	}
 
-	using MarlinIdx = SourceSymbol;
-
 	MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
+	JumpTable jump(K, O, unrepresentedSymbolToken+1);	
+	
 	std::array<MarlinIdx, 1U<<(sizeof(MarlinIdx)*8)> source2marlin;
 	source2marlin.fill(unrepresentedSymbolToken);
 	for (size_t i=0; i<marlinAlphabet.size(); i++)
 		source2marlin[marlinAlphabet[i].sourceSymbol>>shift] = i;
-		
-	JumpTable jump(K, O, unrepresentedSymbolToken);
+
 
 	// Encode Marlin, with rare symbols preceded by an empty word
-	{
+	if(K==8) {
 		
 		// if the encoder produces a size larger than this, it is simply better to store the block uncompressed.
 		size_t maxTargetSize = std::max(size_t(8), srcSize-srcSize*shift/8) - 8;
@@ -184,24 +184,73 @@ ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8
 				*o8++ = j = 0;
 				*o8++ = ss & ((1<<shift)-1);
 				maxTargetSize-=3;
-				if (i8end-i8 > maxTargetSize) { // Just encode the block uncompressed.
-					memcpy(dst, src, srcSize);
-					return srcSize;
-				}
+				//if (size_t(i8end-i8) > maxTargetSize) { // Just encode the block uncompressed.
+				//	memcpy(dst, src, srcSize);
+				//	return srcSize;
+				//}
 				continue;
 			}
 			
 			CompressorTableIdx jOld = j;
-			j = jump(decompressorTablePointer, j, ms);
+			j = jump(compressorTablePointer, j, ms);
 			
 			if (j & FLAG_NEXT_WORD) 
 				*o8++ = jOld & 0xFF;
 		}
 		if (j) *o8++ = j;
+	} else {
+
+		std::map<Word, size_t> wordMap;
+		for (size_t i=0; i<words.size(); i++) 
+			wordMap[words[i]] = i;
+		
+		uint32_t value = 0;
+		 int32_t valueBits = 0;
+		Word word;
+		while (i8<i8end) {				
+			
+			SourceSymbol ss = *i8++;
+			MarlinIdx ms = source2marlin[ss>>shift];
+			
+			word.push_back(ms);
+			
+			if (wordMap.count(word) == 0) {
+				
+				word.pop_back();
+
+				value += wordMap[word] << (32 - K - valueBits);
+				valueBits += K;
+				
+				word.clear();
+				word.push_back(ms);
+			}
+
+			while (valueBits>=8) {
+				*o8++ = value >> 24;
+				value = value << 8;
+				valueBits -= 8;
+			}		
+			
+		}
+		if (word.size()) {
+			value += wordMap[word] << (32 - K - valueBits);
+			valueBits += K;
+		}
+		
+		while (valueBits>0) {
+			*o8++ = value >> 24;
+			value = value << 8;
+			valueBits -= 8;
+		}		
 	}
+
+
+
 
 	// Encode residuals
 	shift8(shift, o8, src, srcSize);
+	
+	printf("%d\n", int(o8-dst));
 	
 	return o8 - dst; 
 }

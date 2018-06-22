@@ -28,7 +28,6 @@ SOFTWARE.
 
 
 #include <marlin.h>
-#include "dictionary.hpp"
 
 ////////////////////////////////////////////////////////////////////////
 //
@@ -44,14 +43,21 @@ ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dst
 	return dict->decompress(dst,dstSize,src,srcSize);
 }
 
-MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256], size_t indexSizeBits, size_t indexOverlapBits, size_t maxWordSizeSymbols, size_t rawStorageBits) {
+MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256]) {
+	
+	return new MarlinDictionary(std::vector<double>(&hist[0], &hist[256]));
+}
+
+void Marlin_free_dictionary(MarlinDictionary *dict) {
+	
+	if (dict != nullptr)
+		delete dict;
+}
+
+MarlinDictionary **Marlin_get_prebuilt_dictionaries() {
 	
 	
 }
-
-void Marlin_free_dictionary(MarlinDictionary *dict);
-
-MarlinDictionary **Marlin_get_prebuilt_dictionaries();
 
 double Marlin_estimate_space(MarlinDictionary *dict, const double hist[256]) {
 	

@@ -135,7 +135,7 @@ namespace {
 					q.push(child);
 				q.pop();
 			}
-			std::cerr << sum << " sum - num " << num << std::endl;
+			//std::cerr << sum << " sum - num " << num << std::endl;
 		}
 		return root;
 	}
@@ -159,7 +159,8 @@ namespace {
 			for (size_t i = 0; i<n->size(); i++) {
 				
 				Word w2 = w;
-				w2.push_back(dict.marlinAlphabet[i].sourceSymbol);
+//				w2.push_back(dict.marlinAlphabet[i].sourceSymbol);
+				w2.push_back(i);
 				w2.p = n->at(i)->p;
 				w2.state = n->at(i)->size();
 				
@@ -168,7 +169,7 @@ namespace {
 			}
 		}
 		
-		std::cout << ret.size() << std::endl;
+		//std::cout << ret.size() << std::endl;
 		return ret;
 	}
 
@@ -218,9 +219,19 @@ namespace {
 				printf(" %02lX %01ld %2d %01.2le ",idx,i%(1U<<dict.O),w.state,w.p);
 				for (size_t j=0; j<8; j++) {
 					if (j<w.size()) {
-						char a = 'a';
-						for (size_t x=0; dict.marlinAlphabet[x].sourceSymbol != w[j]; x++, a++);
-						putchar(a);
+						//char a = 'a';
+						//for (size_t x=0; dict.marlinAlphabet[x].sourceSymbol != w[j]; x++, a++);
+						putchar('a'+w[j]);
+					} else {
+						putchar(' ');
+					}
+				}
+
+				for (size_t j=0; j<8; j++) {
+					if (j<w.size()) {
+						//char a = 'a';
+						//for (size_t x=0; dict.marlinAlphabet[x].sourceSymbol != w[j]; x++, a++);
+						putchar('a'+dict.marlinAlphabet[w[j]].sourceSymbol);
 					} else {
 						putchar(' ');
 					}
@@ -254,8 +265,6 @@ std::vector<MarlinDictionary::MarlinSymbol> MarlinDictionary::buildMarlinAlphabe
 	std::map<SourceSymbol, double> symbolsShifted;
 	for (size_t i=0; i<sourceAlphabet.size(); i++)
 		symbolsShifted[i>>shift] += sourceAlphabet[i];
-//	for (auto &&symbol : sourceAlphabet)
-//		symbolsShifted[symbol.first>>shift] += symbol.second;
 	
 	std::vector<MarlinSymbol> ret;
 	for (auto &&symbol : symbolsShifted)
@@ -275,7 +284,7 @@ std::vector<MarlinDictionary::MarlinSymbol> MarlinDictionary::buildMarlinAlphabe
 		ret.pop_back();
 	}
 	return ret;
-};
+}
 
 
 
