@@ -32,23 +32,28 @@ SOFTWARE.
 #include <algorithm>
 
 namespace {
+struct MarlinDictionaryCompress : public MarlinDictionary {
+		
 
 	constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(MarlinDictionary::CompressorTableIdx)-1);
 
 	__attribute__ ((target ("bmi2")))
-	void shift8(uint8_t shift, uint8_t* dst, const uint8_t* src, const size_t srcSize) {
+	ssize_t shift8(View<const TSource> src, View<uint8_t> dst) const {
 		
 		uint64_t mask=0;
 		for (size_t i=0; i<8; i++)
 			mask |= ((1ULL<<shift)-1)<<(8ULL*i);
 
-		const uint64_t *i64    = (const uint64_t *)src;
-		const uint64_t *i64end = (const uint64_t *)(src+srcSize);
+		const uint64_t *i64    = reinterpret_cast<const uint64_t *>(src.start);
+		const uint64_t *i64end = reinterpret_cast<const uint64_t *>(src.end);
 
+		uint8_t *o8 = dst.start;
+		
 		while (i64 != i64end) {
-			*(uint64_t *)dst = _pext_u64(*i64++, mask);
-			dst += shift;
+			*reinterpret_cast<uint64_t *>(o8) = _pext_u64(*i64++, mask);
+			o8 += shift;
 		}
+		return o8 - dst.start;
 	}
 	
 	class JumpTable {
@@ -72,122 +77,35 @@ namespace {
 			return table[(word&((1<<wordStride)-1))+(nextLetter*((1<<wordStride)+unalignment))];
 		}
 	};
-}
 
-
-std::unique_ptr<std::vector<MarlinDictionary::CompressorTableIdx>> MarlinDictionary::buildCompressorTable() const {
-
-	using MarlinIdx = SourceSymbol;
-
-	MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
-
-	auto ret = std::make_unique<std::vector<CompressorTableIdx>>();
-	JumpTable jump(K, O, unrepresentedSymbolToken+1);
-	jump.initTable(*ret);
-	
-	std::array<MarlinIdx, 1U<<(sizeof(MarlinIdx)*8)> source2marlin;
-	source2marlin.fill(unrepresentedSymbolToken);
-	for (size_t i=0; i<marlinAlphabet.size(); i++)
-		source2marlin[marlinAlphabet[i].sourceSymbol>>shift] = i;
-	
-	const size_t NumChapters = 1<<O;
-	const size_t ChapterSize = 1<<K;
-	std::vector<std::map<Word, size_t>> positions(NumChapters);
-
-	// Init the mapping (to know where each word goes)
-	for (size_t k=0; k<NumChapters; k++)
-		for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++)
-			positions[k][words[i]] = i;
-			
-	// Link each possible word to its continuation
-	for (size_t k=0; k<NumChapters; k++) {
-		for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++) {
-			auto word = words[i];
-			size_t wordIdx = i;
-			while (not word.empty()) {
-				SourceSymbol lastSymbol = word.back();						
-				word.pop_back();
-				if (not positions[k].count(word)) throw(std::runtime_error("This word has no parent. SHOULD NEVER HAPPEN!!!"));
-				size_t parentIdx = positions[k][word];
-				jump(&ret->front(), parentIdx, lastSymbol) = wordIdx;
-				wordIdx = parentIdx;
-			}
-		}
-	}
-				
-	//Link between inner dictionaries
-	for (size_t k=0; k<NumChapters; k++)
-		for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++)
-			for (size_t j=0; j<marlinAlphabet.size(); j++)
-				if (jump(&ret->front(),i,j) == CompressorTableIdx(-1)) // words that are not parent of anyone else.
-					jump(&ret->front(),i,j) = positions[i%NumChapters][Word(1,j)] + FLAG_NEXT_WORD;
-										
-	return ret;
-}
-
-ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) const {
-
-
-	// Assertions
-	if (dstCapacity < srcSize) return -1;
-	
-	// Special case: empty! Nothing to compress.
-	if (srcSize==0) return 0;
-
-
-	// Special case: the entire block is made of one symbol!
-	{
-		size_t count = 0;
-		for (size_t i=0; i<srcSize and src[i] == src[0]; i++)
-			count++;
+	ssize_t compressMarlin8(View<const TSource> src, View<uint8_t> dst) const {
 		
-		if (count==srcSize) {
-			dst[0] = src[0];
-			return 1;
-		}
-	}
-
-
-		  uint8_t *o8    = dst;
-	const uint8_t *i8    = src;
-	const uint8_t *i8end = src + srcSize;
-
-	// Special case: if srcSize is not multiple of 8, we force it to be.
-	while ( (i8end-i8) % 8 != 0) {
-		*o8++ = *i8++;
-	}
-
-	MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
-	JumpTable jump(K, O, unrepresentedSymbolToken+1);	
-	
-	std::array<MarlinIdx, 1U<<(sizeof(MarlinIdx)*8)> source2marlin;
-	source2marlin.fill(unrepresentedSymbolToken);
-	for (size_t i=0; i<marlinAlphabet.size(); i++)
-		source2marlin[marlinAlphabet[i].sourceSymbol>>shift] = i;
-
-
-	// Encode Marlin, with rare symbols preceded by an empty word
-	if(K==8) {
+		MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
+		JumpTable jump(K, O, unrepresentedSymbolToken+1);	
 		
-		// if the encoder produces a size larger than this, it is simply better to store the block uncompressed.
-		size_t maxTargetSize = std::max(size_t(8), srcSize-srcSize*shift/8) - 8;
+		std::array<MarlinIdx, 1U<<(sizeof(TSource)*8)> source2marlin;
+		source2marlin.fill(unrepresentedSymbolToken);
+		for (size_t i=0; i<marlinAlphabet.size(); i++)
+			source2marlin[marlinAlphabet[i].sourceSymbol>>shift] = i;
+
+			  uint8_t *out   = dst.start;
+		const TSource *in    = src.start;
 
 		CompressorTableIdx j = 0; 
-		while (i8<i8end) {				
+		while (in<src.end) {				
+
+			if (not ((in - src.start)&0xFF))
+				if ( (8-shift)*size_t(in-src.start)/8 > size_t(out-dst.start) )
+					return src.end - src.start; // Just encode the block uncompressed.
 			
-			SourceSymbol ss = *i8++;
+			TSource ss = *in++;
 			
 			MarlinIdx ms = source2marlin[ss>>shift];
 			bool isUnrepresented = ms==unrepresentedSymbolToken;
 			if (isUnrepresented) {
-				if (j) *o8++ = j; // Finish current word, if any;
-				*o8++ = j = 0;
-				*o8++ = ss & ((1<<shift)-1);
-				maxTargetSize-=3;
-				//if (size_t(i8end-i8) > maxTargetSize) { // Just encode the block uncompressed.
-				//	memcpy(dst, src, srcSize);
-				//	return srcSize;
-				//}
+				if (j) *out++ = j; // Finish current word, if any;
+				*out++ = j = 0;
+				*out++ = ss & ((1<<shift)-1);
 				continue;
 			}
 			
@@ -195,10 +113,26 @@ ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8
 			j = jump(compressorTablePointer, j, ms);
 			
 			if (j & FLAG_NEXT_WORD) 
-				*o8++ = jOld & 0xFF;
+				*out++ = jOld & 0xFF;
 		}
-		if (j) *o8++ = j;
-	} else {
+		if (j) *out++ = j;
+		
+		return out - dst.start;
+	}
+	
+	ssize_t compressMarlinReference(View<const TSource> src, View<uint8_t> dst) const {
+		
+		MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
+		JumpTable jump(K, O, unrepresentedSymbolToken+1);	
+		
+		std::array<MarlinIdx, 1U<<(sizeof(TSource)*8)> source2marlin;
+		source2marlin.fill(unrepresentedSymbolToken);
+		for (size_t i=0; i<marlinAlphabet.size(); i++)
+			source2marlin[marlinAlphabet[i].sourceSymbol>>shift] = i;
+
+			  uint8_t *out   = dst.start;
+		const TSource *in    = src.start;
+
 
 		std::map<Word, size_t> wordMap;
 		for (size_t i=0; i<words.size(); i++) 
@@ -207,9 +141,9 @@ ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8
 		uint32_t value = 0;
 		 int32_t valueBits = 0;
 		Word word;
-		while (i8<i8end) {				
+		while (in<src.end) {				
 			
-			SourceSymbol ss = *i8++;
+			TSource ss = *in++;
 			MarlinIdx ms = source2marlin[ss>>shift];
 			
 			word.push_back(ms);
@@ -225,8 +159,8 @@ ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8
 				word.push_back(ms);
 			}
 
-			while (valueBits>=8) {
-				*o8++ = value >> 24;
+			while (valueBits>8) {
+				*out++ = value >> 24;
 				value = value << 8;
 				valueBits -= 8;
 			}		
@@ -238,19 +172,127 @@ ssize_t MarlinDictionary::compress(uint8_t* dst, size_t dstCapacity, const uint8
 		}
 		
 		while (valueBits>0) {
-			*o8++ = value >> 24;
+			*out++ = value >> 24;
 			value = value << 8;
 			valueBits -= 8;
-		}		
+		}
+		
+		return out - dst.start;
 	}
 
 
+	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTable() const {
+
+		using MarlinIdx = TSource;
+
+		MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
+
+		auto ret = std::make_unique<std::vector<CompressorTableIdx>>();
+		JumpTable jump(K, O, unrepresentedSymbolToken+1);
+		jump.initTable(*ret);
+		
+		std::array<MarlinIdx, 1U<<(sizeof(MarlinIdx)*8)> source2marlin;
+		source2marlin.fill(unrepresentedSymbolToken);
+		for (size_t i=0; i<marlinAlphabet.size(); i++)
+			source2marlin[marlinAlphabet[i].sourceSymbol>>shift] = i;
+		
+		const size_t NumChapters = 1<<O;
+		const size_t ChapterSize = 1<<K;
+		std::vector<std::map<Word, size_t>> positions(NumChapters);
+
+		// Init the mapping (to know where each word goes)
+		for (size_t k=0; k<NumChapters; k++)
+			for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++)
+				positions[k][words[i]] = i;
+				
+		// Link each possible word to its continuation
+		for (size_t k=0; k<NumChapters; k++) {
+			for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++) {
+				auto word = words[i];
+				size_t wordIdx = i;
+				while (not word.empty()) {
+					TSource lastSymbol = word.back();						
+					word.pop_back();
+					if (not positions[k].count(word)) throw(std::runtime_error("This word has no parent. SHOULD NEVER HAPPEN!!!"));
+					size_t parentIdx = positions[k][word];
+					jump(&ret->front(), parentIdx, lastSymbol) = wordIdx;
+					wordIdx = parentIdx;
+				}
+			}
+		}
+					
+		//Link between inner dictionaries
+		for (size_t k=0; k<NumChapters; k++)
+			for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++)
+				for (size_t j=0; j<marlinAlphabet.size(); j++)
+					if (jump(&ret->front(),i,j) == CompressorTableIdx(-1)) // words that are not parent of anyone else.
+						jump(&ret->front(),i,j) = positions[i%NumChapters][Word(1,j)] + FLAG_NEXT_WORD;
+											
+		return ret;
+	}
+
+	ssize_t compress(View<const TSource> src, View<uint8_t> dst) const {
 
 
-	// Encode residuals
-	shift8(shift, o8, src, srcSize);
-	
-	printf("%d\n", int(o8-dst));
-	
-	return o8 - dst; 
+		// Assertions
+		if (dst.size() < src.size()*sizeof(TSource)) return -1;
+		
+		// Special case: empty! Nothing to compress.
+		if (src.size()==0) return 0;
+
+
+		// Special case: the entire block is made of one symbol!
+		{
+			size_t count = 0;
+			for (size_t i=0; i<src.size() and src.start[i] == src.start[0]; i++)
+				count++;
+			
+			if (count==src.size()) {
+				static_cast<TSource *>(dst.start)[0] = src.start[0];
+				return sizeof(TSource);
+			}
+		}
+
+		// Special case: if srcSize is not multiple of 8, we force it to be.
+		size_t padding = 0;
+		while ( src.size()*sizeof(TSource) % 8 != 0) {
+			
+			*reinterpret_cast<TSource *&>(dst.start)++ = *src.start++;			
+			padding += sizeof(TSource);
+		}
+
+		// Encode Marlin, with rare symbols preceded by an empty word
+		ssize_t marlinSize;
+		if (K==8) {
+			marlinSize = compressMarlin8(src, dst);
+		} else {
+			marlinSize = compressMarlinReference(src, dst);
+		}
+		
+		// If the encoded size is negative means that Marlin could not provide a meaningful compression, and the whole stream will be copied.
+		if (marlinSize == -1) {
+			memcpy(dst.start,src.start,src.size()*sizeof(TSource));
+			return padding + src.size()*sizeof(TSource);
+		}
+		
+		dst.start += marlinSize;
+		
+		// Encode residuals
+		size_t residualSize = shift8(src, dst);
+		
+		return padding + marlinSize + residualSize; 
+	}
+
+};
 }
+
+
+std::unique_ptr<std::vector<MarlinDictionary::CompressorTableIdx>> MarlinDictionary::buildCompressorTable() const {
+	return static_cast<const MarlinDictionaryCompress *>(this)->buildCompressorTable();
+}
+
+ssize_t MarlinDictionary::compress(View<const TSource> src, View<uint8_t> dst) const {
+	return static_cast<const MarlinDictionaryCompress *>(this)->compress(src,dst);
+}
+
+

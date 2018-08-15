@@ -142,7 +142,7 @@ namespace {
 
 
 	
-	std::vector<Word> buildChapterWords(const MarlinDictionary &dict, const SNode root) {
+	std::vector<Word> buildChapterWords(const SNode root) {
 	
 		std::vector<Word> ret;
 		
@@ -180,7 +180,7 @@ namespace {
 		std::vector<Word> ret;
 		for (auto &&chapter : chapters) {
 			
-			std::vector<Word> sortedDictionary = buildChapterWords(dict, chapter);
+			std::vector<Word> sortedDictionary = buildChapterWords(chapter);
 			
 			auto cmp = [](const Word &lhs, const Word &rhs) { 
 				if (lhs.state != rhs.state) return lhs.state<rhs.state;
@@ -262,13 +262,13 @@ namespace {
 std::vector<MarlinDictionary::MarlinSymbol> MarlinDictionary::buildMarlinAlphabet() const {
 	
 	// Group symbols by their high bits
-	std::map<SourceSymbol, double> symbolsShifted;
+	std::map<TSource, double> symbolsShifted;
 	for (size_t i=0; i<sourceAlphabet.size(); i++)
 		symbolsShifted[i>>shift] += sourceAlphabet[i];
 	
 	std::vector<MarlinSymbol> ret;
 	for (auto &&symbol : symbolsShifted)
-		ret.push_back(MarlinSymbol{SourceSymbol(symbol.first<<shift), symbol.second});
+		ret.push_back(MarlinSymbol{TSource(symbol.first<<shift), symbol.second});
 		
 	std::stable_sort(ret.begin(),ret.end(), 
 		[](const MarlinSymbol& lhs, const MarlinSymbol& rhs) { 
@@ -302,7 +302,8 @@ double MarlinDictionary::calcEfficiency() const {
 	// The decoding algorithm has 4 steps:
 	double meanBitsPerSymbol = 0;                           // a memset
 //	meanBitsPerSymbol += (K/meanLength)*(1-alphabet.rareSymbolProbability);                      // Marlin VF
-//	meanBitsPerSymbol += alphabet.shift;                    // Raw storing of lower bits
+	meanBitsPerSymbol += (K/meanLength);                      // Marlin VF
+	meanBitsPerSymbol += shift;                    // Raw storing of lower bits
 //	meanBitsPerSymbol += 2*K*alphabet.rareSymbolProbability;// Recovering rare symbols
 
 	return sourceEntropy / meanBitsPerSymbol;

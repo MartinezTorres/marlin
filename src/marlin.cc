@@ -35,17 +35,17 @@ SOFTWARE.
 
 ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) {
 	
-	return dict->compress(dst,dstCapacity,src,srcSize);
+	return dict->compress(MarlinDictionary::make_view(src,src+srcSize), MarlinDictionary::make_view(dst,dst+dstCapacity));
 }
 
 ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) {
 	
-	return dict->decompress(dst,dstSize,src,srcSize);
+	return dict->decompress(MarlinDictionary::make_view(src,src+srcSize), MarlinDictionary::make_view(dst,dst+dstSize));
 }
 
 MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256]) {
 	
-	return new MarlinDictionary(std::vector<double>(&hist[0], &hist[256]));
+	return new MarlinDictionary(name, std::vector<double>(&hist[0], &hist[256]));
 }
 
 void Marlin_free_dictionary(MarlinDictionary *dict) {
@@ -54,17 +54,14 @@ void Marlin_free_dictionary(MarlinDictionary *dict) {
 		delete dict;
 }
 
-MarlinDictionary **Marlin_get_prebuilt_dictionaries() {
+/*const MarlinDictionary **Marlin_get_prebuilt_dictionaries() {
 	
-	
+	return nullptr;
 }
 
-double Marlin_estimate_space(MarlinDictionary *dict, const double hist[256]) {
+const MarlinDictionary * Marlin_estimate_best_dictionary(const MarlinDictionary **dict, const uint8_t* src, size_t srcSize) {
 	
-	double ret = 0;
-	//for (int i=0; i<256; i++)
-	//	ret += hist[i]*dict->bps[i];
-	return ret;
-}
+	return nullptr;
+}*/
 
 
