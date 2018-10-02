@@ -17,7 +17,7 @@ static bool testMini() {
 	MarlinDictionary::Configuration conf;
 	conf["K"] = 4;
 	conf["O"] = 0;
-//	conf["debug"] = 99;
+	conf["debug"] = 99;
 	conf["purgeProbabilityThreshold"] = 1e-99;
 	
 	
@@ -37,6 +37,10 @@ static bool testMini() {
 		printf("%02X", compressed[i]);
 		printf("\n");
 
+
+	for (size_t i=0; i<uncompressed.size(); i++)
+		printf("%c", char('a'+uncompressed[i]));
+		printf("\n");
 	
 	if (original != uncompressed) {
 		

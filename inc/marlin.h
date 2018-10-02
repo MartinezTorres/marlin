@@ -118,11 +118,10 @@ const MarlinDictionary * Marlin_estimate_best_dictionary(const MarlinDictionary 
 #include <map>
 #include <memory>
 
-//typedef uint8_t  TSource; // Type that can source the source symbols.
-//typedef uint8_t  MarlinIdx; // Type that can source the marlin symbols.
+struct MarlinDictionary {
 
-template<typename TSource, typename MarlinIdx>
-struct MarlinDictionary_ : public MarlinDictionary {
+	typedef uint8_t  TSource; // Type that can source the source symbols.
+	typedef uint8_t  MarlinIdx; // Type that can source the marlin symbols.
 	
 	template<typename T>
 	struct View {
@@ -139,7 +138,7 @@ struct MarlinDictionary_ : public MarlinDictionary {
 	const std::string name; // Name of this dictionary (optional)
 	const uint32_t versionMajor = MARLIN_VERSION_MAJOR;
 	const uint32_t versionMinor = MARLIN_VERSION_MINOR;
-	enum { SimpleDictionary = 0 } type = Simple;
+//	enum { SimpleDictionary = 0 } type = Simple;
 	const Configuration conf;
 
 
