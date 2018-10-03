@@ -2,9 +2,23 @@
 #include "distribution.hpp"
 #include <iostream>
 
+static void printAlpha(std::vector<uint8_t> msg) {
+	for (size_t i=0; i<msg.size(); i++)
+		printf("%c", char('a'+msg[i]));
+		printf("\n");
+}
+
+static void printHex(std::vector<uint8_t> msg) {
+	for (size_t i=0; i<msg.size(); i++)
+		printf("%02X", msg[i]);
+		printf("\n");
+}
+
 static bool testMini() {
 	
-	size_t sz = 1<<5;
+	std::cout << "Test Mini" << std::endl;
+	
+	size_t sz = 1<<9;
 	
 	auto distribution = Distribution::pdf(8, Distribution::Laplace, 0.5);
 	for (int i=0; i<1000; i++)
@@ -15,12 +29,10 @@ static bool testMini() {
 	std::vector<uint8_t> uncompressed(sz);
 	
 	MarlinDictionary::Configuration conf;
-	conf["K"] = 4;
+	conf["K"] = 8;
 	conf["O"] = 0;
-	conf["debug"] = 99;
-	conf["purgeProbabilityThreshold"] = 1e-99;
-	
-	
+	//conf["debug"] = 99;
+	conf["purgeProbabilityThreshold"] = 1e-99;	
 	
 	MarlinDictionary dict("test", distribution, conf);
 	
@@ -29,18 +41,9 @@ static bool testMini() {
 	
 	std::cout << "Compressed Size: " << compressed.size() << std::endl;
 
-	for (size_t i=0; i<original.size(); i++)
-		printf("%c", char('a'+original[i]));
-		printf("\n");
-
-	for (size_t i=0; i<compressed.size(); i++)
-		printf("%02X", compressed[i]);
-		printf("\n");
-
-
-	for (size_t i=0; i<uncompressed.size(); i++)
-		printf("%c", char('a'+uncompressed[i]));
-		printf("\n");
+	printAlpha(original);
+	printHex(compressed);
+	printAlpha(uncompressed);
 	
 	if (original != uncompressed) {
 		
@@ -78,12 +81,14 @@ static bool testLaplace() {
 		std::vector<uint8_t> compressed(sz);
 		std::vector<uint8_t> uncompressed(sz);
 		
-		std::cout << "IO!" << std::endl;
-		
+		std::cout << "Get Dictionary!" << std::endl;		
 		MarlinDictionary dict("test", Distribution::pdf(256, Distribution::Laplace, p));
-		
+		std::cout << "Compress:" << std::endl;
 		dict.compress(original, compressed);
-		dict.decompress(compressed, uncompressed);
+		std::cout << "Compressed to:" << double(compressed.size()) / original.size() << std::endl;
+		std::cout << "Decompress:" << std::endl;
+		//dict.decompress(compressed, uncompressed);
+		std::cout << "Done!" << std::endl;
 		
 		
 		
@@ -104,11 +109,11 @@ static bool testLaplace() {
 				}
 			}
 			
-			return false;
+			//return false;
 		} else {
 			
 			
-			std::cout << "Original == uncompressed!" << " " << compressed.size() << std::endl;
+			std::cout  << "P: " << p << " " << "Original == uncompressed!" << " " << compressed.size() << std::endl;
 		}
 	}
 	return true;

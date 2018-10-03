@@ -259,7 +259,8 @@ namespace {
 
 }
 
-std::vector<MarlinDictionary::MarlinSymbol> MarlinDictionary::buildMarlinAlphabet() const {
+template<typename TSource, typename MarlinIdx>
+std::vector<TMarlinDictionary<TSource,MarlinIdx>::MarlinSymbol> TMarlinDictionary<TSource,MarlinIdx>::buildMarlinAlphabet() const {
 	
 	// Group symbols by their high bits
 	std::map<TSource, double> symbolsShifted;
@@ -287,8 +288,8 @@ std::vector<MarlinDictionary::MarlinSymbol> MarlinDictionary::buildMarlinAlphabe
 }
 
 
-
-double MarlinDictionary::calcEfficiency() const {
+template<typename TSource, typename MarlinIdx>
+double TMarlinDictionary<TSource,MarlinIdx>::calcEfficiency() const {
 
 	double meanLength = 0;
 	for (auto &&w : words)
@@ -310,8 +311,8 @@ double MarlinDictionary::calcEfficiency() const {
 }
 
 
-
-std::vector<MarlinDictionary::Word> MarlinDictionary::buildDictionary() const {
+template<typename TSource, typename MarlinIdx>
+std::vector<TMarlinDictionary<TSource,MarlinIdx>::Word> TMarlinDictionary<TSource,MarlinIdx>::buildDictionary() const {
 	
 	std::vector<std::vector<double>> Pstates;
 	for (size_t k=0; k<(1U<<O); k++) {

@@ -28,9 +28,10 @@ SOFTWARE.
 
 #include <marlin.h>
 
-std::map<std::string, double> MarlinDictionary::updateConf( 
+template<typename TSource, typename MarlinIdx>
+std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf( 
 	const std::vector<double> &sourceAlphabet, 
-	MarlinDictionary::Configuration conf) {
+	TMarlinDictionary<TSource,MarlinIdx>::Configuration conf) {
 	
 	conf.emplace("K",8);
 	conf.emplace("O",2);

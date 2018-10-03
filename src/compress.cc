@@ -92,11 +92,9 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 		const TSource *in    = src.start;
 
 		CompressorTableIdx j = 0; 
-		while (in<src.end) {				
-
-			if (not ((in - src.start)&0xFF))
-				if ( (8-shift)*size_t(in-src.start)/8 > size_t(out-dst.start) )
-					return src.end - src.start; // Just encode the block uncompressed.
+		while (in<src.end) {
+			
+			if (dst.end-out<16) return -1;	// TODO: find the exact value
 			
 			TSource ss = *in++;
 			
@@ -235,19 +233,19 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 
 
 		// Assertions
-		if (dst.size() < src.size()*sizeof(TSource)) return -1;
+		if (dst.nBytes() < src.nBytes()) return -1;
 		
 		// Special case: empty! Nothing to compress.
-		if (src.size()==0) return 0;
+		if (src.nElements()==0) return 0;
 
 
 		// Special case: the entire block is made of one symbol!
 		{
 			size_t count = 0;
-			for (size_t i=0; i<src.size() and src.start[i] == src.start[0]; i++)
+			for (size_t i=0; i<src.nElements() and src.start[i] == src.start[0]; i++)
 				count++;
 			
-			if (count==src.size()) {
+			if (count==src.nElements()) {
 				static_cast<TSource *>(dst.start)[0] = src.start[0];
 				return sizeof(TSource);
 			}
@@ -255,7 +253,7 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 
 		// Special case: if srcSize is not multiple of 8, we force it to be.
 		size_t padding = 0;
-		while ( src.size()*sizeof(TSource) % 8 != 0) {
+		while ( src.nBytes() % 8 != 0) {
 			
 			*reinterpret_cast<TSource *&>(dst.start)++ = *src.start++;			
 			padding += sizeof(TSource);
@@ -271,8 +269,8 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 		
 		// If the encoded size is negative means that Marlin could not provide a meaningful compression, and the whole stream will be copied.
 		if (marlinSize == -1) {
-			memcpy(dst.start,src.start,src.size()*sizeof(TSource));
-			return padding + src.size()*sizeof(TSource);
+			memcpy(dst.start,src.start,src.nBytes());
+			return padding + src.nBytes();
 		}
 		
 		dst.start += marlinSize;

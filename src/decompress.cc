@@ -164,7 +164,7 @@ struct MarlinDictionaryDecompress : public MarlinDictionary {
 		// if (endMarlin-i8 != 0) std::cerr << " {" << endMarlin-i8 << "} "; // SOLVED! PROBLEM IN THE CODE
 		// if (o8end-o8 != 0) std::cerr << " [" << o8end-o8 << "] "; // SOLVED! PROBLEM IN THE CODE
 
-		return dst.size();
+		return dst.nElements();
 	}
 
 
@@ -191,7 +191,7 @@ struct MarlinDictionaryDecompress : public MarlinDictionary {
 				*o8++ = marlinAlphabet[c].sourceSymbol;
 		}
 		
-		return dst.size();
+		return dst.nElements();
 	}
 
 
@@ -213,35 +213,38 @@ struct MarlinDictionaryDecompress : public MarlinDictionary {
 	ssize_t decompress(View<const uint8_t> src, View<TSource> dst) const {
 
 		// Special case: empty block!
-		if (dst.size() == 0 or src.size() == 0) {
-			if (src.size() or dst.size()) return -1;
+		if (dst.nBytes() == 0 or src.nBytes() == 0) {
+			if (src.nBytes() or dst.nBytes()) return -1; // TODO: Error code
 			return 0;
 		}
+
+		// Special case: the entire block is smaller than the size of a single symbol!
+		if (src.nBytes() < sizeof(TSource)) return -1;
 		
 		// Special case: the entire block is made of one symbol!
-		if (src.size() <= sizeof(TSource)) {
+		if (src.nBytes() == sizeof(TSource)) {
 			TSource s = *reinterpret_cast<const TSource *&>(src.start);
-			for (size_t i=0; i<dst.size(); i++)
+			for (size_t i=0; i<dst.nElements(); i++)
 				dst.start[i] = s;
-			return dst.size();
+			return dst.nElements();
 		}
 
 		// Special case, same size! this means the block is uncompressed.
-		if (dst.size() == src.size()*sizeof(TSource)) {
-			memcpy(dst.start, src.start, src.size());
-			return dst.size();
+		if (dst.nBytes() == src.nBytes()) {
+			memcpy(dst.start, src.start, src.nBytes());
+			return dst.nElements();
 		}
 
 		// Special case: if dstSize is not multiple of 8, we force it to be.
 		size_t padding = 0;
-		while ( dst.size()*sizeof(TSource) % 8 != 0) {
+		while ( dst.nBytes() % 8 != 0) {
 			
 			*dst.start++ = *reinterpret_cast<const TSource *&>(src.start)++;			
 			padding += sizeof(TSource);
 		}
 		
 		// Initialization, which might be optional
-		for (size_t i=0; i<dst.size(); i++)
+		for (size_t i=0; i<dst.nElements(); i++)
 			dst.start[i] = marlinAlphabet.front().sourceSymbol;
 
 		if (false) {
