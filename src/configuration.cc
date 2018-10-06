@@ -28,10 +28,12 @@ SOFTWARE.
 
 #include <marlin.h>
 
+using namespace marlin;
+
 template<typename TSource, typename MarlinIdx>
-std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf( 
+std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf( 
 	const std::vector<double> &sourceAlphabet, 
-	TMarlinDictionary<TSource,MarlinIdx>::Configuration conf) {
+	TMarlin<TSource,MarlinIdx>::Configuration conf) {
 	
 	conf.emplace("K",8);
 	conf.emplace("O",2);
@@ -44,10 +46,10 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 		
 	if (not conf.count("shift")) {
 		conf["shift"] = 0;
-		double best = MarlinDictionary("", sourceAlphabet, conf).efficiency;
+		double best = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
 		for (int s=1; s<6; s++) {
 			conf["shift"] = s;
-			double e = MarlinDictionary("", sourceAlphabet, conf).efficiency;
+			double e = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
 			if (e<=best) {
 				conf["shift"] = s-1;
 				break;
@@ -58,11 +60,11 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 	
 	if (not conf.count("maxWordSize")) {
 		conf["maxWordSize"] = 15;
-		double e15 = MarlinDictionary("", sourceAlphabet, conf).efficiency;
+		double e15 = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
 		conf["maxWordSize"] = 7;
-		double e7 = MarlinDictionary("", sourceAlphabet, conf).efficiency;
+		double e7 = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
 		conf["maxWordSize"] = 3;
-		double e3 = MarlinDictionary("", sourceAlphabet, conf).efficiency;
+		double e3 = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
 		if (e7>1.0001*e3) {
 			conf["maxWordSize"] = 7;
 		}
@@ -75,3 +77,11 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 	
 	return conf;
 }
+
+////////////////////////////////////////////////////////////////////////
+//
+// Explicit Instantiations
+#include "instantiations.h"
+typedef std::map<std::string, double> phonyMap; // Commas do not fit well within macros
+INSTANTIATE_MEMBER(updateConf(const std::vector<double> &sourceAlphabet, Configuration conf) -> phonyMap)
+

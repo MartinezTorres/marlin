@@ -28,13 +28,13 @@ static bool testMini() {
 	std::vector<uint8_t> compressed(sz);
 	std::vector<uint8_t> uncompressed(sz);
 	
-	MarlinDictionary::Configuration conf;
+	Marlin::Configuration conf;
 	conf["K"] = 8;
 	conf["O"] = 0;
 	//conf["debug"] = 99;
 	conf["purgeProbabilityThreshold"] = 1e-99;	
 	
-	MarlinDictionary dict("test", distribution, conf);
+	Marlin dict("test", distribution, conf);
 	
 	dict.compress(original, compressed);
 	dict.decompress(compressed, uncompressed);
@@ -82,12 +82,12 @@ static bool testLaplace() {
 		std::vector<uint8_t> uncompressed(sz);
 		
 		std::cout << "Get Dictionary!" << std::endl;		
-		MarlinDictionary dict("test", Distribution::pdf(256, Distribution::Laplace, p));
+		Marlin dict("test", Distribution::pdf(256, Distribution::Laplace, p));
 		std::cout << "Compress:" << std::endl;
 		dict.compress(original, compressed);
-		std::cout << "Compressed to:" << double(compressed.size()) / original.size() << std::endl;
+		std::cout << "Compressed to: " << compressed.size() << " ("  << double(compressed.size()) / original.size() << "%)" << std::endl;
 		std::cout << "Decompress:" << std::endl;
-		//dict.decompress(compressed, uncompressed);
+		dict.decompress(compressed, uncompressed);
 		std::cout << "Done!" << std::endl;
 		
 		

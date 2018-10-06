@@ -32,9 +32,30 @@ SOFTWARE.
 #include <algorithm>
 #include <cassert>
 
-namespace {
-struct MarlinDictionaryDecompress : public MarlinDictionary {
 
+using namespace marlin;
+
+namespace {
+
+template<typename TSource, typename MarlinIdx>
+struct TDecompress : TMarlin<TSource,MarlinIdx> {
+	
+	using typename TMarlin<TSource, MarlinIdx>::Word;
+	using typename TMarlin<TSource, MarlinIdx>::CompressorTableIdx;
+	using typename TMarlin<TSource, MarlinIdx>::MarlinSymbol;
+
+	using TMarlin<TSource, MarlinIdx>::K;
+	using TMarlin<TSource, MarlinIdx>::O;
+	using TMarlin<TSource, MarlinIdx>::shift;
+	using TMarlin<TSource, MarlinIdx>::maxWordSize;
+	using TMarlin<TSource, MarlinIdx>::conf;
+	
+	using TMarlin<TSource, MarlinIdx>::words;
+	using TMarlin<TSource, MarlinIdx>::sourceAlphabet;
+	using TMarlin<TSource, MarlinIdx>::marlinAlphabet;
+	using TMarlin<TSource, MarlinIdx>::decompressorTablePointer;
+	
+	
 	__attribute__ ((target ("bmi2")))
 	ssize_t shift8(View<const uint8_t> src, View<TSource> dst) const {
 		
@@ -184,6 +205,8 @@ struct MarlinDictionaryDecompress : public MarlinDictionary {
 			}
 			
 			size_t wordIdx = value >> (64-(K+O));
+			if (not wordIdx) { printf("%d %d\n", i8-src.start, wordIdx); exit(-1); }
+			
 			value = value << K;
 			valueBits -= K;
 			
@@ -196,9 +219,9 @@ struct MarlinDictionaryDecompress : public MarlinDictionary {
 
 
 
-	std::unique_ptr<std::vector<MarlinDictionary::TSource>> buildDecompressorTable() const {
+	std::unique_ptr<std::vector<TSource>> buildDecompressorTable() const {
 		
-		auto ret = std::make_unique<std::vector<MarlinDictionary::TSource>>(words.size()*(maxWordSize+1));
+		auto ret = std::make_unique<std::vector<TSource>>(words.size()*(maxWordSize+1));
 		
 		TSource *d = &ret->front();
 		for (size_t i=0; i<words.size(); i++) {
@@ -262,13 +285,20 @@ struct MarlinDictionaryDecompress : public MarlinDictionary {
 };
 }
 
-std::unique_ptr<std::vector<MarlinDictionary::TSource>> MarlinDictionary::buildDecompressorTable() const {
-	return static_cast<const MarlinDictionaryDecompress *>(this)->buildDecompressorTable();
+template<typename TSource, typename MarlinIdx>
+std::unique_ptr<std::vector<TSource>> TMarlin<TSource,MarlinIdx>::buildDecompressorTable() const {
+	return static_cast<const TDecompress<TSource,MarlinIdx> *>(this)->buildDecompressorTable();
 }
 
-ssize_t MarlinDictionary::decompress(View<const uint8_t> src, View<TSource> dst) const {
-	return static_cast<const MarlinDictionaryDecompress *>(this)->decompress(src,dst);
+template<typename TSource, typename MarlinIdx>
+ssize_t TMarlin<TSource,MarlinIdx>::decompress(View<const uint8_t> src, View<TSource> dst) const {
+	return static_cast<const TDecompress<TSource,MarlinIdx> *>(this)->decompress(src,dst);
 }
 
-
+////////////////////////////////////////////////////////////////////////
+//
+// Explicit Instantiations
+#include "instantiations.h"
+INSTANTIATE_MEMBER(buildDecompressorTable() const -> std::unique_ptr<std::vector<typename TMarlin::TSource_Type>>)	
+INSTANTIATE_MEMBER(decompress(View<const uint8_t> src, View<typename TMarlin::TSource_Type> dst) const -> ssize_t)	
 

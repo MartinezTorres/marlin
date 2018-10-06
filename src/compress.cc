@@ -31,11 +31,31 @@ SOFTWARE.
 #include <cstring>
 #include <algorithm>
 
-namespace {
-struct MarlinDictionaryCompress : public MarlinDictionary {
-		
+using namespace marlin;
 
-	constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(MarlinDictionary::CompressorTableIdx)-1);
+namespace {
+
+template<typename TSource, typename MarlinIdx>
+struct TCompress : TMarlin<TSource,MarlinIdx> {
+	
+	using typename TMarlin<TSource, MarlinIdx>::Word;
+	using typename TMarlin<TSource, MarlinIdx>::CompressorTableIdx;
+	using typename TMarlin<TSource, MarlinIdx>::MarlinSymbol;
+
+	using TMarlin<TSource, MarlinIdx>::K;
+	using TMarlin<TSource, MarlinIdx>::O;
+	using TMarlin<TSource, MarlinIdx>::shift;
+	using TMarlin<TSource, MarlinIdx>::maxWordSize;
+	using TMarlin<TSource, MarlinIdx>::conf;
+	
+	using TMarlin<TSource, MarlinIdx>::words;
+	using TMarlin<TSource, MarlinIdx>::sourceAlphabet;
+	using TMarlin<TSource, MarlinIdx>::marlinAlphabet;
+	using TMarlin<TSource, MarlinIdx>::compressorTablePointer;
+	
+
+
+	constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(CompressorTableIdx)-1);
 
 	__attribute__ ((target ("bmi2")))
 	ssize_t shift8(View<const TSource> src, View<uint8_t> dst) const {
@@ -69,7 +89,7 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 			
 		template<typename T>
 		void initTable(T &table) {
-			table = T(((1<<wordStride)+unalignment)*(1<<alphaStride),MarlinDictionary::CompressorTableIdx(-1));
+			table = T(((1<<wordStride)+unalignment)*(1<<alphaStride),CompressorTableIdx(-1));
 		}
 		
 		template<typename T, typename T0, typename T1>
@@ -101,9 +121,11 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 			MarlinIdx ms = source2marlin[ss>>shift];
 			bool isUnrepresented = ms==unrepresentedSymbolToken;
 			if (isUnrepresented) {
+				printf("unrepresented\n");
 				if (j) *out++ = j; // Finish current word, if any;
 				*out++ = j = 0;
-				*out++ = ss & ((1<<shift)-1);
+				*reinterpret_cast<TSource *&>(out)++ = ss;
+				//*out++ = ss & ((1<<shift)-1);
 				continue;
 			}
 			
@@ -121,7 +143,7 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 	ssize_t compressMarlinReference(View<const TSource> src, View<uint8_t> dst) const {
 		
 		MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
-		JumpTable jump(K, O, unrepresentedSymbolToken+1);	
+		JumpTable jump(K, O, unrepresentedSymbolToken+1);
 		
 		std::array<MarlinIdx, 1U<<(sizeof(TSource)*8)> source2marlin;
 		source2marlin.fill(unrepresentedSymbolToken);
@@ -178,10 +200,7 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 		return out - dst.start;
 	}
 
-
 	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTable() const {
-
-		using MarlinIdx = TSource;
 
 		MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
 
@@ -231,9 +250,8 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 
 	ssize_t compress(View<const TSource> src, View<uint8_t> dst) const {
 
-
 		// Assertions
-		if (dst.nBytes() < src.nBytes()) return -1;
+		if (dst.nBytes() < src.nBytes()) return -1; //TODO: Real error codes
 		
 		// Special case: empty! Nothing to compress.
 		if (src.nElements()==0) return 0;
@@ -246,14 +264,14 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 				count++;
 			
 			if (count==src.nElements()) {
-				static_cast<TSource *>(dst.start)[0] = src.start[0];
+				reinterpret_cast<TSource *>(dst.start)[0] = src.start[0];
 				return sizeof(TSource);
 			}
 		}
 
 		// Special case: if srcSize is not multiple of 8, we force it to be.
 		size_t padding = 0;
-		while ( src.nBytes() % 8 != 0) {
+		while (src.nBytes() % 8 != 0) {
 			
 			*reinterpret_cast<TSource *&>(dst.start)++ = *src.start++;			
 			padding += sizeof(TSource);
@@ -267,15 +285,14 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 			marlinSize = compressMarlinReference(src, dst);
 		}
 		
-		// If the encoded size is negative means that Marlin could not provide a meaningful compression, and the whole stream will be copied.
-		if (marlinSize == -1) {
+		// If the encoded size is negative means that Marlin could not provide any meaningful compression, and the whole stream will be copied.
+		if (marlinSize < 0) {
 			memcpy(dst.start,src.start,src.nBytes());
 			return padding + src.nBytes();
 		}
 		
-		dst.start += marlinSize;
-		
 		// Encode residuals
+		dst.start += marlinSize;
 		size_t residualSize = shift8(src, dst);
 		
 		return padding + marlinSize + residualSize; 
@@ -284,13 +301,20 @@ struct MarlinDictionaryCompress : public MarlinDictionary {
 };
 }
 
-
-std::unique_ptr<std::vector<MarlinDictionary::CompressorTableIdx>> MarlinDictionary::buildCompressorTable() const {
-	return static_cast<const MarlinDictionaryCompress *>(this)->buildCompressorTable();
+template<typename TSource, typename MarlinIdx>
+auto TMarlin<TSource,MarlinIdx>::buildCompressorTable() const -> std::unique_ptr<std::vector<CompressorTableIdx>> {
+	return reinterpret_cast<const TCompress<TSource,MarlinIdx> *>(this)->buildCompressorTable();
 }
 
-ssize_t MarlinDictionary::compress(View<const TSource> src, View<uint8_t> dst) const {
-	return static_cast<const MarlinDictionaryCompress *>(this)->compress(src,dst);
+template<typename TSource, typename MarlinIdx>
+ssize_t TMarlin<TSource,MarlinIdx>::compress(View<const TSource> src, View<uint8_t> dst) const {
+	return reinterpret_cast<const TCompress<TSource,MarlinIdx> *>(this)->compress(src,dst);
 }
 
+////////////////////////////////////////////////////////////////////////
+//
+// Explicit Instantiations
+#include "instantiations.h"
+INSTANTIATE_MEMBER(buildCompressorTable() const -> std::unique_ptr<std::vector<CompressorTableIdx>>)	
+INSTANTIATE_MEMBER(compress(View<const typename TMarlin::TSource_Type> src, View<uint8_t> dst) const -> ssize_t)	
 

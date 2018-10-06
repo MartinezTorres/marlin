@@ -42,7 +42,7 @@ SOFTWARE.
 #include "marlin.hpp"
 extern "C" {
 #else
-struct MarlinDictionary;
+struct Marlin;
 #endif
 
 /*! 
@@ -59,7 +59,7 @@ struct MarlinDictionary;
  *         1: if data is a repetition of a single byte
  *         positive: size of the compressed buffer
 */
-ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize);
+ssize_t Marlin_compress(const Marlin *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize);
 
 /*! 
  * Uncompresses src to dst using dictionary dict.
@@ -73,7 +73,7 @@ ssize_t Marlin_compress(const MarlinDictionary *dict, uint8_t* dst, size_t dstCa
  * \return negative: error occurred
  *         positive: number of uncompressed bytes (must match dstSize
 */
-ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize);
+ssize_t Marlin_decompress(const Marlin *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize);
 
 /*! 
  * Builds an optimal for a 8 bit memoryless source. Dictionary must be freed with Marlin_free_dictionary.
@@ -88,21 +88,21 @@ ssize_t Marlin_decompress(const MarlinDictionary *dict, uint8_t* dst, size_t dst
  * \return null: error occurred
  *         otherwise: newly allocated dictionary
 */
-MarlinDictionary *Marlin_build_dictionary(const char *name, const double hist[256]);
+Marlin *Marlin_build_dictionary(const char *name, const double hist[256]);
 
 /*! 
  * Frees a previously built Marlin Dictionary
  * 
  * \param dict dictionary to free
 */
-void Marlin_free_dictionary(MarlinDictionary *dict);
+void Marlin_free_dictionary(Marlin *dict);
 
 /*! 
  * Obtains a set of pre-built dictionaries (THose must not be freed).
  * 
  * \return pointer to a vector of dictionary pointers ended in nullptr
 */
-const MarlinDictionary **Marlin_get_prebuilt_dictionaries();
+const Marlin **Marlin_get_prebuilt_dictionaries();
 
 /*! 
  * Estimates how much space a dictionary will take to compress a source with a histogram hist.
@@ -110,7 +110,7 @@ const MarlinDictionary **Marlin_get_prebuilt_dictionaries();
  * \return negative: error occurred
  *         positive: expected space used to compress hist using dictionary dict
 */
-const MarlinDictionary * Marlin_estimate_best_dictionary(const MarlinDictionary **dict, const uint8_t* src, size_t srcSize);
+const Marlin * Marlin_estimate_best_dictionary(const Marlin **dict, const uint8_t* src, size_t srcSize);
 
 #if defined (__cplusplus)
 }
