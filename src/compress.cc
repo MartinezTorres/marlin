@@ -121,7 +121,7 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 			MarlinIdx ms = source2marlin[ss>>shift];
 			bool isUnrepresented = ms==unrepresentedSymbolToken;
 			if (isUnrepresented) {
-				printf("unrepresented\n");
+				//printf("unrepresented\n");
 				if (j) *out++ = j; // Finish current word, if any;
 				*out++ = j = 0;
 				*reinterpret_cast<TSource *&>(out)++ = ss;
@@ -255,7 +255,6 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 		
 		// Special case: empty! Nothing to compress.
 		if (src.nElements()==0) return 0;
-
 
 		// Special case: the entire block is made of one symbol!
 		{

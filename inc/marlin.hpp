@@ -33,6 +33,7 @@ SOFTWARE.
 
 #include "marlin.h"
 
+#include <iostream>
 #include <vector>
 #include <map>
 #include <memory>
@@ -144,7 +145,7 @@ private:
 
 }
 
-typedef marlin::TMarlin<uint8_t,uint16_t> Marlin;
+typedef marlin::TMarlin<uint8_t,uint8_t> Marlin;
 
 #endif
 #endif

@@ -189,7 +189,6 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 	}
 
 
-
 	size_t decompressSlow(View<const uint8_t> src, View<TSource> dst) const {
 		
 		const uint8_t *i8 = src.start;
@@ -216,7 +215,6 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 		
 		return dst.nElements();
 	}
-
 
 
 	std::unique_ptr<std::vector<TSource>> buildDecompressorTable() const {
@@ -270,17 +268,20 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 		for (size_t i=0; i<dst.nElements(); i++)
 			dst.start[i] = marlinAlphabet.front().sourceSymbol;
 
+		View<const uint8_t> marlinSrc = marlin::make_view(src.start,src.end-(dst.nElements()*shift/8));
+		View<const uint8_t> shiftSrc  = marlin::make_view(src.end-(dst.nElements()*shift/8),src.end);
+
 		if (false) {
-			decompressSlow(src, dst);
+			decompressSlow(marlinSrc, dst);
 		} else if (K==8 and maxWordSize==3) {
-			decompress8<uint32_t>(src, dst);
+			decompress8<uint32_t>(marlinSrc, dst);
 		} else if (K==8 and maxWordSize==7) {
-			decompress8<uint64_t>(src, dst);
+			decompress8<uint64_t>(marlinSrc, dst);
 		} else {
-			decompressSlow(src, dst);
+			decompressSlow(marlinSrc, dst);
 		}
 				
-		return padding + shift8(src, dst);
+		return padding + shift8(shiftSrc, dst);
 	}
 };
 }
