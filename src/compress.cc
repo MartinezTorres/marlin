@@ -277,11 +277,12 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 		}
 
 		// Encode Marlin, with rare symbols preceded by an empty word
+		View<uint8_t> marlinDst = marlin::make_view(dst.start,dst.end-(src.nElements()*shift/8));
 		ssize_t marlinSize;
 		if (K==8) {
-			marlinSize = compressMarlin8(src, dst);
+			marlinSize = compressMarlin8(src, marlinDst);
 		} else {
-			marlinSize = compressMarlinReference(src, dst);
+			marlinSize = compressMarlinReference(src, marlinDst);
 		}
 		
 		// If the encoded size is negative means that Marlin could not provide any meaningful compression, and the whole stream will be copied.
