@@ -69,7 +69,7 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 		uint64_t *o64end = reinterpret_cast<uint64_t *>(dst.end);
 
 		while (o64 != o64end) {
-			*o64++ += _pdep_u64(*reinterpret_cast<const uint64_t *>(i8), mask);
+			*o64++ |= _pdep_u64(*reinterpret_cast<const uint64_t *>(i8), mask);
 			i8 += shift;
 		}
 		
@@ -94,93 +94,39 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 		while (i8<src.end-9) {
 			
 			uint32_t v32 = (*(const uint32_t *)i8);
-			/*if (((v32 - 0x01010101UL) & ~v32 & 0x80808080UL)) { // Fast test for zero
-
-				uint8_t in = *i8++;
-				if (in==0) {
-					*o8++ = *i8++;
-					value = (value<<8) + 0;
-				} else {
-					value = (value<<8) + in;
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
+			i8 += sizeof(uint32_t);
+			value = (value<<32) +  __builtin_bswap32(v32);
+			{
+				T v = ((const T *)D)[(value>>24) & overlappingMask];
+				*((T *)o8) = v & clearSizeMask;
+				o8 += v >> ((sizeof(T)-1)*8);
 				
-				in = *i8++;
-				if (in==0) {
-					*o8++ = *i8++;
-					value = (value<<8) + 0;
-				} else {
-					value = (value<<8) + in;
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
-				
-				in = *i8++;
-				if (in==0) {
-					*o8++ = *i8++;
-					value = (value<<8) + 0;
-				} else {
-					value = (value<<8) + in;
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
-				
-				in = *i8++;
-				if (in==0) {
-					*o8++ = *i8++;
-					value = (value<<8) + 0;
-				} else {
-					value = (value<<8) + in;
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
-				
-			} else { // Has no zeroes! hurray! */
-				i8+=4;
-				//clearSizeMask = 0;
-				value = (value<<32) +  __builtin_bswap32(v32);
-				{
-					T v = ((const T *)D)[(value>>24) & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-					
-				}
+			}
 
-				{
-					T v = ((const T *)D)[(value>>16) & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
+			{
+				T v = ((const T *)D)[(value>>16) & overlappingMask];
+				*((T *)o8) = v & clearSizeMask;
+				o8 += v >> ((sizeof(T)-1)*8);
+			}
 
-				{
-					T v = ((const T *)D)[(value>>8) & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
+			{
+				T v = ((const T *)D)[(value>>8) & overlappingMask];
+				*((T *)o8) = v & clearSizeMask;
+				o8 += v >> ((sizeof(T)-1)*8);
+			}
 
-				{
-					T v = ((const T *)D)[value & overlappingMask];
-					*((T *)o8) = v & clearSizeMask;
-					o8 += v >> ((sizeof(T)-1)*8);
-				}
-			//}
+			{
+				T v = ((const T *)D)[value & overlappingMask];
+				*((T *)o8) = v & clearSizeMask;
+				o8 += v >> ((sizeof(T)-1)*8);
+			}
 		}
 		
 		while (i8<src.end) {
-			uint8_t in = *i8++;
-			if (in==0) {
-				*o8++ = *i8++;
-			} else {
-				value = (value<<8) + in;
-				const T *v = &((const T *)D)[value & overlappingMask];
-				memcpy(o8, v, std::min(sizeof(T)-1,size_t(*v >> ((sizeof(T)-1)*8))));
-				o8 += *v >> ((sizeof(T)-1)*8);
-			}
+			value = (value<<8) + *i8++;
+			const T *v = &((const T *)D)[value & overlappingMask];
+			memcpy(o8, v, std::min(sizeof(T)-1,size_t(*v >> ((sizeof(T)-1)*8))));
+			o8 += *v >> ((sizeof(T)-1)*8);
 		}				
 		// if (endMarlin-i8 != 0) std::cerr << " {" << endMarlin-i8 << "} "; // SOLVED! PROBLEM IN THE CODE
 		// if (o8end-o8 != 0) std::cerr << " [" << o8end-o8 << "] "; // SOLVED! PROBLEM IN THE CODE
@@ -196,19 +142,17 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 		
 		uint64_t value = 0;
 		uint64_t valueBits = O;
-		while (i8 < src.end) {
-
+		while (i8 < src.end or valueBits>=K+O) {
 			while (valueBits < K+O) {
 				value += uint64_t(*i8++) << (64-8-valueBits);
 				valueBits += 8;
 			}
 			
 			size_t wordIdx = value >> (64-(K+O));
-			if (not wordIdx) { printf("%d %d\n", i8-src.start, wordIdx); exit(-1); }
 			
 			value = value << K;
 			valueBits -= K;
-			
+						
 			for (auto &&c : words[wordIdx])
 				*o8++ = marlinAlphabet[c].sourceSymbol;
 		}
@@ -264,12 +208,35 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 			padding += sizeof(TSource);
 		}
 		
-		// Initialization, which might be optional
-		for (size_t i=0; i<dst.nElements(); i++)
-			dst.start[i] = marlinAlphabet.front().sourceSymbol;
+		ssize_t nUnrepresentedSymbols = *src.start++;
+		
+		ssize_t unrepresentedSize = nUnrepresentedSymbols * ( sizeof(TSource) + (
+			dst.nElements() < 0x100 ? sizeof(uint8_t) :
+			dst.nElements() < 0x10000 ? sizeof(uint16_t) :
+			dst.nElements() < 0x100000000ULL ? sizeof(uint32_t) :sizeof(uint64_t)
+			));
+		
+		ssize_t residualSize = dst.nElements()*shift/8;
 
-		View<const uint8_t> marlinSrc = marlin::make_view(src.start,src.end-(dst.nElements()*shift/8));
-		View<const uint8_t> shiftSrc  = marlin::make_view(src.end-(dst.nElements()*shift/8),src.end);
+		ssize_t marlinSize = src.end-src.start-unrepresentedSize-residualSize;
+
+		
+		// Initialization, which might be optional
+		if (sizeof(TSource) == 1) {
+			
+			memset(dst.start, marlinAlphabet.front().sourceSymbol, dst.nBytes());
+		} else {
+			TSource s = marlinAlphabet.front().sourceSymbol;
+			for (size_t i=0; i<dst.nElements(); i++)
+				dst.start[i] = s;
+		}
+
+		View<const uint8_t> marlinSrc =
+			marlin::make_view(src.start,src.start+marlinSize);
+		View<const uint8_t> unrepresentedSrc = 
+			marlin::make_view(marlinSrc.end,marlinSrc.end+unrepresentedSize);
+		View<const uint8_t> shiftSrc  = 
+			marlin::make_view(unrepresentedSrc.end,unrepresentedSrc.end+residualSize);
 
 		if (false) {
 			decompressSlow(marlinSrc, dst);
@@ -278,7 +245,27 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 		} else if (K==8 and maxWordSize==7) {
 			decompress8<uint64_t>(marlinSrc, dst);
 		} else {
+			//printf("Slow because: %lu %lu\n",K, maxWordSize);
 			decompressSlow(marlinSrc, dst);
+		}
+		
+		//if (nUnrepresentedSymbols) printf("%u %u %u\n",  nUnrepresentedSymbols, unrepresentedSize, dst.nElements());
+		// Place unrepresented symbols
+		while (unrepresentedSrc.start < unrepresentedSrc.end) {
+
+			size_t idx;
+			if (dst.nElements() < 0x100) {
+				idx = *reinterpret_cast<const uint8_t *&>(unrepresentedSrc.start)++;	
+			} else if (dst.nElements() < 0x10000) {
+				idx = *reinterpret_cast<const uint16_t *&>(unrepresentedSrc.start)++;	
+			} else if (dst.nElements() < 0x100000000ULL) {
+				idx = *reinterpret_cast<const uint32_t *&>(unrepresentedSrc.start)++;	
+			} else {
+				idx = *reinterpret_cast<const uint64_t *&>(unrepresentedSrc.start)++;	
+			}
+//			printf("%d \n", idx, *reinterpret_cast<const TSource *&>(unrepresentedSrc.start));
+			dst.start[idx] = *reinterpret_cast<const TSource *&>(unrepresentedSrc.start)++;
+//			printf("%llu %llu\n", unrepresentedSrc.start, unrepresentedSrc.end);
 		}
 				
 		return padding + shift8(shiftSrc, dst);

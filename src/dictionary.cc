@@ -75,7 +75,6 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 
 		std::vector<double> PN;
 		for (auto &&a : marlinAlphabet) PN.push_back(a.p);
-//		PN.back() += alphabet.rareSymbolProbability;
 		for (size_t i=PN.size()-1; i; i--)
 			PN[i-1] += PN[i];
 
@@ -94,7 +93,7 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 		SNode root = std::make_shared<Node>();
 		
 		// Include empty word
-		pq.push(root);
+//		pq.push(root);
 		root->p = 1;
 		
 		for (size_t c=0; c<marlinAlphabet.size(); c++) {			
@@ -171,7 +170,8 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 			SNode n = q.top().first;
 			Word w = q.top().second;
 			q.pop();
-			ret.push_back(w);
+			if (not w.empty())
+				ret.push_back(w);
 			for (size_t i = 0; i<n->size(); i++) {
 				
 				Word w2 = w;
@@ -204,7 +204,8 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 				return lhs<rhs;
 			};
 			// Note the +1, we keep the empty word in the first position.
-			std::stable_sort(sortedDictionary.begin()+1, sortedDictionary.end(), cmp);
+//			std::stable_sort(sortedDictionary.begin()+1, sortedDictionary.end(), cmp);
+			std::stable_sort(sortedDictionary.begin(), sortedDictionary.end(), cmp);
 			
 			std::vector<Word> w(1U<<K,Word());
 			for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1U<<O)) {
@@ -294,10 +295,12 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 		
 		while (ret.size()>conf.at("minMarlinSymbols") and 
 			  (ret.size()>conf.at("maxMarlinSymbols") or
-			  ret.back().p<conf.at("purgeProbabilityThreshold"))) {
-			
+			  ret.back().p<conf.at("purgeProbabilityThreshold"))) 
+		{
+			ret.front().p += ret.back().p; //Unrepresented symbols will be coded as the most probable symbol
 			ret.pop_back();
 		}
+		
 		return ret;
 	}
 
@@ -378,19 +381,19 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 
 template<typename TSource, typename MarlinIdx>
 auto TMarlin<TSource,MarlinIdx>::buildMarlinAlphabet() const -> std::vector<MarlinSymbol> {
-	return reinterpret_cast<const TDictionary<TSource,MarlinIdx> *>(this)->buildMarlinAlphabet();
+	return static_cast<const TDictionary<TSource,MarlinIdx> *>(this)->buildMarlinAlphabet();
 }
 
 
 template<typename TSource, typename MarlinIdx>
 double TMarlin<TSource,MarlinIdx>::calcEfficiency() const {
-	return reinterpret_cast<const TDictionary<TSource,MarlinIdx> *>(this)->calcEfficiency();
+	return static_cast<const TDictionary<TSource,MarlinIdx> *>(this)->calcEfficiency();
 }
 
 
 template<typename TSource, typename MarlinIdx>
 auto TMarlin<TSource,MarlinIdx>::buildDictionary() const -> std::vector<Word> {
-	return reinterpret_cast<const TDictionary<TSource,MarlinIdx> *>(this)->buildDictionary();
+	return static_cast<const TDictionary<TSource,MarlinIdx> *>(this)->buildDictionary();
 }
 
 ////////////////////////////////////////////////////////////////////////

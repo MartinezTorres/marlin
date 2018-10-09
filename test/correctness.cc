@@ -30,7 +30,7 @@ static bool testMini() {
 	
 	Marlin::Configuration conf;
 	conf["K"] = 8;
-	conf["O"] = 0;
+	conf["O"] = 1;
 	//conf["debug"] = 99;
 	conf["purgeProbabilityThreshold"] = 1e-99;	
 	
@@ -124,6 +124,6 @@ int main() {
 
 	return 
 		testMini() and
-		testLaplace() and
+		//testLaplace() and
 		true?0:-1;
 }

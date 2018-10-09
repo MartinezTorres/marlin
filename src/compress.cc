@@ -98,7 +98,11 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 		}
 	};
 
-	ssize_t compressMarlin8(View<const TSource> src, View<uint8_t> dst) const {
+	ssize_t compressMarlin8(
+		View<const TSource> src, 
+		View<uint8_t> dst, 
+		std::vector<size_t> &unrepresentedSymbols) const 
+	{
 		
 		MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
 		JumpTable jump(K, O, unrepresentedSymbolToken+1);	
@@ -112,6 +116,16 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 		const TSource *in    = src.start;
 
 		CompressorTableIdx j = 0; 
+		
+		//We look for the word that sets up the machine state.
+		for (size_t i=0; i<(1<<K); i++) {
+			if (words[i].size()==1 and words[i].front() == source2marlin[*in>>shift]) {
+				j = i;
+				in++;
+				break;
+			}
+		}
+		
 		while (in<src.end) {
 			
 			if (dst.end-out<16) return -1;	// TODO: find the exact value
@@ -119,14 +133,10 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 			TSource ss = *in++;
 			
 			MarlinIdx ms = source2marlin[ss>>shift];
-			bool isUnrepresented = ms==unrepresentedSymbolToken;
-			if (isUnrepresented) {
-				//printf("unrepresented\n");
-				if (j) *out++ = j; // Finish current word, if any;
-				*out++ = j = 0;
-				*reinterpret_cast<TSource *&>(out)++ = ss;
-				//*out++ = ss & ((1<<shift)-1);
-				continue;
+			if (ms==unrepresentedSymbolToken) {
+				unrepresentedSymbols.push_back(in-src.start-1);
+				ms = 0; // 0 must be always the most probable symbol;
+				//printf("%04x %02x\n", in-src.start-1, ss);
 			}
 			
 			CompressorTableIdx jOld = j;
@@ -140,10 +150,13 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 		return out - dst.start;
 	}
 	
-	ssize_t compressMarlinReference(View<const TSource> src, View<uint8_t> dst) const {
+	ssize_t compressMarlinReference(
+		View<const TSource> src, 
+		View<uint8_t> dst, 
+		std::vector<size_t> &unrepresentedSymbols) const 
+	{
 		
 		MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
-		JumpTable jump(K, O, unrepresentedSymbolToken+1);
 		
 		std::array<MarlinIdx, 1U<<(sizeof(TSource)*8)> source2marlin;
 		source2marlin.fill(unrepresentedSymbolToken);
@@ -152,30 +165,38 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 
 			  uint8_t *out   = dst.start;
 		const TSource *in    = src.start;
-
-
-		std::map<Word, size_t> wordMap;
-		for (size_t i=0; i<words.size(); i++) 
-			wordMap[words[i]] = i;
 		
-		uint32_t value = 0;
+		std::vector< std::map<Word, size_t> > wordMaps(1<<O);
+		for (size_t i=0; i<words.size(); i++) 
+			wordMaps[i>>K][words[i]] = i&((1<<K)-1);
+		
+		uint32_t value = 0, chapter = 0;
 		 int32_t valueBits = 0;
 		Word word;
+		
+		auto emitWord = [&](){
+			value |= wordMaps[chapter][word] << (32 - K - valueBits);
+			valueBits += K;
+			chapter = wordMaps[chapter][word] & ((1<<O)-1);
+			word.clear();
+		};
+		
 		while (in<src.end) {				
 			
 			TSource ss = *in++;
 			MarlinIdx ms = source2marlin[ss>>shift];
 			
+			if (ms==unrepresentedSymbolToken) {
+				unrepresentedSymbols.push_back(in-src.start-1);
+				ms = 0; // 0 must be always the most probable symbol;
+			}
+			
 			word.push_back(ms);
 			
-			if (wordMap.count(word) == 0) {
+			if (wordMaps[chapter].count(word) == 0) {
 				
 				word.pop_back();
-
-				value += wordMap[word] << (32 - K - valueBits);
-				valueBits += K;
-				
-				word.clear();
+				emitWord();
 				word.push_back(ms);
 			}
 
@@ -186,10 +207,8 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 			}		
 			
 		}
-		if (word.size()) {
-			value += wordMap[word] << (32 - K - valueBits);
-			valueBits += K;
-		}
+		if (word.size())
+			emitWord();
 		
 		while (valueBits>0) {
 			*out++ = value >> 24;
@@ -227,7 +246,7 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 			for (size_t i=k*ChapterSize; i<(k+1)*ChapterSize; i++) {
 				auto word = words[i];
 				size_t wordIdx = i;
-				while (not word.empty()) {
+				while (word.size() > 1) {
 					TSource lastSymbol = word.back();						
 					word.pop_back();
 					if (not positions[k].count(word)) throw(std::runtime_error("This word has no parent. SHOULD NEVER HAPPEN!!!"));
@@ -276,26 +295,62 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 			padding += sizeof(TSource);
 		}
 
-		// Encode Marlin, with rare symbols preceded by an empty word
-		View<uint8_t> marlinDst = marlin::make_view(dst.start,dst.end-(src.nElements()*shift/8));
+		size_t residualSize = src.nElements()*shift/8;
+
+
+		std::vector<size_t> unrepresentedSymbols;		
+		// This part, we encode the number of unrepresented symbols in a byte.
+		// We are optimistic and we hope that no unrepresented symbols are required.
+		*dst.start = 0;
+		
+		// Valid portion available to encode the marlin message.
+		View<uint8_t> marlinDst = marlin::make_view(dst.start+1,dst.end-residualSize);
 		ssize_t marlinSize;
 		if (K==8) {
-			marlinSize = compressMarlin8(src, marlinDst);
+			marlinSize = compressMarlin8(src, marlinDst, unrepresentedSymbols);
 		} else {
-			marlinSize = compressMarlinReference(src, marlinDst);
+			marlinSize = compressMarlinReference(src, marlinDst, unrepresentedSymbols);
 		}
 		
-		// If the encoded size is negative means that Marlin could not provide any meaningful compression, and the whole stream will be copied.
-		if (marlinSize < 0) {
+		size_t unrepresentedSize = unrepresentedSymbols.size() * ( sizeof(TSource) + (
+			src.nElements() < 0x100 ? sizeof(uint8_t) :
+			src.nElements() < 0x10000 ? sizeof(uint16_t) :
+			src.nElements() < 0x100000000ULL ? sizeof(uint32_t) :sizeof(uint64_t)
+			));
+		
+		
+		//if (unrepresentedSize) printf("%d \n", unrepresentedSize);
+		// If not worth encoding, we store raw.
+		if (marlinSize < 0 	// If the encoded size is negative means that Marlin could not provide any meaningful compression, and the whole stream will be copied.
+			or unrepresentedSymbols.size() > 255 
+			or 1 + marlinSize + unrepresentedSize + residualSize > src.nBytes()) {
+
 			memcpy(dst.start,src.start,src.nBytes());
 			return padding + src.nBytes();
 		}
+
+		*dst.start++ = unrepresentedSymbols.size();
+		dst.start += marlinSize;
+		
+		
+		// Encode unrepresented symbols
+		for (auto &s : unrepresentedSymbols) {
+			if (src.nElements() < 0x100) {
+				*reinterpret_cast<uint8_t *&>(dst.start)++ = s;	
+			} else if (src.nElements() < 0x10000) {
+				*reinterpret_cast<uint16_t *&>(dst.start)++ = s;	
+			} else if (src.nElements() < 0x100000000ULL) {
+				*reinterpret_cast<uint32_t *&>(dst.start)++ = s;	
+			} else {
+				*reinterpret_cast<uint64_t *&>(dst.start)++ = s;	
+			}
+			*reinterpret_cast<TSource *&>(dst.start)++ = src.start[s];	
+		}
 		
 		// Encode residuals
-		dst.start += marlinSize;
-		size_t residualSize = shift8(src, dst);
+		shift8(src, dst);
 		
-		return padding + marlinSize + residualSize; 
+		return padding + 1 + marlinSize + unrepresentedSize + residualSize; 
 	}
 
 };
@@ -303,12 +358,12 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 
 template<typename TSource, typename MarlinIdx>
 auto TMarlin<TSource,MarlinIdx>::buildCompressorTable() const -> std::unique_ptr<std::vector<CompressorTableIdx>> {
-	return reinterpret_cast<const TCompress<TSource,MarlinIdx> *>(this)->buildCompressorTable();
+	return static_cast<const TCompress<TSource,MarlinIdx> *>(this)->buildCompressorTable();
 }
 
 template<typename TSource, typename MarlinIdx>
 ssize_t TMarlin<TSource,MarlinIdx>::compress(View<const TSource> src, View<uint8_t> dst) const {
-	return reinterpret_cast<const TCompress<TSource,MarlinIdx> *>(this)->compress(src,dst);
+	return static_cast<const TCompress<TSource,MarlinIdx> *>(this)->compress(src,dst);
 }
 
 ////////////////////////////////////////////////////////////////////////

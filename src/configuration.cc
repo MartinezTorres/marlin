@@ -36,10 +36,12 @@ std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf(
 	TMarlin<TSource,MarlinIdx>::Configuration conf) {
 	
 	conf.emplace("K",8);
-	conf.emplace("O",2);
+	conf.emplace("O",4);
 	
 	conf.emplace("debug",1);
-	conf.emplace("purgeProbabilityThreshold",1e-99);
+//	conf.emplace("purgeProbabilityThreshold",1e-99);
+//	conf.emplace("purgeProbabilityThreshold",1e-6);
+	conf.emplace("purgeProbabilityThreshold",0.5/4096/4);
 	conf.emplace("iterations",5);
 	conf.emplace("minMarlinSymbols", std::max(1U<<size_t(conf.at("O")),8U));
 	conf.emplace("maxMarlinSymbols",(1U<<size_t(conf.at("K")))-1);
@@ -59,17 +61,19 @@ std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf(
 	}
 	
 	if (not conf.count("maxWordSize")) {
-		conf["maxWordSize"] = 15;
-		double e15 = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
-		conf["maxWordSize"] = 7;
-		double e7 = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
-		conf["maxWordSize"] = 3;
-		double e3 = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
-		if (e7>1.0001*e3) {
-			conf["maxWordSize"] = 7;
-		}
-		if (e15>1.0001*e7) {
-			conf["maxWordSize"] = 15;
+		
+		//auto validWordSizes = {3, 7, 15, 31, 63};
+		auto validWordSizes = {3, 7};
+		double bestEfficiency = 0.;
+		for (auto &sz : validWordSizes) {
+			
+			auto testConf = conf;
+			testConf["maxWordSize"] = sz;
+			double testEfficiency = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, testConf).efficiency;
+			if (testEfficiency > 1.0001*bestEfficiency) {
+				bestEfficiency = testEfficiency;
+				conf = testConf;
+			}
 		}
 	}
 	
