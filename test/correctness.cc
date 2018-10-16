@@ -124,6 +124,6 @@ int main() {
 
 	return 
 		testMini() and
-//		testLaplace() and
+		testLaplace() and
 		true?0:-1;
 }
