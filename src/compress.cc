@@ -31,6 +31,9 @@ SOFTWARE.
 #include <cstring>
 #include <algorithm>
 
+#define   LIKELY(condition) (__builtin_expect(static_cast<bool>(condition), 1))
+#define UNLIKELY(condition) (__builtin_expect(static_cast<bool>(condition), 0))
+
 using namespace marlin;
 
 namespace {
@@ -46,6 +49,7 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 	using TMarlin<TSource, MarlinIdx>::O;
 	using TMarlin<TSource, MarlinIdx>::shift;
 	using TMarlin<TSource, MarlinIdx>::maxWordSize;
+	using TMarlin<TSource, MarlinIdx>::isSkip;
 	using TMarlin<TSource, MarlinIdx>::conf;
 	
 	using TMarlin<TSource, MarlinIdx>::words;
@@ -78,7 +82,6 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 	
 	class JumpTable {
 
-		constexpr static const size_t unalignment = 8; // Too much aligned reads break cache
 		const size_t alphaStride;  // Bit stride of the jump table corresponding to the word dimension
 		const size_t wordStride;  // Bit stride of the jump table corresponding to the word dimension
 	public:
@@ -89,16 +92,18 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 			
 		template<typename T>
 		void initTable(T &table) {
-			table = T(((1<<wordStride)+unalignment)*(1<<alphaStride),CompressorTableIdx(-1));
+			table = T(((1<<wordStride))*(1<<alphaStride),CompressorTableIdx(-1));
 		}
 		
 		template<typename T, typename T0, typename T1>
-		T &operator()(T *table, const T0 &word, const T1 &nextLetter) const { 
-			return table[(word&((1<<wordStride)-1))+(nextLetter*((1<<wordStride)+unalignment))];
+		inline T &operator()(T *table, const T0 &word, const T1 &nextLetter) const { 
+			auto v = (word&((1<<wordStride)-1))+(nextLetter<<wordStride);
+//			auto v = ((word&((1<<wordStride)-1))<<alphaStride)+nextLetter;
+			return table[v];
 		}
 	};
 
-	ssize_t compressMarlin8(
+	ssize_t compressMarlin8 (
 		View<const TSource> src, 
 		View<uint8_t> dst, 
 		std::vector<size_t> &unrepresentedSymbols) const 
@@ -116,15 +121,97 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 		const TSource *in    = src.start;
 
 		CompressorTableIdx j = 0; 
+
 		
 		//We look for the word that sets up the machine state.
-		for (size_t i=0; i<(1<<K); i++) {
-			if (words[i].size()==1 and words[i].front() == source2marlin[*in>>shift]) {
-				j = i;
-				in++;
-				break;
+		{		
+			TSource ss = *in++;
+			
+			MarlinIdx ms = source2marlin[ss>>shift];
+			if (ms==unrepresentedSymbolToken) {
+				unrepresentedSymbols.push_back(in-src.start-1);
+				ms = 0; // 0 must be always the most probable symbol;
+				//printf("%04x %02x\n", in-src.start-1, ss);
+			}
+			
+			for (size_t i=0; i<size_t(1<<K); i++) {
+				
+				if (words[i].size()==1 and words[i].front() == ms) {
+					j = i;
+					break;
+				}
 			}
 		}
+		
+		const uint8_t shift_local = shift;
+		while (in<src.end) {
+			
+			MarlinIdx ms = source2marlin[(*in++)>>shift_local];
+			if (ms==unrepresentedSymbolToken) {
+				unrepresentedSymbols.push_back(in-src.start-1);
+				ms = 0; // 0 must be always the most probable symbol;
+				//printf("%04x %02x\n", in-src.start-1, ss);
+			}
+			
+			*out = j & 0xFF;
+			j = jump(compressorTablePointer, j, ms);
+			
+			if (j & FLAG_NEXT_WORD) {
+				out++;
+			}
+
+			if (dst.end-out<16) return -1;	// TODO: find the exact value
+		}
+
+
+		//if (not (j & FLAG_NEXT_WORD)) 
+		*out++ = j & 0xFF;
+		
+		return out - dst.start;
+	}
+
+	ssize_t compressMarlinFast(
+		View<const TSource> src, 
+		View<uint8_t> dst, 
+		std::vector<size_t> &unrepresentedSymbols) const 
+	{
+		
+		MarlinIdx unrepresentedSymbolToken = marlinAlphabet.size();
+		JumpTable jump(K, O, unrepresentedSymbolToken+1);	
+		
+		std::array<MarlinIdx, 1U<<(sizeof(TSource)*8)> source2marlin;
+		source2marlin.fill(unrepresentedSymbolToken);
+		for (size_t i=0; i<marlinAlphabet.size(); i++)
+			source2marlin[marlinAlphabet[i].sourceSymbol>>shift] = i;
+
+			  uint8_t *out   = dst.start;
+		const TSource *in    = src.start;
+
+		CompressorTableIdx j = 0; 
+
+		
+		//We look for the word that sets up the machine state.
+		{		
+			TSource ss = *in++;
+			
+			MarlinIdx ms = source2marlin[ss>>shift];
+			if (ms==unrepresentedSymbolToken) {
+				unrepresentedSymbols.push_back(in-src.start-1);
+				ms = 0; // 0 must be always the most probable symbol;
+				//printf("%04x %02x\n", in-src.start-1, ss);
+			}
+			
+			for (size_t i=0; i<size_t(1<<K); i++) {
+				
+				if (words[i].size()==1 and words[i].front() == ms) {
+					j = i;
+					break;
+				}
+			}
+		}
+
+		uint32_t value = 0;
+		 int32_t valueBits = 0;
 		
 		while (in<src.end) {
 			
@@ -142,13 +229,30 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 			CompressorTableIdx jOld = j;
 			j = jump(compressorTablePointer, j, ms);
 			
-			if (j & FLAG_NEXT_WORD) 
-				*out++ = jOld & 0xFF;
+			if (j & FLAG_NEXT_WORD) {
+				
+				value |= ((jOld | FLAG_NEXT_WORD) ^ FLAG_NEXT_WORD) << (32 - K - valueBits);
+				valueBits += K;
+			}
+			
+			while (valueBits>8) {
+				*out++ = value >> 24;
+				value = value << 8;
+				valueBits -= 8;
+			}
 		}
-		if (j) *out++ = j;
+
+		value |= ((j | FLAG_NEXT_WORD) ^ FLAG_NEXT_WORD) << (32 - K - valueBits);
+		valueBits += K;
+		
+		while (valueBits>0) {
+			*out++ = value >> 24;
+			value = value << 8;
+			valueBits -= 8;
+		}
 		
 		return out - dst.start;
-	}
+	}	
 	
 	ssize_t compressMarlinReference(
 		View<const TSource> src, 
@@ -181,7 +285,9 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 			word.clear();
 		};
 		
-		while (in<src.end) {				
+		while (in<src.end) {
+			
+			if (dst.end-out<16) return -1;	// TODO: find the exact value		
 			
 			TSource ss = *in++;
 			MarlinIdx ms = source2marlin[ss>>shift];
@@ -268,6 +374,8 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 	}
 
 	ssize_t compress(View<const TSource> src, View<uint8_t> dst) const {
+		
+		//memcpy(dst.start,src.start,src.nBytes()); return src.nBytes();
 
 		// Assertions
 		if (dst.nBytes() < src.nBytes()) return -1; //TODO: Real error codes
@@ -305,11 +413,13 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 		
 		// Valid portion available to encode the marlin message.
 		View<uint8_t> marlinDst = marlin::make_view(dst.start+1,dst.end-residualSize);
-		ssize_t marlinSize;
-		if (K==8) {
+		ssize_t marlinSize = -1;
+		if (false) {
+			marlinSize = compressMarlinReference(src, marlinDst, unrepresentedSymbols);
+		} else if (K==8) {
 			marlinSize = compressMarlin8(src, marlinDst, unrepresentedSymbols);
 		} else {
-			marlinSize = compressMarlinReference(src, marlinDst, unrepresentedSymbols);
+			marlinSize = compressMarlinFast(src, marlinDst, unrepresentedSymbols);
 		}
 		
 		size_t unrepresentedSize = unrepresentedSymbols.size() * ( sizeof(TSource) + (
@@ -328,7 +438,8 @@ struct TCompress : TMarlin<TSource,MarlinIdx> {
 			memcpy(dst.start,src.start,src.nBytes());
 			return padding + src.nBytes();
 		}
-
+		
+		
 		*dst.start++ = unrepresentedSymbols.size();
 		dst.start += marlinSize;
 		

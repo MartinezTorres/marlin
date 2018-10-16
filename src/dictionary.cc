@@ -305,6 +305,17 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 	}
 
 
+
+	bool calcSkip() const {
+
+		bool valid = true;
+		for (auto w : words) 
+			if (w.size()>maxWordSize) 
+				valid=false;
+		return valid;
+	}
+
+
 	double calcEfficiency() const {
 
 		double meanLength = 0;
@@ -331,7 +342,7 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 		
 		std::vector<std::vector<double>> Pstates;
 		for (size_t k=0; k<(1U<<O); k++) {
-			std::vector<double> PstatesSingle(marlinAlphabet.size(), 0.);
+			std::vector<double> PstatesSingle(marlinAlphabet.size()+1, 0.);
 			PstatesSingle[0] = 1./(1U<<O);
 			Pstates.push_back(PstatesSingle);
 		}
@@ -347,15 +358,16 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 		size_t iterations = conf.at("iterations");
 			
 		while (iterations--) {
-
+			
 			// UPDATING STATE PROBABILITIES
 			{
 				for (auto &&pk : Pstates)
 					for (auto &&p : pk)
 						p = 0.;
 
-				for (size_t i=0; i<ret.size(); i++)
+				for (size_t i=0; i<ret.size(); i++) {
 					Pstates[i%(1U<<O)][ret[i].state] += ret[i].p;
+				}
 			}
 			
 			print(Pstates);
@@ -374,6 +386,7 @@ struct TDictionary : public TMarlin<TSource, MarlinIdx> {
 
 		return ret;
 	}
+	
 
 };
 
@@ -390,6 +403,11 @@ double TMarlin<TSource,MarlinIdx>::calcEfficiency() const {
 	return static_cast<const TDictionary<TSource,MarlinIdx> *>(this)->calcEfficiency();
 }
 
+template<typename TSource, typename MarlinIdx>
+bool TMarlin<TSource,MarlinIdx>::calcSkip() const {
+	return static_cast<const TDictionary<TSource,MarlinIdx> *>(this)->calcSkip();
+}
+
 
 template<typename TSource, typename MarlinIdx>
 auto TMarlin<TSource,MarlinIdx>::buildDictionary() const -> std::vector<Word> {
@@ -402,5 +420,6 @@ auto TMarlin<TSource,MarlinIdx>::buildDictionary() const -> std::vector<Word> {
 #include "instantiations.h"
 INSTANTIATE_MEMBER(buildMarlinAlphabet() const -> std::vector<MarlinSymbol>)	
 INSTANTIATE_MEMBER(calcEfficiency() const -> double)	
+INSTANTIATE_MEMBER(calcSkip() const -> bool)	
 INSTANTIATE_MEMBER(buildDictionary() const -> std::vector<Word>)	
 

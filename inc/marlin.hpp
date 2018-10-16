@@ -102,6 +102,7 @@ struct TMarlin {
 	//so the Marlin Symbol 0 is always corresponds to the most probable alphabet symbol.
 	const std::vector<Word> words = buildDictionary(); // All dictionary words.
 	const double efficiency       = calcEfficiency();  // Expected efficiency of the dictionary.
+	const bool isSkip             = calcSkip();        // If all words are small, we can do a faster decoding algorithm;
 	
 	/// DECOMPRESSOR STUFF
 	const std::unique_ptr<std::vector<TSource>> decompressorTableVector = buildDecompressorTable();	
@@ -138,6 +139,7 @@ private:
 	
 	std::vector<Word> buildDictionary() const;
 	double calcEfficiency() const;
+	bool calcSkip() const;
 
 	std::unique_ptr<std::vector<TSource>> buildDecompressorTable() const;
 	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTable() const;

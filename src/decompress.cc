@@ -48,6 +48,7 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 	using TMarlin<TSource, MarlinIdx>::O;
 	using TMarlin<TSource, MarlinIdx>::shift;
 	using TMarlin<TSource, MarlinIdx>::maxWordSize;
+	using TMarlin<TSource, MarlinIdx>::isSkip;
 	using TMarlin<TSource, MarlinIdx>::conf;
 	
 	using TMarlin<TSource, MarlinIdx>::words;
@@ -76,17 +77,13 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 		return reinterpret_cast<TSource *>(o64) - dst.start;
 	}
 
-		
 	template<typename T>
-	size_t decompress8(View<const uint8_t> src, View<TSource> dst) const {
+	size_t decompress8_skip(View<const uint8_t> src, View<TSource> dst) const {
 		
 		const uint8_t *i8    = src.start;
 			  TSource *o8    = dst.start;
 
-					const uint32_t overlappingMask = (1<<(8+O))-1;
-	//	constexpr const uint32_t overlappingMask = (1<<(8+CO))-1;
-					constexpr const T clearSizeMask = T(-1)>>8;
-	//	constexpr const T clearSizeMask = 0;
+		const uint32_t overlappingMask = (1<<(8+O))-1;
 		uint64_t value = 0;
 
 		auto D = decompressorTablePointer;
@@ -98,39 +95,194 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 			value = (value<<32) +  __builtin_bswap32(v32);
 			{
 				T v = ((const T *)D)[(value>>24) & overlappingMask];
-				*((T *)o8) = v & clearSizeMask;
+				*((T *)o8) = v;
 				o8 += v >> ((sizeof(T)-1)*8);
 				
 			}
 
 			{
 				T v = ((const T *)D)[(value>>16) & overlappingMask];
-				*((T *)o8) = v & clearSizeMask;
+				*((T *)o8) = v;
 				o8 += v >> ((sizeof(T)-1)*8);
 			}
 
 			{
 				T v = ((const T *)D)[(value>>8) & overlappingMask];
-				*((T *)o8) = v & clearSizeMask;
+				*((T *)o8) = v;
 				o8 += v >> ((sizeof(T)-1)*8);
 			}
 
 			{
 				T v = ((const T *)D)[value & overlappingMask];
-				*((T *)o8) = v & clearSizeMask;
+				*((T *)o8) = v;
 				o8 += v >> ((sizeof(T)-1)*8);
 			}
 		}
 		
 		while (i8<src.end) {
 			value = (value<<8) + *i8++;
-			const T *v = &((const T *)D)[value & overlappingMask];
-			memcpy(o8, v, std::min(sizeof(T)-1,size_t(*v >> ((sizeof(T)-1)*8))));
-			o8 += *v >> ((sizeof(T)-1)*8);
+			{
+				T v = ((const T *)D)[value & overlappingMask];
+				*((T *)o8) = v;
+				o8 += v >> ((sizeof(T)-1)*8);
+			}
 		}				
 		// if (endMarlin-i8 != 0) std::cerr << " {" << endMarlin-i8 << "} "; // SOLVED! PROBLEM IN THE CODE
 		// if (o8end-o8 != 0) std::cerr << " [" << o8end-o8 << "] "; // SOLVED! PROBLEM IN THE CODE
 
+		return dst.nElements();
+	}
+
+		
+	template<typename T, size_t KK>
+	size_t decompressKK(View<const uint8_t> src, View<TSource> dst) const {
+		
+		const uint8_t *i8    = src.start;
+			  TSource *o8    = dst.start;
+
+		const uint64_t overlappingMask = (1<<(K+O))-1;
+		const T clearSizeMask = T(-1)>>8;
+		const T clearSizeOverlay = T(marlinAlphabet.front().sourceSymbol) << ((sizeof(T)-1)*8);
+		uint64_t value = 0;
+
+		auto D = decompressorTablePointer;
+
+		constexpr size_t INCREMENT = KK<8?KK:KK/2;
+		constexpr size_t INCREMENTSHIFT = INCREMENT*8;
+
+		while (i8<src.end-INCREMENT) {
+
+			uint64_t vRead = 
+				(INCREMENT<=4?
+					__builtin_bswap32(*(const uint32_t *)i8):
+					__builtin_bswap64(*(const uint64_t *)i8));
+			i8 += INCREMENT;
+			value = (value<<INCREMENTSHIFT) +  (vRead>>((INCREMENT<=4?32:64)-INCREMENTSHIFT));
+
+			if (KK<8) {
+				{
+					T v = ((const T *)D)[(value>>(7*(KK%8))) & overlappingMask];
+					*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+					o8 += v >> ((sizeof(T)-1)*8);
+					
+				}
+
+				{
+					T v = ((const T *)D)[(value>>(6*(KK%8))) & overlappingMask];
+					*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+
+				{
+					T v = ((const T *)D)[(value>>(5*(KK%8))) & overlappingMask];
+					*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+
+				{
+					T v = ((const T *)D)[(value>>(4*(KK%8))) & overlappingMask];
+					*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+			}
+
+			{
+				{
+					T v = ((const T *)D)[(value>>(3*KK)) & overlappingMask];
+					*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+					o8 += v >> ((sizeof(T)-1)*8);
+					
+				}
+
+				{
+					T v = ((const T *)D)[(value>>(2*KK)) & overlappingMask];
+					*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+
+				{
+					T v = ((const T *)D)[(value>>(1*KK)) & overlappingMask];
+					*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+
+				{
+					T v = ((const T *)D)[(value>>(0*KK)) & overlappingMask];
+					*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+					o8 += v >> ((sizeof(T)-1)*8);
+				}
+			}
+		}
+		
+		uint64_t valueBits = O;
+		while (i8 < src.end or valueBits>=K+O) {
+			
+			while (valueBits < K+O) {
+				value = (value<<8) + uint64_t(*i8++);
+				valueBits += 8;
+			}
+			
+			size_t wordIdx = (value >> (valueBits-(K+O))) & overlappingMask;
+			
+			valueBits -= K;
+						
+			{
+				T v = ((const T *)D)[wordIdx];
+				*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+				o8 += v >> ((sizeof(T)-1)*8);
+			}
+		}
+		// if (endMarlin-i8 != 0) std::cerr << " {" << endMarlin-i8 << "} "; // SOLVED! PROBLEM IN THE CODE
+		// if (o8end-o8 != 0) std::cerr << " [" << o8end-o8 << "] "; // SOLVED! PROBLEM IN THE CODE
+
+		return dst.nElements();
+	}
+
+
+	template<typename T>
+	size_t decompressFast(View<const uint8_t> src, View<TSource> dst) const {
+		
+		
+		if (K==8 and isSkip) return decompress8_skip<T>(src,dst);
+		if (K==8) return decompressKK<T,8>(src,dst);
+
+		if (K==7) return decompressKK<T,7>(src,dst);
+		if (K==6) return decompressKK<T,6>(src,dst);
+		if (K==5) return decompressKK<T,5>(src,dst);
+		if (K==4) return decompressKK<T,4>(src,dst);
+
+		if (K==10) return decompressKK<T,10>(src,dst);
+		if (K==12) return decompressKK<T,12>(src,dst);
+		if (K==14) return decompressKK<T,14>(src,dst);
+		
+		const uint8_t *i8    = src.start;
+			  TSource *o8    = dst.start;
+
+		const T clearSizeMask = T(-1)>>8;
+		const T clearSizeOverlay = T(marlinAlphabet.front().sourceSymbol) << ((sizeof(T)-1)*8);
+
+		auto D = decompressorTablePointer;
+
+		uint64_t value = 0;
+		uint64_t valueBits = O;
+		while (i8 < src.end or valueBits>=K+O) {
+			while (valueBits < K+O) {
+				value += uint64_t(*i8++) << (64-8-valueBits);
+				valueBits += 8;
+			}
+			
+			size_t wordIdx = value >> (64-(K+O));
+			
+			value = value << K;
+			valueBits -= K;
+
+			{
+				T v = ((const T *)D)[wordIdx];
+				*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+				o8 += v >> ((sizeof(T)-1)*8);
+			}
+		}
+		
 		return dst.nElements();
 	}
 
@@ -222,10 +374,7 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 
 		
 		// Initialization, which might be optional
-		if (sizeof(TSource) == 1) {
-			
-			memset(dst.start, marlinAlphabet.front().sourceSymbol, dst.nBytes());
-		} else {
+		if (not isSkip) {
 			TSource s = marlinAlphabet.front().sourceSymbol;
 			for (size_t i=0; i<dst.nElements(); i++)
 				dst.start[i] = s;
@@ -240,10 +389,10 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 
 		if (false) {
 			decompressSlow(marlinSrc, dst);
-		} else if (K==8 and maxWordSize==3) {
-			decompress8<uint32_t>(marlinSrc, dst);
-		} else if (K==8 and maxWordSize==7) {
-			decompress8<uint64_t>(marlinSrc, dst);
+		} else if (maxWordSize==3) {
+			decompressFast<uint32_t>(marlinSrc, dst);
+		} else if (maxWordSize==7) {
+			decompressFast<uint64_t>(marlinSrc, dst);
 		} else {
 			//printf("Slow because: %lu %lu\n",K, maxWordSize);
 			decompressSlow(marlinSrc, dst);

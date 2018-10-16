@@ -36,16 +36,19 @@ std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf(
 	TMarlin<TSource,MarlinIdx>::Configuration conf) {
 	
 	conf.emplace("K",8);
-	conf.emplace("O",4);
+	conf.emplace("O",0);
 	
 	conf.emplace("debug",1);
 //	conf.emplace("purgeProbabilityThreshold",1e-99);
 //	conf.emplace("purgeProbabilityThreshold",1e-6);
-	conf.emplace("purgeProbabilityThreshold",0.5/4096/4);
+	conf.emplace("purgeProbabilityThreshold",0.5/4096/32);
+//	conf.emplace("purgeProbabilityThreshold",0.5/4096/8);
 	conf.emplace("iterations",5);
 	conf.emplace("minMarlinSymbols", std::max(1U<<size_t(conf.at("O")),8U));
 	conf.emplace("maxMarlinSymbols",(1U<<size_t(conf.at("K")))-1);
-		
+	conf["maxMarlinSymbols"] = std::min(conf["maxMarlinSymbols"], double((1U<<size_t(conf.at("K")))-1));
+	conf["maxMarlinSymbols"] = std::min(conf["maxMarlinSymbols"], double((1U<<(8*sizeof(MarlinIdx)))-1));
+
 	if (not conf.count("shift")) {
 		conf["shift"] = 0;
 		double best = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
@@ -70,7 +73,7 @@ std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf(
 			auto testConf = conf;
 			testConf["maxWordSize"] = sz;
 			double testEfficiency = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, testConf).efficiency;
-			if (testEfficiency > 1.0001*bestEfficiency) {
+			if (testEfficiency > 1.001*bestEfficiency) {
 				bestEfficiency = testEfficiency;
 				conf = testConf;
 			}
