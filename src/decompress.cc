@@ -52,8 +52,8 @@ struct TDecompress : TMarlin<TSource,MarlinIdx> {
 	using TMarlin<TSource, MarlinIdx>::conf;
 	
 	using TMarlin<TSource, MarlinIdx>::words;
-	using TMarlin<TSource, MarlinIdx>::sourceAlphabet;
 	using TMarlin<TSource, MarlinIdx>::marlinAlphabet;
+	using TMarlin<TSource, MarlinIdx>::marlinMostCommonSymbol;
 	using TMarlin<TSource, MarlinIdx>::decompressorTablePointer;
 	
 	

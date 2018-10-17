@@ -16,17 +16,17 @@ target_include_directories(marlin PRIVATE inc)
 ################################
 # Samples
 
-option(WITH_EXAMPLES "Build Examples" OFF)
-if(WITH_EXAMPLES)
+option(WITH_UTILS "Build Utilities" OFF)
+if(WITH_UTILS)
 
-    file(GLOB EXAMPLE_SRC_FILES ${PROJECT_SOURCE_DIR}/examples/*.cc)
+    file(GLOB UTILS_SRC_FILES ${PROJECT_SOURCE_DIR}/utils/*.cc)
     find_package( OpenCV REQUIRED )
-    ## from list of files we'll create examples example_name.cpp -> example_name
-    foreach(_example_file ${EXAMPLE_SRC_FILES})
-        get_filename_component(_example_name ${_example_file} NAME_WE)
-        add_executable(${_example_name} ${_example_file})
-        target_include_directories(${_example_name} PRIVATE inc)
-        target_link_libraries(${_example_name} marlin  ${OpenCV_LIBS})
+    ## from list of files we'll create utils util_name.cpp -> util_name
+    foreach(_util_file ${UTILS_SRC_FILES})
+        get_filename_component(_util_name ${_util_file} NAME_WE)
+        add_executable(${_util_name} ${_util_file})
+        target_include_directories(${_util_name} PRIVATE inc)
+        target_link_libraries(${_util_name} marlin  ${OpenCV_LIBS})
     endforeach()
 endif()
 

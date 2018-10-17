@@ -102,11 +102,12 @@ struct TMarlin {
 	//so the Marlin Symbol 0 is always corresponds to the most probable alphabet symbol.
 	const std::vector<Word> words = buildDictionary(); // All dictionary words.
 	const double efficiency       = calcEfficiency();  // Expected efficiency of the dictionary.
-	const bool isSkip             = calcSkip();        // If all words are small, we can do a faster decoding algorithm;
 	
 	/// DECOMPRESSOR STUFF
 	const std::unique_ptr<std::vector<TSource>> decompressorTableVector = buildDecompressorTable();	
 	const TSource* const decompressorTablePointer = decompressorTableVector->data();
+	const TSource marlinMostCommonSymbol = marlinAlphabet.front().sourceSymbol;
+	const bool isSkip = calcSkip();        // If all words are small, we can do a faster decoding algorithm;
 	ssize_t decompress(View<const uint8_t> src, View<TSource> dst) const;
 	ssize_t decompress(const std::vector<uint8_t> &src, std::vector<TSource> &dst) const {
 		return decompress(make_view(src), make_view(dst));
@@ -116,6 +117,8 @@ struct TMarlin {
 	typedef uint32_t CompressorTableIdx;      // Structured as: FLAG_NEXT_WORD Where to jump next	
 	const std::unique_ptr<std::vector<CompressorTableIdx>> compressorTableVector = buildCompressorTable();	
 	const CompressorTableIdx* const compressorTablePointer = compressorTableVector->data();	
+	const std::unique_ptr<std::vector<CompressorTableIdx>> compressorTableInitVector = buildCompressorTableInit();
+	const CompressorTableIdx* const compressorTableInitPointer = compressorTableInitVector->data();	
 	ssize_t compress(View<const TSource> src, View<uint8_t> dst) const;
 	ssize_t compress(const std::vector<TSource> &src, std::vector<uint8_t> &dst) const {
 		ssize_t r = compress(make_view(src), make_view(dst));
@@ -129,7 +132,34 @@ struct TMarlin {
 		std::string name_,
 		const std::vector<double> &sourceAlphabet_,
 		Configuration conf_ = Configuration()) 
-		: name(name_), conf(updateConf(sourceAlphabet_, conf_)), sourceAlphabet(sourceAlphabet_) {}
+		: 
+		name(name_), 
+		conf(updateConf(sourceAlphabet_, conf_)), 
+		sourceAlphabet(sourceAlphabet_) 
+		{}
+
+	TMarlin( 
+		std::string name_,
+		Configuration conf_,
+		double efficiency_,
+		const TSource* const decompressorTablePointer_,
+		TSource marlinMostCommonSymbol_,
+		bool isSkip_,
+		const CompressorTableIdx* const compressorTablePointer_,
+		const CompressorTableIdx* const compressorTableInitPointer_		
+	) : 
+		name(name_), 
+		conf(conf_),
+		efficiency(efficiency_),
+		decompressorTableVector(),
+		decompressorTablePointer(decompressorTablePointer_),
+		marlinMostCommonSymbol(marlinMostCommonSymbol_),
+		isSkip(isSkip_),
+		compressorTableVector(),
+		compressorTablePointer(compressorTablePointer_),
+		compressorTableInitVector(),
+		compressorTableInitPointer(compressorTableInitPointer_)
+		{}
 		
 private:
 	// Sets default configurations
@@ -143,6 +173,7 @@ private:
 
 	std::unique_ptr<std::vector<TSource>> buildDecompressorTable() const;
 	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTable() const;
+	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTableInit() const;
 };
 
 }
