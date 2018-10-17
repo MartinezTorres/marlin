@@ -36,7 +36,7 @@ std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf(
 	TMarlin<TSource,MarlinIdx>::Configuration conf) {
 	
 	conf.emplace("K",8);
-	conf.emplace("O",0);
+	conf.emplace("O",2);
 	
 	conf.emplace("debug",1);
 //	conf.emplace("purgeProbabilityThreshold",1e-99);
