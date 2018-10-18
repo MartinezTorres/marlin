@@ -125,6 +125,7 @@ struct TMarlinCompress {
 	typedef Word_<MarlinIdx>  Word;
 	typedef MarlinSymbol_<TSource> MarlinSymbol;
 	const size_t K,O,shift,maxWordSize;
+	double efficiency;
 	
 	// Structured as: FLAG_NEXT_WORD Where to jump next	
 	typedef uint32_t CompressorTableIdx;      
@@ -145,12 +146,29 @@ struct TMarlinCompress {
 	
 	TMarlinCompress(const TMarlinDictionary<TSource,MarlinIdx> &dictionary) :
 		K(dictionary.K), O(dictionary.O), shift(dictionary.shift), maxWordSize(dictionary.maxWordSize), 
+		efficiency(dictionary.efficiency),
 		unrepresentedSymbolToken(dictionary.marlinAlphabet.size()),
 		source2marlin(buildSource2marlin(dictionary)),
 		compressorTableVector(buildCompressorTable(dictionary)),
 		compressorTablePointer(compressorTableVector->data()),
 		compressorTableInitVector(buildCompressorTableInit(dictionary)),
 		compressorTableInitPointer(compressorTableInitVector->data())
+	{}
+
+	TMarlinCompress(
+		size_t K_, size_t O_, size_t shift_, size_t maxWordSize_, double efficiency_,
+		MarlinIdx unrepresentedSymbolToken_,
+		const std::array<MarlinIdx, 1U<<(sizeof(TSource)*8)> &source2marlin_,
+		const CompressorTableIdx* const compressorTablePointer_,
+		const CompressorTableIdx* const compressorTableInitPointer_
+		) :
+		K(K_), O(O_), shift(shift_), maxWordSize(maxWordSize_), efficiency(efficiency_),
+		unrepresentedSymbolToken(unrepresentedSymbolToken_),
+		source2marlin(source2marlin_),
+		compressorTableVector(),
+		compressorTablePointer(compressorTablePointer_),
+		compressorTableInitVector(),
+		compressorTableInitPointer(compressorTableInitPointer_)
 	{}
 
 	constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(CompressorTableIdx)-1);
@@ -185,6 +203,19 @@ struct TMarlinDecompress {
 		marlinMostCommonSymbol(dictionary.marlinAlphabet.front().sourceSymbol),
 		isSkip(dictionary.isSkip)
 	{}
+	
+	TMarlinDecompress(
+		size_t K_, size_t O_, size_t shift_, size_t maxWordSize_,
+		const TSource* const decompressorTablePointer_,
+		const TSource marlinMostCommonSymbol_,
+		const bool isSkip_
+		) :
+		K(K_), O(O_), shift(shift_), maxWordSize(maxWordSize_),
+		decompressorTableVector(),
+		decompressorTablePointer(decompressorTablePointer_),
+		marlinMostCommonSymbol(marlinMostCommonSymbol_),
+		isSkip(isSkip_)
+	{}	
 private:
 	std::unique_ptr<std::vector<TSource>> buildDecompressorTable(const TMarlinDictionary<TSource,MarlinIdx> &dictionary) const;
 };
@@ -193,15 +224,46 @@ template<typename TSource, typename MarlinIdx>
 struct TMarlin : 
 	public TMarlinCompress<TSource,MarlinIdx>, 
 	public TMarlinDecompress<TSource,MarlinIdx> {
+		
+	const std::string name;
+	const size_t K,O,shift,maxWordSize;
+
 	
-	TMarlin( const std::vector<double> &sourceAlphabet_,
+	TMarlin( 
+		std::string name_,
+		const std::vector<double> &sourceAlphabet_,
 		Configuration conf_ = Configuration() ) :
-		TMarlin( TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet_, conf_) ) {}
+		TMarlin( name_, TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet_, conf_) ) {}
 	
 	
-	TMarlin( TMarlinDictionary<TSource,MarlinIdx> dictionary ) :
+	TMarlin( 		
+		std::string name_,
+		TMarlinDictionary<TSource,MarlinIdx> dictionary ) :
 		TMarlinCompress<TSource,MarlinIdx>(dictionary),
-		TMarlinDecompress<TSource,MarlinIdx>(dictionary) {}
+		TMarlinDecompress<TSource,MarlinIdx>(dictionary),
+		name(name_),
+		K(dictionary.K), O(dictionary.O), shift(dictionary.shift), maxWordSize(dictionary.maxWordSize)
+		 {}
+
+		
+	TMarlin(
+		std::string name_,
+		size_t K_, size_t O_, size_t shift_, size_t maxWordSize_, double efficiency_,
+		MarlinIdx unrepresentedSymbolToken_,
+		const std::array<MarlinIdx, 1U<<(sizeof(TSource)*8)> source2marlin_,
+		const typename TMarlinCompress<TSource,MarlinIdx>::CompressorTableIdx* compressorTablePointer_,
+		const typename TMarlinCompress<TSource,MarlinIdx>::CompressorTableIdx* compressorTableInitPointer_,
+		const TSource* decompressorTablePointer_,
+		const TSource marlinMostCommonSymbol_,
+		const bool isSkip_
+		) :
+		TMarlinCompress<TSource,MarlinIdx>(
+			K_, O_, shift_, maxWordSize_, efficiency_,
+			unrepresentedSymbolToken_, source2marlin_, compressorTablePointer_, compressorTableInitPointer_),
+		TMarlinDecompress<TSource,MarlinIdx>(
+			K_, O_, shift_, maxWordSize_, decompressorTablePointer_, marlinMostCommonSymbol_, isSkip_),
+		name(name_),
+		K(K_), O(O_), shift(shift_), maxWordSize(maxWordSize_) {}
 };
 }
 

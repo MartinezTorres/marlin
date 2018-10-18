@@ -79,6 +79,7 @@ ssize_t Marlin_decompress(const Marlin *dict, uint8_t* dst, size_t dstSize, cons
  * Builds an optimal for a 8 bit memoryless source. Dictionary must be freed with Marlin_free_dictionary.
  * 
  * \param hist histogram of symbols in the 8 bit alphabet
+ * \param name an identificator for the dictionary (max size 15 bytes).
  * \param indexSizeBits number of bits on the index. Must be larger than 8-rawStorageBits.
  * \param indexOverlapBits number of bits of overlap. Suggested small.
  * \param maxWordSizeSymbols maximum amount of non zero symbols per word.
@@ -87,7 +88,7 @@ ssize_t Marlin_decompress(const Marlin *dict, uint8_t* dst, size_t dstSize, cons
  * \return null: error occurred
  *         otherwise: newly allocated dictionary
 */
-Marlin *Marlin_build_dictionary(const double hist[256]);
+Marlin *Marlin_build_dictionary(const char *name, const double hist[256]);
 
 /*! 
  * Frees a previously built Marlin Dictionary
