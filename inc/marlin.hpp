@@ -56,42 +56,36 @@ struct View {
 template<typename T> static View<T> make_view(T *start, T *end)  { return View<T>(start,end); }
 template<typename T> static View<T> make_view(std::vector<T> &v) { return View<T>(&v[0], &v[v.size()]); }
 template<typename T> static View<const T> make_view(const std::vector<T> &v) { return View<const T>(&v[0], &v[v.size()]); }
-	
+
+
+template<typename TSource>
+struct MarlinSymbol_ {
+	TSource sourceSymbol;
+	double p;
+};
+
+template<typename MarlinIdx>
+struct Word_ : std::vector<MarlinIdx> {
+	using std::vector<MarlinIdx>::vector;
+	double p = 0;
+	MarlinIdx state = 0;
+};
+
+typedef std::map<std::string, double> Configuration;
 	
 template<typename TSource, typename MarlinIdx>
-struct TMarlin {
+struct TMarlinDictionary{
 	
-	typedef TSource TSource_Type;
+	typedef Word_<MarlinIdx>  Word;
+	typedef MarlinSymbol_<TSource> MarlinSymbol;
 
-	/// Name and Configuration map
-	typedef std::map<std::string, double> Configuration;
-	const std::string name; // Name of this dictionary (optional)
-	const uint32_t versionMajor = MARLIN_VERSION_MAJOR;
-	const uint32_t versionMinor = MARLIN_VERSION_MINOR;
-//	enum { SimpleDictionary = 0 } type = Simple;
 	const Configuration conf;
 
-
-	/// Main Typedefs
-	//typedef uint8_t  TSource; // Type that can source the source symbols.
-	struct MarlinSymbol {
-		TSource sourceSymbol;
-		double p;
-	};
-
-	//typedef uint8_t  MarlinIdx; // Type that can source the marlin symbols.
-	struct Word : std::vector<MarlinIdx> {
-		using std::vector<MarlinIdx>::vector;
-		double p = 0;
-		MarlinIdx state = 0;
-	};
-	
-	/// Convenience configuration
 	const size_t K                = conf.at("K");           // Non overlapping bits of codeword.
 	const size_t O                = conf.at("O");           // Bits that overlap between codewprds.
 	const size_t shift            = conf.at("shift");       // Bits that can be stored raw
 	const size_t maxWordSize      = conf.at("maxWordSize"); // Maximum number of symbols per word.
-
+	
 	/// ALPHABETS
 	const std::vector<double> sourceAlphabet;	
 	const std::vector<MarlinSymbol> marlinAlphabet = buildMarlinAlphabet();
@@ -102,65 +96,17 @@ struct TMarlin {
 	//so the Marlin Symbol 0 is always corresponds to the most probable alphabet symbol.
 	const std::vector<Word> words = buildDictionary(); // All dictionary words.
 	const double efficiency       = calcEfficiency();  // Expected efficiency of the dictionary.
-	
-	/// DECOMPRESSOR STUFF
-	const std::unique_ptr<std::vector<TSource>> decompressorTableVector = buildDecompressorTable();	
-	const TSource* const decompressorTablePointer = decompressorTableVector->data();
-	const TSource marlinMostCommonSymbol = marlinAlphabet.front().sourceSymbol;
 	const bool isSkip = calcSkip();        // If all words are small, we can do a faster decoding algorithm;
-	ssize_t decompress(View<const uint8_t> src, View<TSource> dst) const;
-	ssize_t decompress(const std::vector<uint8_t> &src, std::vector<TSource> &dst) const {
-		return decompress(make_view(src), make_view(dst));
-	}
-	
-	/// COMPRESSOR STUFF
-	typedef uint32_t CompressorTableIdx;      // Structured as: FLAG_NEXT_WORD Where to jump next	
-	const std::unique_ptr<std::vector<CompressorTableIdx>> compressorTableVector = buildCompressorTable();	
-	const CompressorTableIdx* const compressorTablePointer = compressorTableVector->data();	
-	const std::unique_ptr<std::vector<CompressorTableIdx>> compressorTableInitVector = buildCompressorTableInit();
-	const CompressorTableIdx* const compressorTableInitPointer = compressorTableInitVector->data();	
-	ssize_t compress(View<const TSource> src, View<uint8_t> dst) const;
-	ssize_t compress(const std::vector<TSource> &src, std::vector<uint8_t> &dst) const {
-		ssize_t r = compress(make_view(src), make_view(dst));
-		if (r<0) return r;
-		dst.resize(r);
-		return dst.size();
-	}
 
 	/// CONSTRUCTOR
-	TMarlin( 
-		std::string name_,
+	TMarlinDictionary( 
 		const std::vector<double> &sourceAlphabet_,
 		Configuration conf_ = Configuration()) 
 		: 
-		name(name_), 
 		conf(updateConf(sourceAlphabet_, conf_)), 
-		sourceAlphabet(sourceAlphabet_) 
+		sourceAlphabet(sourceAlphabet_)
 		{}
 
-	TMarlin( 
-		std::string name_,
-		Configuration conf_,
-		double efficiency_,
-		const TSource* const decompressorTablePointer_,
-		TSource marlinMostCommonSymbol_,
-		bool isSkip_,
-		const CompressorTableIdx* const compressorTablePointer_,
-		const CompressorTableIdx* const compressorTableInitPointer_		
-	) : 
-		name(name_), 
-		conf(conf_),
-		efficiency(efficiency_),
-		decompressorTableVector(),
-		decompressorTablePointer(decompressorTablePointer_),
-		marlinMostCommonSymbol(marlinMostCommonSymbol_),
-		isSkip(isSkip_),
-		compressorTableVector(),
-		compressorTablePointer(compressorTablePointer_),
-		compressorTableInitVector(),
-		compressorTableInitPointer(compressorTableInitPointer_)
-		{}
-		
 private:
 	// Sets default configurations
 	static std::map<std::string, double> updateConf(const std::vector<double> &sourceAlphabet, Configuration conf);
@@ -170,13 +116,95 @@ private:
 	std::vector<Word> buildDictionary() const;
 	double calcEfficiency() const;
 	bool calcSkip() const;
-
-	std::unique_ptr<std::vector<TSource>> buildDecompressorTable() const;
-	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTable() const;
-	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTableInit() const;
 };
 
+
+template<typename TSource, typename MarlinIdx>
+struct TMarlinCompress {
+	
+	typedef Word_<MarlinIdx>  Word;
+	typedef MarlinSymbol_<TSource> MarlinSymbol;
+	const size_t K,O,shift,maxWordSize;
+	
+	// Structured as: FLAG_NEXT_WORD Where to jump next	
+	typedef uint32_t CompressorTableIdx;      
+	const MarlinIdx unrepresentedSymbolToken;
+	const std::array<MarlinIdx, 1U<<(sizeof(TSource)*8)> source2marlin;
+	const std::shared_ptr<std::vector<CompressorTableIdx>> compressorTableVector;	
+	const CompressorTableIdx* const compressorTablePointer;	
+	const std::shared_ptr<std::vector<CompressorTableIdx>> compressorTableInitVector;
+	const CompressorTableIdx* const compressorTableInitPointer;	
+
+	ssize_t compress(View<const TSource> src, View<uint8_t> dst) const;
+	ssize_t compress(const std::vector<TSource> &src, std::vector<uint8_t> &dst) const {
+		ssize_t r = compress(make_view(src), make_view(dst));
+		if (r<0) return r;
+		dst.resize(r);
+		return dst.size();
+	}
+	
+	TMarlinCompress(const TMarlinDictionary<TSource,MarlinIdx> &dictionary) :
+		K(dictionary.K), O(dictionary.O), shift(dictionary.shift), maxWordSize(dictionary.maxWordSize), 
+		unrepresentedSymbolToken(dictionary.marlinAlphabet.size()),
+		source2marlin(buildSource2marlin(dictionary)),
+		compressorTableVector(buildCompressorTable(dictionary)),
+		compressorTablePointer(compressorTableVector->data()),
+		compressorTableInitVector(buildCompressorTableInit(dictionary)),
+		compressorTableInitPointer(compressorTableInitVector->data())
+	{}
+
+	constexpr static const size_t FLAG_NEXT_WORD = 1UL<<(8*sizeof(CompressorTableIdx)-1);
+
+private:
+	std::array<MarlinIdx, 1U<<(sizeof(TSource)*8)> buildSource2marlin(const TMarlinDictionary<TSource,MarlinIdx> &dictionary) const;
+	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTable(const TMarlinDictionary<TSource,MarlinIdx> &dictionary) const;
+	std::unique_ptr<std::vector<CompressorTableIdx>> buildCompressorTableInit(const TMarlinDictionary<TSource,MarlinIdx> &dictionary) const;
+};
+
+template<typename TSource, typename MarlinIdx>
+struct TMarlinDecompress {
+
+	typedef Word_<MarlinIdx>  Word;
+	typedef MarlinSymbol_<TSource> MarlinSymbol;
+	const size_t K,O,shift,maxWordSize;
+	
+	const std::unique_ptr<std::vector<TSource>> decompressorTableVector;	
+	const TSource* const decompressorTablePointer;
+	const TSource marlinMostCommonSymbol;
+	const bool isSkip;
+	
+	ssize_t decompress(View<const uint8_t> src, View<TSource> dst) const;
+	ssize_t decompress(const std::vector<uint8_t> &src, std::vector<TSource> &dst) const {
+		return decompress(make_view(src), make_view(dst));
+	}
+
+	TMarlinDecompress(const TMarlinDictionary<TSource,MarlinIdx> &dictionary) :
+		K(dictionary.K), O(dictionary.O), shift(dictionary.shift), maxWordSize(dictionary.maxWordSize),
+		decompressorTableVector(buildDecompressorTable(dictionary)),
+		decompressorTablePointer(decompressorTableVector->data()),
+		marlinMostCommonSymbol(dictionary.marlinAlphabet.front().sourceSymbol),
+		isSkip(dictionary.isSkip)
+	{}
+private:
+	std::unique_ptr<std::vector<TSource>> buildDecompressorTable(const TMarlinDictionary<TSource,MarlinIdx> &dictionary) const;
+};
+
+template<typename TSource, typename MarlinIdx>
+struct TMarlin : 
+	public TMarlinCompress<TSource,MarlinIdx>, 
+	public TMarlinDecompress<TSource,MarlinIdx> {
+	
+	TMarlin( const std::vector<double> &sourceAlphabet_,
+		Configuration conf_ = Configuration() ) :
+		TMarlin( TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet_, conf_) ) {}
+	
+	
+	TMarlin( TMarlinDictionary<TSource,MarlinIdx> dictionary ) :
+		TMarlinCompress<TSource,MarlinIdx>(dictionary),
+		TMarlinDecompress<TSource,MarlinIdx>(dictionary) {}
+};
 }
+
 
 typedef marlin::TMarlin<uint8_t,uint8_t> Marlin;
 

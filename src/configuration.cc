@@ -31,9 +31,9 @@ SOFTWARE.
 using namespace marlin;
 
 template<typename TSource, typename MarlinIdx>
-std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf( 
+std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf( 
 	const std::vector<double> &sourceAlphabet, 
-	TMarlin<TSource,MarlinIdx>::Configuration conf) {
+	Configuration conf) {
 	
 	conf.emplace("K",8);
 	conf.emplace("O",2);
@@ -51,10 +51,10 @@ std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf(
 
 	if (not conf.count("shift")) {
 		conf["shift"] = 0;
-		double best = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
+		double best = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, conf).efficiency;
 		for (int s=1; s<6; s++) {
 			conf["shift"] = s;
-			double e = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, conf).efficiency;
+			double e = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, conf).efficiency;
 			if (e<=best) {
 				conf["shift"] = s-1;
 				break;
@@ -72,7 +72,7 @@ std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf(
 			
 			auto testConf = conf;
 			testConf["maxWordSize"] = sz;
-			double testEfficiency = TMarlin<TSource,MarlinIdx>("", sourceAlphabet, testConf).efficiency;
+			double testEfficiency = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, testConf).efficiency;
 			if (testEfficiency > 1.001*bestEfficiency) {
 				bestEfficiency = testEfficiency;
 				conf = testConf;
@@ -85,10 +85,11 @@ std::map<std::string, double> TMarlin<TSource,MarlinIdx>::updateConf(
 	return conf;
 }
 
+
 ////////////////////////////////////////////////////////////////////////
 //
 // Explicit Instantiations
 #include "instantiations.h"
-typedef std::map<std::string, double> phonyMap; // Commas do not fit well within macros
-INSTANTIATE_MEMBER(updateConf(const std::vector<double> &sourceAlphabet, Configuration conf) -> phonyMap)
-
+INSTANTIATE(TMarlinDictionary)
+//typedef std::map<std::string, double> phonyMap; // Commas do not fit well within macros
+//INSTANTIATE_MEMBER(TMarlinDictionary, updateConf(const std::vector<double> &sourceAlphabet, Configuration conf) -> phonyMap)
