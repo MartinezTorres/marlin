@@ -72,7 +72,7 @@ size_t decompress8_skip(
 
 	auto D = decompressor.decompressorTablePointer;
 
-	while (i8<src.end-9) {
+	while (i8<src.end-10) {
 		
 		uint32_t v32 = (*(const uint32_t *)i8);
 		i8 += sizeof(uint32_t);
@@ -107,8 +107,11 @@ size_t decompress8_skip(
 		value = (value<<8) + *i8++;
 		{
 			T v = ((const T *)D)[value & overlappingMask];
-			*((T *)o8) = v;
-			o8 += v >> ((sizeof(T)-1)*8);
+			size_t sz = v >> ((sizeof(T)-1)*8);
+			memcpy(o8, &v, sz);
+//			*((T *)o8) = v;
+			
+			o8 += sz;
 		}
 	}				
 	// if (endMarlin-i8 != 0) std::cerr << " {" << endMarlin-i8 << "} "; // SOLVED! PROBLEM IN THE CODE
@@ -136,7 +139,7 @@ size_t decompressKK(
 	constexpr size_t INCREMENT = KK<8?KK:KK/2;
 	constexpr size_t INCREMENTSHIFT = INCREMENT*8;
 
-	while (i8<src.end-INCREMENT) {
+	while (i8<src.end-INCREMENT-20) {
 
 		uint64_t vRead = 
 			(INCREMENT<=4?
@@ -214,8 +217,19 @@ size_t decompressKK(
 					
 		{
 			T v = ((const T *)D)[wordIdx];
-			*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
-			o8 += v >> ((sizeof(T)-1)*8);
+//			*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+//			o8 += v >> ((sizeof(T)-1)*8);
+			
+			
+			size_t sz = v >> ((sizeof(T)-1)*8);
+			
+			T vv = (v & clearSizeMask) + clearSizeOverlay;
+			memcpy(o8, &vv, std::min(sz,sizeof(T)-1));
+//			*((T *)o8) = v;
+			
+			o8 += sz;
+			
+			
 		}
 	}
 	// if (endMarlin-i8 != 0) std::cerr << " {" << endMarlin-i8 << "} "; // SOLVED! PROBLEM IN THE CODE
@@ -267,8 +281,16 @@ size_t decompressFast(
 
 		{
 			T v = ((const T *)D)[wordIdx];
-			*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
-			o8 += v >> ((sizeof(T)-1)*8);
+//			*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+//			o8 += v >> ((sizeof(T)-1)*8);
+
+			size_t sz = v >> ((sizeof(T)-1)*8);
+			
+			T vv = (v & clearSizeMask) + clearSizeOverlay;
+			memcpy(o8, &vv, std::min(sz,sizeof(T)-1));
+//			*((T *)o8) = v;
+			
+			o8 += sz;
 		}
 	}
 	
