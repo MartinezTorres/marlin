@@ -45,7 +45,7 @@ ssize_t Marlin_decompress(const Marlin *dict, uint8_t* dst, size_t dstSize, cons
 
 Marlin *Marlin_build_dictionary(const char *name, const double hist[256]) {
 	
-	return new Marlin(name, std::vector<double>(&hist[0], &hist[256]));
+	return new Marlin(name,std::vector<double>(&hist[0], &hist[256]));
 }
 
 void Marlin_free_dictionary(Marlin *dict) {
@@ -63,14 +63,4 @@ const MarlinDictionary * Marlin_estimate_best_dictionary(const MarlinDictionary 
 	
 	return nullptr;
 }*/
-
-
-////////////////////////////////////////////////////////////////////////
-//
-// Explicit Instantiations
-#include "instantiations.h"
-INSTANTIATE()	
-	
-
-
 

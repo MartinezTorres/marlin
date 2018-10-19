@@ -1,11 +1,9 @@
-#define INSTANTIATE() \
-	template class marlin::TMarlin<uint16_t,uint8_t>; \
-	template class marlin::TMarlin<uint8_t,uint16_t>;
-//	template class marlin::TMarlin<uint8_t,uint16_t>; 
-//	template class marlin::TMarlin<uint16_t,uint8_t>; 
+#define INSTANTIATE(A) \
+	template class marlin::A<uint8_t,uint8_t>; 
+//	template class marlin::A<uint16_t,uint8_t>; 
 
-#define INSTANTIATE_MEMBER(A) \
-	template auto marlin::TMarlin<uint8_t,uint8_t>::A; \
-	template auto marlin::TMarlin<uint8_t,uint16_t>::A;
-//	template auto marlin::TMarlin<uint8_t,uint16_t>::A;
-//	template auto marlin::TMarlin<uint16_t,uint8_t>::A;
+//#define INSTANTIATE_MEMBER(A,B) 
+//	template auto marlin::A<uint8_t,uint8_t>::B;
+//	template auto marlin::A<uint16_t,uint8_t>::B;
+
+
