@@ -1,5 +1,4 @@
-# marlin
-Marlin: high throughput entropy compressor
+# Marlin: a high throughput entropy compressor
 
 #### Update: Precomputed Dictionaries
 
