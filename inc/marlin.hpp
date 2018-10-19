@@ -52,6 +52,8 @@ struct View {
 	View(T *start_, T *end_) : start(start_), end(end_) {}
 	size_t nElements() const { return end - start; }
 	size_t nBytes() const { return sizeof(T)*(end - start); }
+	T &operator[](size_t v) { return start[v]; }
+	const T &operator[](size_t v) const { return start[v]; }
 };
 template<typename T> static View<T> make_view(T *start, T *end)  { return View<T>(start,end); }
 template<typename T> static View<T> make_view(std::vector<T> &v) { return View<T>(&v[0], &v[v.size()]); }

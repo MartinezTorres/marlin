@@ -5,6 +5,7 @@
 #include <sstream>
 #include <fstream>
 #include <opencv/highgui.h>
+#include <opencv/cv.h>
 
 
 struct TestTimer {
@@ -18,7 +19,8 @@ TestTimer tt;
 #define TESTTIME(timer, a) \
 	timer.start(); a; timer.stop(); std::cerr << "Tested \"" << #a << "\": " << int(timer()*1e6) << "us" << std::endl;
 
-
+////////////////////////////////////////////////////////////////////////
+//  Pure Marlin Compression Functions
 
 std::vector<uint8_t> compressLaplacianFixedBlockFast(const std::vector<uint8_t> &uncompressed, size_t blockSize) {
 
@@ -140,7 +142,7 @@ std::vector<uint8_t> compresFixedBlockSlow(const std::vector<uint8_t> &uncompres
 }
 
 
-size_t uncompress(marlin::View<uint8_t> uncompressed, const std::vector<uint8_t> &compressed, size_t blockSize) {
+size_t uncompress(marlin::View<uint8_t> uncompressed, marlin::View<const uint8_t> &compressed, size_t blockSize) {
 
 	const size_t nBlocks = (uncompressed.nBytes()+blockSize-1)/blockSize;
 
@@ -172,8 +174,8 @@ size_t uncompress(marlin::View<uint8_t> uncompressed, const std::vector<uint8_t>
 			
 		size_t usz = std::min(blockSize, uncompressed.nBytes()-i*blockSize);
 		auto out = marlin::make_view(
-			&uncompressed.start[i*blockSize],
-			&uncompressed.start[i*blockSize+usz]);
+			&uncompressed[i*blockSize],
+			&uncompressed[i*blockSize+usz]);
 		
 		Marlin_get_prebuilt_dictionaries()[dict_index]->decompress(in, out);
 	}
@@ -181,18 +183,25 @@ size_t uncompress(marlin::View<uint8_t> uncompressed, const std::vector<uint8_t>
 }
 
 
+////////////////////////////////////////////////////////////////////////
+//  Marlin Image Compression Functions
+
 struct MarlinImageHeader {
 	
-	uint16_t brows, bcols, channels;
+	uint16_t rows, cols, channels;
 	uint16_t imageBlockWidth;
 };
 
 
-static std::string compressImage(cv::Mat img, size_t imageBlockWidth = 64) {
+static std::string compressImage(cv::Mat orig_img, size_t imageBlockWidth = 64, bool fast = true) {
 
 	const size_t bs = imageBlockWidth;
-	size_t brows = img.rows/bs;
-	size_t bcols = img.cols/bs;
+
+	size_t brows = (orig_img.rows+bs-1)/bs;
+	size_t bcols = (orig_img.cols+bs-1)/bs;	
+	cv::Mat img;
+	cv::copyMakeBorder(orig_img, img, 0, brows*bs-orig_img.rows, 0, bcols*bs-orig_img.cols, cv::BORDER_REPLICATE);
+	
 
 	std::vector<uint8_t> dc(bcols*brows*img.channels());
 	std::vector<uint8_t> preprocessed(bcols*brows*bs*bs*img.channels());	
@@ -200,41 +209,54 @@ static std::string compressImage(cv::Mat img, size_t imageBlockWidth = 64) {
 		
 		cv::Mat3b img3b = img;
 		// PREPROCESS IMAGE INTO BLOCKS
-		uint8_t *tb = &preprocessed[0*bcols*brows*bs*bs];
-		uint8_t *tg = &preprocessed[1*bcols*brows*bs*bs];
-		uint8_t *tr = &preprocessed[2*bcols*brows*bs*bs];
-		
-		for (size_t i=0; i<img3b.rows-bs+1; i+=bs) {
-			for (size_t j=0; j<img3b.cols-bs+1; j+=bs) {
-				
-				const uint8_t *s0 = &img3b(i,j)[0];
-				const uint8_t *s1 = &img3b(i,j)[0];
-				
-				dc[3*((i/bs)*bcols + j/bs)+0] = *s0++;
-				dc[3*((i/bs)*bcols + j/bs)+1] = *s0++;
-				dc[3*((i/bs)*bcols + j/bs)+2] = *s0++;
+		{
+			uint8_t *tb = &preprocessed[0*bcols*brows*bs*bs];
+			uint8_t *tg = &preprocessed[1*bcols*brows*bs*bs];
+			uint8_t *tr = &preprocessed[2*bcols*brows*bs*bs];
+			
+			for (size_t i=0; i<img3b.rows-bs+1; i+=bs) {
+				for (size_t j=0; j<img3b.cols-bs+1; j+=bs) {
+					
+					const uint8_t *s0 = &img3b(i,j)[0];
+					const uint8_t *s1 = &img3b(i,j)[0];
+					
+					dc[3*((i/bs)*bcols + j/bs)+0] = *s0++;
+					dc[3*((i/bs)*bcols + j/bs)+1] = *s0++;
+					dc[3*((i/bs)*bcols + j/bs)+2] = *s0++;
 
-				*tb++ = 0;
-				*tg++ = 0;
-				*tr++ = 0;
-				for (size_t jj=1; jj<bs; jj++) {
-					*tb++ = *s0++ - *s1++;
-					*tg++ = *s0++ - *s1++;
-					*tr++ = *s0++ - *s1++;
-				}
-
-
-				for (size_t ii=1; ii<bs; ii++) {
-
-					s0 = &img3b(i+ii,j)[0];
-					s1 = &img3b(i+ii-1,j)[0];
-
-					for (size_t jj=0; jj<bs; jj++) {
+					*tb++ = 0;
+					*tg++ = 0;
+					*tr++ = 0;
+					for (size_t jj=1; jj<bs; jj++) {
 						*tb++ = *s0++ - *s1++;
 						*tg++ = *s0++ - *s1++;
 						*tr++ = *s0++ - *s1++;
-					}	
+					}
+
+
+					for (size_t ii=1; ii<bs; ii++) {
+
+						s0 = &img3b(i+ii,j)[0];
+						s1 = &img3b(i+ii-1,j)[0];
+
+						for (size_t jj=0; jj<bs; jj++) {
+							*tb++ = *s0++ - *s1++;
+							*tg++ = *s0++ - *s1++;
+							*tr++ = *s0++ - *s1++;
+						}	
+					}
 				}
+			}
+		}
+		
+		
+		{
+			uint8_t *tb = &preprocessed[0*bcols*brows*bs*bs];
+			uint8_t *tg = &preprocessed[1*bcols*brows*bs*bs];
+			uint8_t *tr = &preprocessed[2*bcols*brows*bs*bs];
+			for (size_t i=0; i<bcols*brows*bs*bs; i++) {
+				tb[i] -= tg[i];
+				tr[i] -= tg[i];
 			}
 		}
 	} else if (img.channels()==1) {
@@ -273,55 +295,61 @@ static std::string compressImage(cv::Mat img, size_t imageBlockWidth = 64) {
 
 	std::ostringstream oss;
 	MarlinImageHeader header;
-	header.brows = brows;
-	header.bcols = bcols;
+	header.rows = orig_img.rows;
+	header.cols = orig_img.cols;
 	header.channels = img.channels();
 	header.imageBlockWidth = imageBlockWidth;
 	
 	oss.write((const char *)&header, sizeof(header));
 	oss.write((const char *)dc.data(), dc.size());
 	
-	auto compressed = compressLaplacianFixedBlockFast(preprocessed, bs*bs);
-//	auto compressed = compresFixedBlockSlow(preprocessed, bs*bs);
+	auto compressed = 
+		fast ? 
+			compressLaplacianFixedBlockFast(preprocessed, bs*bs) :
+			compresFixedBlockSlow(preprocessed, bs*bs);
+
 	oss.write((const char *)compressed.data(), compressed.size());
 		
 	return oss.str();
 }
 
-static cv::Mat uncompressImage(const std::string &compressedString) {
+struct UncompressImage_Context {
+	std::vector<uint8_t> uncompressed;
+};
+
+static cv::Mat uncompressImage(
+	const std::string &compressedString,
+	UncompressImage_Context &context) {
 	
-	std::istringstream iss(compressedString);
-	
-	MarlinImageHeader header; 
-	iss.read((char *)&header, sizeof(MarlinImageHeader)); 
+	MarlinImageHeader header;
+	memcpy(&header, compressedString.data(), sizeof(MarlinImageHeader));
 
 	const size_t bs = header.imageBlockWidth;
-	size_t brows = header.brows;
-	size_t bcols = header.bcols;
+
+	size_t brows = (header.rows+bs-1)/bs;
+	size_t bcols = (header.cols+bs-1)/bs;	
+
 	size_t channels = header.channels;
+
+	auto dc = marlin::make_view(
+		(const uint8_t *)&compressedString[sizeof(MarlinImageHeader)], 
+		(const uint8_t *)&compressedString[sizeof(MarlinImageHeader) + channels*bcols*brows]);
+	
+	auto compressed = marlin::make_view(
+		(const uint8_t *)&compressedString[sizeof(MarlinImageHeader) + channels*bcols*brows], 
+		(const uint8_t *)&compressedString[compressedString.size()]);
+
+	auto &uncompressed = context.uncompressed;
+	uncompressed.resize(channels*bcols*brows*bs*bs);
+
+	uncompress(marlin::make_view(uncompressed), compressed, bs*bs);
+
 	
 	if (channels==1) {
 
 		cv::Mat1b img1b(brows*bs, bcols*bs);
 		
 		// PREPROCESS IMAGE INTO BLOCKS
-		std::vector<uint8_t> dc(bcols*brows);
-		iss.read((char *)&dc[0], dc.size());
-		
-		
-		
-		std::vector<uint8_t> compressed;
-		{
-			size_t pos = iss.tellg();
-			iss.seekg(0, std::ios::end);
-			size_t sz = size_t(iss.tellg()) - pos;
-			compressed.resize(sz);
-			iss.seekg(pos, std::ios::beg);
-			iss.read((char *)compressed.data(), sz);
-		}
-		std::vector<uint8_t> uncompressed(bcols*brows*bs*bs);
-		
-		uncompress(marlin::make_view(uncompressed), compressed, bs*bs);
 		{
 			const uint8_t *t = &uncompressed[0];
 			
@@ -351,31 +379,22 @@ static cv::Mat uncompressImage(const std::string &compressedString) {
 				}
 			}
 		}
-		return img1b;
+		return img1b(cv::Rect(0,0,header.cols,header.rows));
 		
 	} else if (channels==3) {
-
 
 		cv::Mat3b img3b(brows*bs, bcols*bs);
 		
 		// PREPROCESS IMAGE INTO BLOCKS
-		std::vector<uint8_t> dc(3*bcols*brows);
-		iss.read((char *)dc.data(), dc.size());
-		
-		
-		std::vector<uint8_t> compressed;
 		{
-			size_t pos = iss.tellg();
-			iss.seekg(0, std::ios::end);
-			size_t sz = size_t(iss.tellg()) - pos;
-			compressed.resize(sz);
-			iss.seekg(pos, std::ios::beg);
-			iss.read((char *)compressed.data(), sz);
+			uint8_t *tb = &uncompressed[0*bcols*brows*bs*bs];
+			uint8_t *tg = &uncompressed[1*bcols*brows*bs*bs];
+			uint8_t *tr = &uncompressed[2*bcols*brows*bs*bs];
+			for (size_t i=0; i<bcols*brows*bs*bs; i++) {
+				tb[i] += tg[i];
+				tr[i] += tg[i];
+			}
 		}
-
-		std::vector<uint8_t> uncompressed(3*bcols*brows*bs*bs);
-		
-		uncompress(marlin::make_view(uncompressed), compressed, bs*bs);
 	
 		{
 			const uint8_t *tb = &uncompressed[0*bcols*brows*bs*bs];
@@ -416,11 +435,11 @@ static cv::Mat uncompressImage(const std::string &compressedString) {
 				}
 			}
 		}
-		return img3b;
+
+		return img3b(cv::Rect(0,0,header.cols,header.rows));
 		
 				
 	} else {
-		
 		std::cerr << "Not supported" << std::endl;
 		return cv::Mat();
 	}
@@ -428,17 +447,24 @@ static cv::Mat uncompressImage(const std::string &compressedString) {
 }
 		
 
+
+////////////////////////////////////////////////////////////////////////
+//  Main
+
+void usage() {
+
+	std::cout << "Marlin Utility example uses:" << std::endl;
+	std::cout << "    marlinUtility file.png; creates file.png.mar" << std::endl;
+	std::cout << "    marlinUtility file.png.mar; creates file.png" << std::endl;
+	exit(-1);
+}
+
 int main(int argc, char **argv) {
 	
-	if (argc<2) {
-		std::cout << "Marlin Utility example uses:" << std::endl;
-		std::cout << "    marlinUtility file.png; creates file.png.mar" << std::endl;
-		std::cout << "    marlinUtility file.png.mar; creates file.png" << std::endl;
-		exit(-1);
-	}
+	if (argc<2) usage();
 	
 	std::string filename(argv[1]);
-	if (filename.size()<5) main(0,nullptr);
+	if (filename.size()<5) usage();
 	
 	TestTimer ttmain;
 	if ( filename.substr(filename.size()-4) == ".png" ) {
@@ -465,9 +491,13 @@ int main(int argc, char **argv) {
 			iss.seekg(0, std::ios::beg);
 			iss.read(&compressed[0], sz);
 		}
+		
+		UncompressImage_Context	context;
+		uncompressImage(compressed, context);
+		
 		std::cerr << "Read marlin compressed image: " << filename << " of size: " << compressed.size() << std::endl;
 		TESTTIME(ttmain, 
-			auto img = uncompressImage(compressed);
+			auto img = uncompressImage(compressed, context);
 		)
 		std::cerr << "Uncompressed to: " 
 			<< " (" << img.rows << "x" << img.cols << ") nChannels: " << img.channels()
