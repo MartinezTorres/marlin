@@ -14,7 +14,7 @@ This allows to use Marlin without a long starting time where dictionaries are bu
 We added a standalone Utlity program at: `utils\marlinUtility.cc`.
 Right now, it is capable of compressing from png images and back. 
 
-It is designed as a technology demonstrator, and its interface will be changing in the future as (if) more utilities are added.
+It is designed as a technology demonstrator, and its interface will be updated in the future as (if) more utilities are added.
 
 
 #### Update: the benchmark code has been moved to the marlin_eval repository.
