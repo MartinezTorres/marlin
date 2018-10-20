@@ -451,63 +451,95 @@ static cv::Mat uncompressImage(
 ////////////////////////////////////////////////////////////////////////
 //  Main
 
-void usage() {
-
-	std::cout << "Marlin Utility example uses:" << std::endl;
-	std::cout << "    marlinUtility file.png; creates file.png.mar" << std::endl;
-	std::cout << "    marlinUtility file.png.mar; creates file.png" << std::endl;
+void usage(char ** argv) {
+	std::cout << std::endl;
+	std::cout << "==============" << std::endl;
+	std::cout << "Marlin Utility" << std::endl;
+	std::cout << "==============" << std::endl;
+	std::cout << "Syntax: " << argv[0] << " (c|d) <input_path> <output_path>" << std::endl;
+	std::cout << std::endl;
+	std::cout << "Usage examples:" << std::endl;
+	std::cout << std::endl;
+	std::cout << "(c)ompress file.png or file.pgm into file.mar" << std::endl;
+	std::cout << "\t" << argv[0] << " c file.png file.mar" << std::endl;
+	std::cout << "\t" << argv[0] << " c file.pgm file.mar" << std::endl;
+	std::cout << std::endl;
+	std::cout << "(d)decompresses file.mar into file.png or file.mar" << std::endl;
+	std::cout << "\t" << argv[0] << " d file.mar file.png" << std::endl;
+	std::cout << "\t" << argv[0] << " d file.mar file.pgm" << std::endl;
+	std::cout << std::endl;
+	std::cout << "Any input/output format supported by OpenCV can be used for compression/decompression." << std::endl;
 	exit(-1);
 }
 
 int main(int argc, char **argv) {
 	
-	if (argc<2) usage();
-	
-	std::string filename(argv[1]);
-	if (filename.size()<5) usage();
-	
+	if (argc != 4) {
+		usage(argv);
+	}
+
+	std::string mode_string(argv[1]);
+	std::string input_path(argv[2]);
+	std::string output_path(argv[3]);
+
+	std::ifstream ifs = std::ifstream(input_path);
+	if (! ifs.good()) {
+		std::cerr << "ERROR: Cannot access '" << input_path << "'" << std::endl;
+		usage(argv);
+	}
+
+	bool mode_compress = true;
+	if (mode_string == "c") {
+		mode_compress = true;
+	} else if (mode_string == "d") {
+		mode_compress = false;
+	} else {
+		std::cerr << "ERROR: Invalid syntax" << std::endl;
+		usage(argv);
+	}
+
 	TestTimer ttmain;
-	if ( filename.substr(filename.size()-4) == ".png" ) {
+	if (mode_compress) {
+		cv::Mat img = cv::imread(input_path, cv::IMREAD_UNCHANGED);
+		if (img.empty()) {
+			std::cerr << "ERROR: Cannot read " << input_path << ". Is it in a supported format?" << std::endl;
+			usage(argv);
+		}
 
-		cv::Mat img = cv::imread(filename, cv::IMREAD_UNCHANGED);
-		std::cerr << "Read image: " << filename << " (" << img.rows << "x" << img.cols << ") nChannels: " << img.channels() << std::endl;
+		std::cerr << "Read image: " << input_path << " (" << img.rows << "x" << img.cols << ") " \
+				  << " nChannels: " << img.channels() << std::endl;
 
-		TESTTIME(ttmain, 
-			auto compressed = compressImage(img);
-		);
-		std::cerr << "Compressed to: " << compressed.size() << " at " << int(((img.rows*img.cols*img.channels())/ttmain())/(1<<20)) << "MB/s" << std::endl;
-		
-		std::ofstream off(filename+".mar");
+		TESTTIME(ttmain, auto compressed = compressImage(img));
+
+		std::cerr << "Compressed " << compressed.size() << " bytes at " \
+		          << int(((img.rows*img.cols*img.channels())/ttmain())/(1<<20)) << "MB/s" << std::endl;
+
+		std::ofstream off(output_path);
 		off.write(compressed.data(), compressed.size());
-		
-	} else if (filename.substr(filename.size()-8) ==  ".png.mar" ) {
-		
+	} else {
 		std::string compressed;
 		{
-			std::ifstream iss(filename);
+			std::ifstream iss(input_path);
 			iss.seekg(0, std::ios::end);
 			size_t sz = iss.tellg();
 			compressed.resize(sz);
 			iss.seekg(0, std::ios::beg);
 			iss.read(&compressed[0], sz);
 		}
-		
+
 		UncompressImage_Context	context;
 		uncompressImage(compressed, context);
-		
-		std::cerr << "Read marlin compressed image: " << filename << " of size: " << compressed.size() << std::endl;
-		TESTTIME(ttmain, 
-			auto img = uncompressImage(compressed, context);
-		)
-		std::cerr << "Uncompressed to: " 
+
+		std::cerr << "Read marlin compressed image: " << input_path << " of size: " << compressed.size() << std::endl;
+		TESTTIME(ttmain, auto img = uncompressImage(compressed, context));
+
+		std::cerr << "Uncompressed to: "
 			<< " (" << img.rows << "x" << img.cols << ") nChannels: " << img.channels()
 			<< " at " << int(((img.rows*img.cols*img.channels())/ttmain())/(1<<20)) << "MB/s" << std::endl;
-	
-		filename.resize(filename.size()-4);
-		cv::imwrite(filename, img);
 
-	} else {
-		std::cerr << "Unsupported file format" << std::endl;
-	}	
+		cv::imwrite(output_path, img);
+	}
+
+
 	return 0;
 }
