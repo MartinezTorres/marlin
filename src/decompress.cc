@@ -31,6 +31,7 @@ SOFTWARE.
 #include <cstring>
 #include <algorithm>
 #include <cassert>
+#include <immintrin.h>
 
 
 using namespace marlin;

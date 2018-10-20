@@ -34,6 +34,7 @@ SOFTWARE.
 #include <iostream>
 #include <queue>
 #include <stack>
+#include <cmath>
 
 using namespace marlin;
 
