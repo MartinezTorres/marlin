@@ -17,7 +17,8 @@ struct TestTimer {
 
 TestTimer tt;
 #define TESTTIME(timer, a) \
-	timer.start(); a; timer.stop(); std::cerr << "Tested \"" << #a << "\": " << int(timer()*1e6) << "us" << std::endl;
+	timer.start(); a; timer.stop(); \
+	std::cerr << "Tested \"" << #a << "\": " << int(timer()*1e6) << "us" << std::endl;
 
 ////////////////////////////////////////////////////////////////////////
 //  Pure Marlin Compression Functions
@@ -97,7 +98,7 @@ std::vector<uint8_t> compressLaplacianFixedBlockFast(const std::vector<uint8_t> 
 }
 
 
-std::vector<uint8_t> compresFixedBlockSlow(const std::vector<uint8_t> &uncompressed, size_t blockSize) {
+std::vector<uint8_t> compressFixedBlockSlow(const std::vector<uint8_t> &uncompressed, size_t blockSize) {
 
 	const size_t nBlocks = (uncompressed.size()+blockSize-1)/blockSize;
 
@@ -187,7 +188,6 @@ size_t uncompress(marlin::View<uint8_t> uncompressed, marlin::View<const uint8_t
 //  Marlin Image Compression Functions
 
 struct MarlinImageHeader {
-	
 	uint16_t rows, cols, channels;
 	uint16_t imageBlockWidth;
 };
@@ -306,7 +306,7 @@ static std::string compressImage(cv::Mat orig_img, size_t imageBlockWidth = 64, 
 	auto compressed = 
 		fast ? 
 			compressLaplacianFixedBlockFast(preprocessed, bs*bs) :
-			compresFixedBlockSlow(preprocessed, bs*bs);
+		compressFixedBlockSlow(preprocessed, bs * bs);
 
 	oss.write((const char *)compressed.data(), compressed.size());
 		
