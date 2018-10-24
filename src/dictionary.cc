@@ -296,6 +296,35 @@ auto TMarlinDictionary<TSource,MarlinIdx>::buildMarlinAlphabet() const -> std::v
 template<typename TSource, typename MarlinIdx>
 double TMarlinDictionary<TSource,MarlinIdx>::calcEfficiency() const {
 
+	double probabilityOfUnrepresentedSymbol = 0;
+	{
+		std::map<TSource, double> symbolsShifted;
+		for (size_t i=0; i<sourceAlphabet.size(); i++)
+			symbolsShifted[i>>shift] += sourceAlphabet[i];
+		
+		std::vector<MarlinSymbol> ret;
+		for (auto &&symbol : symbolsShifted)
+			ret.push_back(MarlinSymbol{TSource(symbol.first<<shift), symbol.second});
+			
+		std::stable_sort(ret.begin(),ret.end(), 
+			[](const MarlinSymbol& lhs, const MarlinSymbol& rhs) { 
+				if (lhs.p!=rhs.p) return lhs.p>rhs.p; // Descending in probability
+				return lhs.sourceSymbol<rhs.sourceSymbol; // Ascending in symbol index
+			}
+		);
+		
+		while (ret.size()>conf.at("minMarlinSymbols") and 
+			  (ret.size()>conf.at("maxMarlinSymbols") or
+			  ret.back().p<conf.at("purgeProbabilityThreshold"))) 
+		{
+			probabilityOfUnrepresentedSymbol += ret.back().p; //Unrepresented symbols will be coded as the most probable symbol
+			ret.pop_back();
+		}
+		
+		
+	}
+	
+
 	double meanLength = 0;
 	for (auto &&w : words)
 			meanLength += w.p * w.size();
@@ -310,7 +339,9 @@ double TMarlinDictionary<TSource,MarlinIdx>::calcEfficiency() const {
 //	meanBitsPerSymbol += (K/meanLength)*(1-alphabet.rareSymbolProbability);                      // Marlin VF
 	meanBitsPerSymbol += (K/meanLength);                      // Marlin VF
 	meanBitsPerSymbol += shift;                    // Raw storing of lower bits
-//	meanBitsPerSymbol += 2*K*alphabet.rareSymbolProbability;// Recovering rare symbols
+	meanBitsPerSymbol += 8*(2+sizeof(TSource)) * probabilityOfUnrepresentedSymbol;// Recovering rare symbols
+
+	printf("E:  %3.2lf  K:%2ld S:%2ld m:%4.2lf\n",sourceEntropy / meanBitsPerSymbol,marlinAlphabet.size(),shift,meanLength);
 
 	return sourceEntropy / meanBitsPerSymbol;
 }

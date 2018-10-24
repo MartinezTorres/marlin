@@ -41,42 +41,50 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 	conf.emplace("debug",1);
 //	conf.emplace("purgeProbabilityThreshold",1e-99);
 //	conf.emplace("purgeProbabilityThreshold",1e-6);
+//	conf.emplace("purgeProbabilityThreshold",0.5/4096/32);
 	conf.emplace("purgeProbabilityThreshold",0.5/4096/32);
-//	conf.emplace("purgeProbabilityThreshold",0.5/4096/8);
 	conf.emplace("iterations",5);
-	conf.emplace("minMarlinSymbols", std::max(1U<<size_t(conf.at("O")),8U));
+//	conf.emplace("minMarlinSymbols", std::max(1U<<size_t(conf.at("O")),2U));
+	conf.emplace("minMarlinSymbols", 2U);
 	conf.emplace("maxMarlinSymbols",(1U<<size_t(conf.at("K")))-1);
 	conf["maxMarlinSymbols"] = std::min(conf["maxMarlinSymbols"], double((1U<<size_t(conf.at("K")))-1));
 	conf["maxMarlinSymbols"] = std::min(conf["maxMarlinSymbols"], double((1U<<(8*sizeof(MarlinIdx)))-1));
 
+	double maxWordSize = conf["maxWordSize"];
+	conf["maxWordSize"] = 255;
+
 	if (not conf.count("shift")) {
-		conf["shift"] = 0;
+		conf["shift"] = 6;
 		double best = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, conf).efficiency;
-		for (int s=1; s<6; s++) {
+		for (int s=5; s>=0; s--) {
 			conf["shift"] = s;
 			double e = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, conf).efficiency;
-			if (e<=best) {
-				conf["shift"] = s-1;
+			if (e<best) {
+				conf["shift"] = s+1;
 				break;
 			}
 			best = e;
 		}
 	}
+
+	conf["maxWordSize"] = maxWordSize;
 	
-	if (not conf.count("maxWordSize")) {
+	if (conf["maxWordSize"]==0) {
 		
-		//auto validWordSizes = {3, 7, 15, 31, 63};
-		auto validWordSizes = {3, 7};
+		conf.emplace("autoMaxWordSize",256);
+		
 		double bestEfficiency = 0.;
-		for (auto &sz : validWordSizes) {
+		size_t sz = 4;
+		while (sz <= conf["autoMaxWordSize"]) {
 			
 			auto testConf = conf;
-			testConf["maxWordSize"] = sz;
+			testConf["maxWordSize"] = sz-1;
 			double testEfficiency = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, testConf).efficiency;
-			if (testEfficiency > 1.001*bestEfficiency) {
+			if (testEfficiency > 1.0001*bestEfficiency) {
 				bestEfficiency = testEfficiency;
 				conf = testConf;
-			}
+			} else break;
+			sz*=2;
 		}
 	}
 	
