@@ -73,7 +73,7 @@ static bool testMini() {
 
 static bool testLaplace() {
 	
-	size_t sz = 1<<12;
+	size_t sz = 1<<20;
 	
 	for (double p=0.1; p<.995; p+=0.1) {
 		

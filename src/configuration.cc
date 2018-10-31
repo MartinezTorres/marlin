@@ -36,14 +36,14 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 	Configuration conf) {
 	
 	conf.emplace("K",8);
-	conf.emplace("O",2);
+	conf.emplace("O",4);
 	
 	conf.emplace("debug",1);
 //	conf.emplace("purgeProbabilityThreshold",1e-99);
 //	conf.emplace("purgeProbabilityThreshold",1e-6);
 //	conf.emplace("purgeProbabilityThreshold",0.5/4096/32);
 	conf.emplace("purgeProbabilityThreshold",0.5/4096/32);
-	conf.emplace("iterations",5);
+	conf.emplace("iterations",3);
 //	conf.emplace("minMarlinSymbols", std::max(1U<<size_t(conf.at("O")),2U));
 	conf.emplace("minMarlinSymbols", 2U);
 	conf.emplace("maxMarlinSymbols",(1U<<size_t(conf.at("K")))-1);
@@ -53,17 +53,22 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 	double maxWordSize = conf["maxWordSize"];
 	conf["maxWordSize"] = 255;
 
+	double sourceEntropy = TMarlinDictionary<TSource,MarlinIdx>::calcSourceEntropy(sourceAlphabet);
+
 	if (not conf.count("shift")) {
-		conf["shift"] = 6;
-		double best = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, conf).efficiency;
-		for (int s=5; s>=0; s--) {
-			conf["shift"] = s;
-			double e = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, conf).efficiency;
-			if (e<best) {
-				conf["shift"] = s+1;
-				break;
-			}
-			best = e;
+		
+		double best = 0;
+		size_t shift = (sourceEntropy>4?6:0);
+		for (int i=0; i<6; i++) {
+			
+			auto testConf = conf;
+			testConf["shift"] = shift;
+			double test = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, testConf).compressionRatio;
+			if (test > 1.0001*best) {
+				best = test;
+				conf = testConf;
+			} else break;
+			shift += (sourceEntropy>4?-1:+1);
 		}
 	}
 
@@ -71,17 +76,17 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 	
 	if (conf["maxWordSize"]==0) {
 		
-		conf.emplace("autoMaxWordSize",256);
+		conf.emplace("autoMaxWordSize",64);
 		
-		double bestEfficiency = 0.;
+		double best = 0.;
 		size_t sz = 4;
 		while (sz <= conf["autoMaxWordSize"]) {
 			
 			auto testConf = conf;
 			testConf["maxWordSize"] = sz-1;
-			double testEfficiency = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, testConf).efficiency;
-			if (testEfficiency > 1.0001*bestEfficiency) {
-				bestEfficiency = testEfficiency;
+			double test = TMarlinDictionary<TSource,MarlinIdx>(sourceAlphabet, testConf).compressionRatio;
+			if (test > 1.0001*best) {
+				best = test;
 				conf = testConf;
 			} else break;
 			sz*=2;

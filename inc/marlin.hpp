@@ -88,9 +88,15 @@ struct TMarlinDictionary{
 	const size_t shift            = conf.at("shift");       // Bits that can be stored raw
 	const size_t maxWordSize      = conf.at("maxWordSize"); // Maximum number of symbols per word.
 	
+	struct MarlinAlphabet : public std::vector<MarlinSymbol> {
+		using std::vector<MarlinSymbol>::vector;
+		double probabilityOfUnrepresentedSymbol;
+	};
+	
 	/// ALPHABETS
-	const std::vector<double> sourceAlphabet;	
-	const std::vector<MarlinSymbol> marlinAlphabet = buildMarlinAlphabet();
+	const std::vector<double> sourceAlphabet;
+	const double sourceEntropy = calcSourceEntropy(sourceAlphabet);
+	const MarlinAlphabet marlinAlphabet = buildMarlinAlphabet();
 		
 	/// DICTIONARY
 	//Marlin only encodes a subset of the possible source symbols.
@@ -98,6 +104,7 @@ struct TMarlinDictionary{
 	//so the Marlin Symbol 0 is always corresponds to the most probable alphabet symbol.
 	const std::vector<Word> words = buildDictionary(); // All dictionary words.
 	const double efficiency       = calcEfficiency();  // Expected efficiency of the dictionary.
+	const double compressionRatio = efficiency/sourceEntropy; //Expected compression ratio
 	const bool isSkip = calcSkip();        // If all words are small, we can do a faster decoding algorithm;
 
 	/// CONSTRUCTOR
@@ -113,9 +120,10 @@ private:
 	// Sets default configurations
 	static std::map<std::string, double> updateConf(const std::vector<double> &sourceAlphabet, Configuration conf);
 
-	std::vector<MarlinSymbol> buildMarlinAlphabet() const;
+	MarlinAlphabet buildMarlinAlphabet() const;
 	
 	std::vector<Word> buildDictionary() const;
+	static double calcSourceEntropy(const std::vector<double> &sourceAlphabet);
 	double calcEfficiency() const;
 	bool calcSkip() const;
 };

@@ -263,14 +263,14 @@ void print(const TMarlinDictionary<TSource,MarlinIdx> &dictionary, std::vector<s
 }
 
 template<typename TSource, typename MarlinIdx>
-auto TMarlinDictionary<TSource,MarlinIdx>::buildMarlinAlphabet() const -> std::vector<MarlinSymbol> {
+auto TMarlinDictionary<TSource,MarlinIdx>::buildMarlinAlphabet() const -> MarlinAlphabet {
 	
 	// Group symbols by their high bits
 	std::map<TSource, double> symbolsShifted;
 	for (size_t i=0; i<sourceAlphabet.size(); i++)
 		symbolsShifted[i>>shift] += sourceAlphabet[i];
 	
-	std::vector<MarlinSymbol> ret;
+	MarlinAlphabet ret;
 	for (auto &&symbol : symbolsShifted)
 		ret.push_back(MarlinSymbol{TSource(symbol.first<<shift), symbol.second});
 		
@@ -280,11 +280,14 @@ auto TMarlinDictionary<TSource,MarlinIdx>::buildMarlinAlphabet() const -> std::v
 			return lhs.sourceSymbol<rhs.sourceSymbol; // Ascending in symbol index
 		}
 	);
+
+	ret.probabilityOfUnrepresentedSymbol = 0;
 	
 	while (ret.size()>conf.at("minMarlinSymbols") and 
 		  (ret.size()>conf.at("maxMarlinSymbols") or
-		  ret.back().p<conf.at("purgeProbabilityThreshold"))) 
+		  (ret.probabilityOfUnrepresentedSymbol+ret.back().p)<conf.at("purgeProbabilityThreshold"))) 
 	{
+		ret.probabilityOfUnrepresentedSymbol += ret.back().p;
 		ret.front().p += ret.back().p; //Unrepresented symbols will be coded as the most probable symbol
 		ret.pop_back();
 	}
@@ -294,54 +297,40 @@ auto TMarlinDictionary<TSource,MarlinIdx>::buildMarlinAlphabet() const -> std::v
 
 
 template<typename TSource, typename MarlinIdx>
-double TMarlinDictionary<TSource,MarlinIdx>::calcEfficiency() const {
+double TMarlinDictionary<TSource,MarlinIdx>::calcSourceEntropy(const std::vector<double> &sourceAlphabet) {
 
-	double probabilityOfUnrepresentedSymbol = 0;
-	{
-		std::map<TSource, double> symbolsShifted;
-		for (size_t i=0; i<sourceAlphabet.size(); i++)
-			symbolsShifted[i>>shift] += sourceAlphabet[i];
-		
-		std::vector<MarlinSymbol> ret;
-		for (auto &&symbol : symbolsShifted)
-			ret.push_back(MarlinSymbol{TSource(symbol.first<<shift), symbol.second});
-			
-		std::stable_sort(ret.begin(),ret.end(), 
-			[](const MarlinSymbol& lhs, const MarlinSymbol& rhs) { 
-				if (lhs.p!=rhs.p) return lhs.p>rhs.p; // Descending in probability
-				return lhs.sourceSymbol<rhs.sourceSymbol; // Ascending in symbol index
-			}
-		);
-		
-		while (ret.size()>conf.at("minMarlinSymbols") and 
-			  (ret.size()>conf.at("maxMarlinSymbols") or
-			  ret.back().p<conf.at("purgeProbabilityThreshold"))) 
-		{
-			probabilityOfUnrepresentedSymbol += ret.back().p; //Unrepresented symbols will be coded as the most probable symbol
-			ret.pop_back();
-		}
-		
-		
-	}
-	
-
-	double meanLength = 0;
-	for (auto &&w : words)
-			meanLength += w.p * w.size();
-	
 	double sourceEntropy = 0;
 	for (size_t i=0; i<sourceAlphabet.size(); i++)
 		if (sourceAlphabet[i]>0.)
 			sourceEntropy += -sourceAlphabet[i]*std::log2(sourceAlphabet[i]);
-		
+			
+	return sourceEntropy;
+}
+
+
+template<typename TSource, typename MarlinIdx>
+double TMarlinDictionary<TSource,MarlinIdx>::calcEfficiency() const {
+
+	double meanLength = 0;
+	for (auto &&w : words)
+			meanLength += w.p * w.size();
+
+	int badWords = 0;
+	for (auto &&w : words)
+		if (w.p < 1e-10) badWords++;
+			
 	// The decoding algorithm has 4 steps:
 	double meanBitsPerSymbol = 0;                           // a memset
-//	meanBitsPerSymbol += (K/meanLength)*(1-alphabet.rareSymbolProbability);                      // Marlin VF
 	meanBitsPerSymbol += (K/meanLength);                      // Marlin VF
 	meanBitsPerSymbol += shift;                    // Raw storing of lower bits
-	meanBitsPerSymbol += 8*(2+sizeof(TSource)) * probabilityOfUnrepresentedSymbol;// Recovering rare symbols
+	meanBitsPerSymbol += 8*(2+sizeof(TSource)) * marlinAlphabet.probabilityOfUnrepresentedSymbol;// Recovering rare symbols
 
-	printf("E:  %3.2lf  K:%2ld S:%2ld m:%4.2lf\n",sourceEntropy / meanBitsPerSymbol,marlinAlphabet.size(),shift,meanLength);
+	double idealMeanBitsPerSymbol = meanBitsPerSymbol - (K/meanLength) + ((std::log2(words.size()-badWords)-O)/meanLength);
+
+	printf("E:%3.8lf IE:%3.8lf K:%2ld S:%2ld m:%4.2lf bw:%d\n", 
+	sourceEntropy/meanBitsPerSymbol, 
+	sourceEntropy/idealMeanBitsPerSymbol, 
+	marlinAlphabet.size(),shift,meanLength,badWords);
 
 	return sourceEntropy / meanBitsPerSymbol;
 }
@@ -411,10 +400,4 @@ auto TMarlinDictionary<TSource,MarlinIdx>::buildDictionary() const -> std::vecto
 //
 // Explicit Instantiations
 #include "instantiations.h"
-INSTANTIATE(TMarlinDictionary)	
-
-//INSTANTIATE_MEMBER(buildMarlinAlphabet() const -> std::vector<MarlinSymbol>)	
-//INSTANTIATE_MEMBER(calcEfficiency() const -> double)	
-//INSTANTIATE_MEMBER(calcSkip() const -> bool)	
-//INSTANTIATE_MEMBER(buildDictionary() const -> std::vector<Word>)	
-
+INSTANTIATE(TMarlinDictionary)
