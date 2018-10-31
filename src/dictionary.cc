@@ -80,20 +80,25 @@ SNode buildTree(const TMarlinDictionary<TSource,MarlinIdx> &dictionary, std::vec
 	// Include empty word
 //		pq.push(root);
 	root->p = 1;
+	int retiredNodes = 0;
 	
-	for (size_t c=0; c<dictionary.marlinAlphabet.size(); c++) {			
+	for (size_t c=0; c<dictionary.marlinAlphabet.size(); c++) {	
 			
-		root->push_back(std::make_shared<Node>());
 		double sum = 0;
 		for (size_t t = 0; t<=c; t++) sum += Pstates[t]/PN[t];
+		
+		root->push_back(std::make_shared<Node>());
 		root->back()->p = sum * dictionary.marlinAlphabet[c].p;
 		root->p -= root->back()->p;
 		root->back()->sz = 1;
+		if (root->back()->p == 0) {
+			root->back()->p = -1;
+			retiredNodes--; // This node will eventually be eliminated, but acts now as a placeholder
+		}
 		pq.push(root->back());
 	}
 		
 	// DICTIONARY GROWING
-	size_t retiredNodes=0;
 	while (not pq.empty() and (pq.size() + retiredNodes < (1U<<dictionary.K))) {
 			
 		SNode node = pq.top();
@@ -155,7 +160,7 @@ std::vector<Word> buildChapterWords(const TMarlinDictionary<TSource,MarlinIdx> &
 		SNode n = q.top().first;
 		Word w = q.top().second;
 		q.pop();
-		if (not w.empty())
+		if (not w.empty() and w.p>=0)
 			ret.push_back(w);
 		for (size_t i = 0; i<n->size(); i++) {
 			
