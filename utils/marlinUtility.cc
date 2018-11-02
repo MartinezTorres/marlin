@@ -193,7 +193,7 @@ struct MarlinImageHeader {
 };
 
 
-static std::string compressImage(cv::Mat orig_img, size_t imageBlockWidth = 64, bool fast = true) {
+static std::string compressImage(cv::Mat orig_img, uint8_t qstep = 1, size_t imageBlockWidth = 64, bool fast = true) {
 
 	const size_t bs = imageBlockWidth;
 
@@ -201,11 +201,14 @@ static std::string compressImage(cv::Mat orig_img, size_t imageBlockWidth = 64, 
 	size_t bcols = (orig_img.cols+bs-1)/bs;	
 	cv::Mat img;
 	cv::copyMakeBorder(orig_img, img, 0, brows*bs-orig_img.rows, 0, bcols*bs-orig_img.cols, cv::BORDER_REPLICATE);
-	
 
 	std::vector<uint8_t> dc(bcols*brows*img.channels());
-	std::vector<uint8_t> preprocessed(bcols*brows*bs*bs*img.channels());	
+	std::vector<uint8_t> preprocessed(bcols*brows*bs*bs*img.channels());
 	if (img.channels()==3) {
+		if (qstep > 1) {
+			std::cerr << "Not supported" << std::endl;
+			return NULL;
+		}
 		
 		cv::Mat3b img3b = img;
 		// PREPROCESS IMAGE INTO BLOCKS
@@ -262,25 +265,72 @@ static std::string compressImage(cv::Mat orig_img, size_t imageBlockWidth = 64, 
 	} else if (img.channels()==1) {
 
 		cv::Mat1b img1b = img;
+
+		// Apply quantization if necessary
+		if (qstep > 1) {
+			if (qstep == 2) {
+				for (int r=0; r<img1b.rows; r++) {
+					uint8_t *p = &img1b(r, 0);
+
+					for (int c=0; c<img1b.cols; c++) {
+						*p++ >>= 1;
+					}
+				}
+			} else if (qstep == 4) {
+				for (int r=0; r<img1b.rows; r++) {
+					uint8_t *p = &img1b(r, 0);
+
+					for (int c=0; c<img1b.cols; c++) {
+						*p++ >>= 2;
+					}
+				}
+			} else if (qstep == 8) {
+				for (int r=0; r<img1b.rows; r++) {
+					uint8_t *p = &img1b(r, 0);
+
+					for (int c=0; c<img1b.cols; c++) {
+						*p++ >>= 3;
+					}
+				}
+			} else{
+				// General case (division)
+				for (int r=0; r<img1b.rows; r++) {
+					uint8_t *p = &img1b(r, 0);
+
+					for (int c=0; c<img1b.cols; c++) {
+						*p = *p / qstep;
+						p++;
+					}
+				}
+			}
+		}
+
 		// PREPROCESS IMAGE INTO BLOCKS
 		uint8_t *t = &preprocessed[0];
 		
 		for (size_t i=0; i<img1b.rows-bs+1; i+=bs) {
 			for (size_t j=0; j<img1b.cols-bs+1; j+=bs) {
-				
+				// i,j : index of the top,left position of the block in the image
+
+				// s0, s1 begin at the top,left of the block
 				const uint8_t *s0 = &img1b(i,j);
 				const uint8_t *s1 = &img1b(i,j);
-				
+
+				// dc(blockrow, blockcol) contains the top,left element of the block
 				dc[(i/bs)*bcols + j/bs] = *s0++;
 
-				*t++ = 0;
+				// The first row of the preprocessed (t) image
+				// predicts from the left neighbor.
+				// Only predictions are stored in t
+				*t++ = 0; // this corresponds to jj=0, stored in dc, hence prep. is 0
 				for (size_t jj=1; jj<bs; jj++) {
 					*t++ = *s0++ -*s1++;
 				}
 
 
+				// Remaining columns are predicted with the top element
+				// (ii starts at 1 because ii=0 is the first row, already processeD)
 				for (size_t ii=1; ii<bs; ii++) {
-
 					s0 = &img1b(i+ii,j);
 					s1 = &img1b(i+ii-1,j);
 
@@ -305,7 +355,7 @@ static std::string compressImage(cv::Mat orig_img, size_t imageBlockWidth = 64, 
 	
 	auto compressed = 
 		fast ? 
-			compressLaplacianFixedBlockFast(preprocessed, bs*bs) :
+		compressLaplacianFixedBlockFast(preprocessed, bs * bs) :
 		compressFixedBlockSlow(preprocessed, bs * bs);
 
 	oss.write((const char *)compressed.data(), compressed.size());
@@ -317,9 +367,7 @@ struct UncompressImage_Context {
 	std::vector<uint8_t> uncompressed;
 };
 
-static cv::Mat uncompressImage(
-	const std::string &compressedString,
-	UncompressImage_Context &context) {
+static cv::Mat uncompressImage(const std::string &compressedString, UncompressImage_Context &context, uint8_t qstep=1) {
 	
 	MarlinImageHeader header;
 	memcpy(&header, compressedString.data(), sizeof(MarlinImageHeader));
@@ -379,9 +427,60 @@ static cv::Mat uncompressImage(
 				}
 			}
 		}
-		return img1b(cv::Rect(0,0,header.cols,header.rows));
+		img1b = img1b(cv::Rect(0,0,header.cols,header.rows));
+
+		// Reconstruct quantization if necessary
+		if (qstep > 1) {
+			if (qstep == 2) {
+				for (int r=0; r<img1b.rows; r++) {
+					uint8_t *p = &img1b(r, 0);
+
+					for (int c=0; c<img1b.cols; c++) {
+						*p++ <<= 1;
+					}
+				}
+			} else if (qstep == 4) {
+				uint8_t mask = UINT8_C(1) << 1;
+
+				for (int r=0; r<img1b.rows; r++) {
+					uint8_t *p = &img1b(r, 0);
+
+					for (int c=0; c<img1b.cols; c++) {
+						*p = (*p << 2) | mask;
+						p++;
+					}
+				}
+			} else if (qstep == 8) {
+				uint8_t mask = UINT8_C(1) << 2;
+
+				for (int r=0; r<img1b.rows; r++) {
+					uint8_t *p = &img1b(r, 0);
+
+					for (int c=0; c<img1b.cols; c++) {
+						*p = (*p << 3) | mask;
+						p++;
+					}
+				}
+			} else {
+				uint8_t offset = qstep / 2;
+				for (int r=0; r<img1b.rows; r++) {
+					uint8_t *p = &img1b(r, 0);
+
+					for (int c=0; c<img1b.cols; c++) {
+						*p = *p * qstep + offset;
+						p++;
+					}
+				}
+			}
+		}
+
+		return img1b;
 		
 	} else if (channels==3) {
+		if (qstep != 1) {
+			std::cerr << "Unsupported" << std::endl;
+			return cv::Mat();
+		}
 
 		cv::Mat3b img3b(brows*bs, bcols*bs);
 		
@@ -456,7 +555,11 @@ void usage(char ** argv) {
 	std::cout << "==============" << std::endl;
 	std::cout << "Marlin Utility" << std::endl;
 	std::cout << "==============" << std::endl;
-	std::cout << "Syntax: " << argv[0] << " (c|d) <input_path> <output_path>" << std::endl;
+	std::cout << "Syntax: " << argv[0] << " (c|d) <input_path> <output_path> [<qstep>=1]" << std::endl;
+	std::cout << "  * (c|d):       compress or decompress" << std::endl;
+	std::cout << "  * input_path:  path to the image (c) or the compressed (d) file" << std::endl;
+	std::cout << "  * output_path: path to the compressed (c) or the reconstructed image (d) file" << std::endl;
+	std::cout << "  * qstep:       optional quantization step. MAE=floor(qstep/2). By default, MAE=0 (lossless)" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Usage examples:" << std::endl;
 	std::cout << std::endl;
@@ -474,13 +577,17 @@ void usage(char ** argv) {
 
 int main(int argc, char **argv) {
 	
-	if (argc != 4) {
+	if (argc < 4) {
 		usage(argv);
 	}
 
 	std::string mode_string(argv[1]);
 	std::string input_path(argv[2]);
 	std::string output_path(argv[3]);
+	uint8_t qstep = 1;
+	if (argc >= 5) {
+		qstep = cv::saturate_cast<uint8_t>(atoi(argv[4]));
+	}
 
 	std::ifstream ifs = std::ifstream(input_path);
 	if (! ifs.good()) {
@@ -509,7 +616,7 @@ int main(int argc, char **argv) {
 		std::cerr << "Read image: " << input_path << " (" << img.rows << "x" << img.cols << ") " \
 				  << " nChannels: " << img.channels() << std::endl;
 
-		TESTTIME(ttmain, auto compressed = compressImage(img));
+		TESTTIME(ttmain, auto compressed = compressImage(img, qstep));
 
 		std::cerr << "Compressed " << compressed.size() << " bytes at " \
 		          << int(((img.rows*img.cols*img.channels())/ttmain())/(1<<20)) << "MB/s" << std::endl;
@@ -528,10 +635,10 @@ int main(int argc, char **argv) {
 		}
 
 		UncompressImage_Context	context;
-		uncompressImage(compressed, context);
+//		uncompressImage(compressed, context, qstep);
 
 		std::cerr << "Read marlin compressed image: " << input_path << " of size: " << compressed.size() << std::endl;
-		TESTTIME(ttmain, auto img = uncompressImage(compressed, context));
+		TESTTIME(ttmain, auto img = uncompressImage(compressed, context, qstep));
 
 		std::cerr << "Uncompressed to: "
 			<< " (" << img.rows << "x" << img.cols << ") nChannels: " << img.channels()
