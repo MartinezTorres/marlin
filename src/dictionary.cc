@@ -295,6 +295,7 @@ auto TMarlinDictionary<TSource,MarlinIdx>::buildMarlinAlphabet() const -> Marlin
 		ret.probabilityOfUnrepresentedSymbol += ret.back().p;
 		ret.front().p += ret.back().p; //Unrepresented symbols will be coded as the most probable symbol
 		ret.pop_back();
+		printf("%lf\n", ret.probabilityOfUnrepresentedSymbol); 
 	}
 	
 	return ret;	
