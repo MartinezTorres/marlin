@@ -37,7 +37,7 @@ SOFTWARE.
 using namespace marlin;
 
 namespace {
-	
+
 template<typename TSource, typename MarlinIdx>
 __attribute__ ((target ("bmi2")))
 ssize_t shift8(const TMarlinDecompress<TSource,MarlinIdx> &decompressor, View<const uint8_t> src, View<TSource> dst) {
@@ -239,6 +239,81 @@ size_t decompressKK(
 	return dst.nElements();
 }
 
+template<typename T, size_t TT, size_t KK, typename TSource, typename MarlinIdx>
+__attribute__((optimize("unroll-all-loops")))
+size_t decompressTTKK(
+	const TMarlinDecompress<TSource,MarlinIdx> &decompressor, 
+	View<const uint8_t> src, 
+	View<TSource> dst) {
+	
+	register const uint8_t *i8    = src.start;
+	register      TSource *o8    = dst.start;
+
+	register const uint64_t overlappingMask = (1<<(decompressor.K+decompressor.O))-1;
+	register const T clearSizeMask = T(-1)>>8;
+	register const T clearSizeOverlay = T(decompressor.marlinMostCommonSymbol) << ((sizeof(T)-1)*8);
+	register uint64_t value = 0;
+
+	register auto D = decompressor.decompressorTablePointer;
+
+	constexpr size_t INCREMENT = KK<8?KK:KK/2;
+	constexpr size_t INCREMENTSHIFT = INCREMENT*8;
+
+	while (i8<src.end-INCREMENT-20) {
+
+		uint64_t vRead = 
+			(INCREMENT<=4?
+				__builtin_bswap32(*(const uint32_t *)i8):
+				__builtin_bswap64(*(const uint64_t *)i8));
+		i8 += INCREMENT;
+		value = (value<<INCREMENTSHIFT) +  (vRead>>((INCREMENT<=4?32:64)-INCREMENTSHIFT));
+
+		for (uint64_t j=0; j<4; j++) {
+			const T *vp = &(((const T *)D)[((value>>uint64_t((3-j)*KK)) & overlappingMask)*TT]);
+			//for (size_t i=0; i<TT-1; i++) *((T *&)o8)++ = *vp++;
+			T v = *vp;
+			size_t sz = (v >> ((sizeof(T)-1)*8))-8*(TT-1);
+			*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+			o8 += sz;
+		}
+	}
+	
+	uint64_t valueBits = decompressor.O;
+	while (i8 < src.end or valueBits>=decompressor.K+decompressor.O) {
+		
+		while (valueBits < decompressor.K+decompressor.O) {
+			value = (value<<8) + uint64_t(*i8++);
+			valueBits += 8;
+		}
+		
+		size_t wordIdx = (value >> (valueBits-(decompressor.K+decompressor.O))) & overlappingMask;
+		
+		valueBits -= decompressor.K;
+					
+		{
+			T v = ((const T *)D)[wordIdx];
+//			*((T *)o8) = (v & clearSizeMask) + clearSizeOverlay;
+//			o8 += v >> ((sizeof(T)-1)*8);
+			
+			
+			size_t sz = v >> ((sizeof(T)-1)*8);
+			
+			T vv = (v & clearSizeMask) + clearSizeOverlay;
+			memcpy(o8, &vv, std::min(sz,sizeof(T)-1));
+//			*((T *)o8) = v;
+			
+			o8 += sz;
+			
+			
+		}
+	}
+	// if (endMarlin-i8 != 0) std::cerr << " {" << endMarlin-i8 << "} "; // SOLVED! PROBLEM IN THE CODE
+	// if (o8end-o8 != 0) std::cerr << " [" << o8end-o8 << "] "; // SOLVED! PROBLEM IN THE CODE
+
+
+	return dst.nElements();
+}
+
 template<typename T, typename TSource, typename MarlinIdx>
 size_t decompressFast(
 	const TMarlinDecompress<TSource,MarlinIdx> &decompressor, 
@@ -313,7 +388,7 @@ size_t decompressSlow(
 	auto D = decompressor.decompressorTablePointer;
 	
 	size_t f = 1;
-	while ((1<<f)<maxWordSize) f++;
+	while (size_t(1<<f)<maxWordSize) f++;
 
 	uint64_t value = 0;
 	uint64_t valueBits = O;
@@ -453,7 +528,7 @@ ssize_t TMarlinDecompress<TSource,MarlinIdx>::decompress(View<const uint8_t> src
 		decompressFast<uint64_t>(*this,marlinSrc, dst);
 	} else {
 		//printf("Slow because: %lu %lu\n",K, maxWordSize);
-		//decompressSlow(marlinSrc, dst);
+		decompressSlow(*this, marlinSrc, dst);
 	}
 	
 	//if (nUnrepresentedSymbols) printf("%u %u %u\n",  nUnrepresentedSymbols, unrepresentedSize, dst.nElements());

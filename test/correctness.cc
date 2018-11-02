@@ -85,7 +85,9 @@ static bool testLaplace() {
 		Marlin dict("",Distribution::pdf(256, Distribution::Laplace, p));
 		std::cout << "Compress:" << std::endl;
 		dict.compress(original, compressed);
-		std::cout << "Compressed to: " << compressed.size() << " ("  << double(compressed.size()) / original.size() << "%)" << std::endl;
+		std::cout << "Compressed to: " << compressed.size() << " ("  << double(compressed.size()) / original.size() << "%) " << dict.efficiency << std::endl;
+		std::cout << "Theoretical efficiency: (" <<100*dict.efficiency << "%)" << std::endl;
+		std::cout << "Real efficiency:        (" << 100*p/(double(compressed.size()) / original.size()) << "%)" << std::endl;
 		std::cout << "Decompress:" << std::endl;
 		dict.decompress(compressed, uncompressed);
 		std::cout << "Done!" << std::endl;
@@ -123,7 +125,7 @@ static bool testLaplace() {
 int main() {
 
 	return 
-		testMini() and
+		//testMini() and
 		testLaplace() and
 		true?0:-1;
 }
