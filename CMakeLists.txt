@@ -2,34 +2,41 @@ cmake_minimum_required(VERSION 3.5)
 project(Marlin VERSION 0.01)
 
 set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Wextra -Wcast-qual -Wcast-align -Wstrict-aliasing=1 -Wswitch-enum -Wundef -pedantic  -Wfatal-errors -Wshadow")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Wextra -Wcast-qual -Wcast-align -Wstrict-aliasing=1 -Wswitch-enum -Wundef -pedantic -Wfatal-errors -Wshadow")
 
 ################################
-# Marlin library
-
+# Marlin library (entropy codec only)
 file(GLOB MAIN_SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cc)
+file(GLOB IMAGE_ONLY_SRC_FILES ${PROJECT_SOURCE_DIR}/src/image*.cc)
+list(REMOVE_ITEM MAIN_SRC_FILES ${IMAGE_ONLY_SRC_FILES})
 add_library(marlin ${MAIN_SRC_FILES})
 set_target_properties(marlin PROPERTIES
     VERSION ${PROJECT_VERSION}
     PUBLIC_HEADER inc/marlin.h)
 target_include_directories(marlin PRIVATE inc)
 
+# ImageMarlin library (image codec + entropy codec)
+file(GLOB MAIN_SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cc)
+add_library(imarlin ${MAIN_SRC_FILES} inc/imageMarlin.hpp)
+set_target_properties(imarlin PROPERTIES
+        VERSION ${PROJECT_VERSION}
+        PUBLIC_HEADER inc/imageMarlin.hpp)
+target_include_directories(imarlin PRIVATE inc)
+
 ################################
 # Samples
 
 option(WITH_UTILS "Build Utilities" ON)
 if(WITH_UTILS)
-
     file(GLOB UTILS_SRC_FILES ${PROJECT_SOURCE_DIR}/utils/*.cc)
     find_package( OpenCV REQUIRED )
-#    find_package( Boost 1.40 COMPONENTS program_options REQUIRED )
-## from list of files we'll create utils util_name.cpp -> util_name
+
     foreach(_util_file ${UTILS_SRC_FILES})
         get_filename_component(_util_name ${_util_file} NAME_WE)
         add_executable(${_util_name} ${_util_file})
         target_include_directories(${_util_name} PRIVATE inc utils)
 #        target_link_libraries(${_util_name} marlin  ${OpenCV_LIBS} ${Boost_LIBRARIES})
-        target_link_libraries(${_util_name} marlin  ${OpenCV_LIBS})
+        target_link_libraries(${_util_name} imarlin ${OpenCV_LIBS})
     endforeach()
 endif()
 

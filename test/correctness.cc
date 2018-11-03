@@ -1,5 +1,5 @@
 #include "marlin.h"
-#include "distribution.hpp"
+#include "../src/distribution.hpp"
 #include <iostream>
 
 static void printAlpha(std::vector<uint8_t> msg) {
