@@ -99,7 +99,9 @@ SNode buildTree(const TMarlinDictionary<TSource,MarlinIdx> &dictionary, std::vec
 	}
 		
 	// DICTIONARY GROWING
-	while (not pq.empty() and (pq.size() + retiredNodes < (1U<<dictionary.K))) {
+	size_t numWordsPerChapter = 1U<<dictionary.K;
+	if (dictionary.conf.count("numMarlinWords")) numWordsPerChapter = dictionary.conf.at("numMarlinWords")/(1<<dictionary.O);
+	while (not pq.empty() and (pq.size() + retiredNodes < numWordsPerChapter)) {
 			
 		SNode node = pq.top();
 		pq.pop();
@@ -196,8 +198,10 @@ std::vector<Word> arrangeAndFuse(const TMarlinDictionary<TSource,MarlinIdx> &dic
 		// Note the +1, we keep the empty word in the first position.
 //			std::stable_sort(sortedDictionary.begin()+1, sortedDictionary.end(), cmp);
 		std::stable_sort(sortedDictionary.begin(), sortedDictionary.end(), cmp);
-		
-		std::vector<Word> w(1U<<dictionary.K,Word());
+
+		size_t numWordsPerChapter = 1U<<dictionary.K;
+		if (dictionary.conf.count("numMarlinWords")) numWordsPerChapter = dictionary.conf.at("numMarlinWords")/(1<<dictionary.O);
+		std::vector<Word> w(numWordsPerChapter,Word());
 		for (size_t i=0,j=0,k=0; i<sortedDictionary.size(); j+=(1U<<dictionary.O)) {
 			
 			if (j>=w.size()) 
@@ -295,7 +299,7 @@ auto TMarlinDictionary<TSource,MarlinIdx>::buildMarlinAlphabet() const -> Marlin
 		ret.probabilityOfUnrepresentedSymbol += ret.back().p;
 		ret.front().p += ret.back().p; //Unrepresented symbols will be coded as the most probable symbol
 		ret.pop_back();
-		printf("%lf\n", ret.probabilityOfUnrepresentedSymbol); 
+		//printf("%lf\n", ret.probabilityOfUnrepresentedSymbol); 
 	}
 	
 	return ret;	
@@ -324,16 +328,19 @@ double TMarlinDictionary<TSource,MarlinIdx>::calcEfficiency() const {
 	int badWords = 0;
 	for (auto &&w : words)
 		if (w.p < 1e-10) badWords++;
+
+	size_t numWordsPerChapter = 1U<<K;
+	if (conf.count("numMarlinWords")) numWordsPerChapter = conf.at("numMarlinWords")/(1<<O);
 			
 	// The decoding algorithm has 4 steps:
 	double meanBitsPerSymbol = 0;                           // a memset
-	meanBitsPerSymbol += (K/meanLength);                      // Marlin VF
+	meanBitsPerSymbol += (std::log2(numWordsPerChapter)/meanLength);                      // Marlin VF
 	meanBitsPerSymbol += shift;                    // Raw storing of lower bits
 	meanBitsPerSymbol += 8*(2+sizeof(TSource)) * marlinAlphabet.probabilityOfUnrepresentedSymbol;// Recovering rare symbols
 
-	double idealMeanBitsPerSymbol = meanBitsPerSymbol - (K/meanLength) + ((std::log2(words.size()-badWords)-O)/meanLength);
+	double idealMeanBitsPerSymbol = meanBitsPerSymbol - (std::log2(numWordsPerChapter)/meanLength) + ((std::log2(words.size()-badWords)-O)/meanLength);
 
-	printf("E:%3.8lf IE:%3.8lf K:%2ld S:%2ld m:%4.2lf bw:%d\n", 
+	if (conf.at("debug")>1) printf("E:%3.8lf IE:%3.8lf K:%2ld S:%2ld m:%4.2lf bw:%d\n", 
 	sourceEntropy/meanBitsPerSymbol, 
 	sourceEntropy/idealMeanBitsPerSymbol, 
 	marlinAlphabet.size(),shift,meanLength,badWords);
