@@ -51,22 +51,16 @@ std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
 	const size_t bcols = (orig_img.cols+bs-1)/bs;
 	cv::Mat img;
 	{
-		Profiler::start("make_border");
-
 		if (brows * bs - orig_img.rows != 0 || bcols * bs - orig_img.cols != 0) {
 			cv::copyMakeBorder(orig_img, img, 0, brows * bs - orig_img.rows, 0, bcols * bs - orig_img.cols,
 			                   cv::BORDER_REPLICATE);
 		} else {
 			img = orig_img;
 		}
-
-		Profiler::end("make_border");
 	}
 
-	Profiler::start("dc_prep_alloc");
 	std::vector<uint8_t> dc(bcols*brows*img.channels());
 	std::vector<uint8_t> preprocessed(bcols*brows*bs*bs*img.channels());
-	Profiler::end("dc_prep_alloc");
 
 	if (img.channels()==3) {
 		if (qstep > 1) {
@@ -126,10 +120,7 @@ std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
 			}
 		}
 	} else if (img.channels()==1) {
-
-		Profiler::start("mat_creation");
 		cv::Mat1b img1b = img;
-		Profiler::end("mat_creation");
 
 		quantize(img1b);
 
@@ -176,14 +167,10 @@ std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
 
 	std::ostringstream oss;
 	// Write configuration header
-	Profiler::start("dump_header");
 	header.dump_to(oss);
-	Profiler::end("dump_header");
 
-	Profiler::start("write_dc");
 	// Write block-representative pixels
 	oss.write((const char *) dc.data(), dc.size());
-	Profiler::end("write_dc");
 
 	// Entropy code and write result
 	Profiler::start("entropy_coding");
@@ -193,10 +180,7 @@ std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
 			entropyCodeBestDict(preprocessed, bs * bs);
 	Profiler::end("entropy_coding");
 
-	Profiler::start("oss_write_event");
 	oss.write((const char *)compressed.data(), compressed.size());
-	Profiler::end("oss_write_event");
-
 
 	Profiler::end("compression");
 	return oss.str();
@@ -283,7 +267,7 @@ std::vector<uint8_t> ImageMarlinCoder::entropyCodeLaplacian(
 	prebuilt_dictionaries+=32; // Harcoded, selects Laplacian Distribution
 
 	// Compress
-	Profiler::start("ec_dict_loop");
+	Profiler::start("ec_dictionary_coding");
 	std::vector<uint8_t> ec_header(nBlocks*3);
 	std::vector<uint8_t> scratchPad(nBlocks * blockSize);
 	for (size_t b=0; b<nBlocks; b++) {
@@ -295,18 +279,15 @@ std::vector<uint8_t> ImageMarlinCoder::entropyCodeLaplacian(
 		auto in  = marlin::make_view(&uncompressed[i*blockSize], &uncompressed[i*blockSize+sz]);
 		auto out = marlin::make_view(&scratchPad[i*blockSize], &scratchPad[i*blockSize+blockSize]);
 
-		Profiler::start("ec_dict_loop_inner");
 		size_t compressedSize = prebuilt_dictionaries[(entropy*16)/256]->compress(in, out);
-		Profiler::end("ec_dict_loop_inner");
 
 		ec_header[3*i+0]=&prebuilt_dictionaries[(entropy*16)/256] - Marlin_get_prebuilt_dictionaries();
 		ec_header[3*i+1]=compressedSize  & 0xFF;
 		ec_header[3*i+2]=compressedSize >> 8;
 	}
-	Profiler::end("ec_dict_loop");
+	Profiler::end("ec_dictionary_coding");
 
 
-	Profiler::start("ec_mem_output");
 	size_t fullCompressedSize = ec_header.size();
 	for (size_t i=0; i<nBlocks; i++) {
 		size_t compressedSize = (ec_header[3*i+2]<<8) + ec_header[3*i+1];
@@ -325,7 +306,6 @@ std::vector<uint8_t> ImageMarlinCoder::entropyCodeLaplacian(
 			p+=compressedSize;
 		}
 	}
-	Profiler::end("ec_mem_output");
 
 	return out;
 }
@@ -374,9 +354,6 @@ std::vector<uint8_t> ImageMarlinCoder::entropyCodeBestDict(
 }
 
 void ImageMarlinCoder::compress(const cv::Mat& img, std::ostream& out) {
-	std::string compressed = compress(img);
-
-	Profiler::start("img_write");
+	const std::string compressed = compress(img);
 	out.write(compressed.data(), compressed.size());
-	Profiler::end("img_write");
 }

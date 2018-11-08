@@ -173,14 +173,12 @@ int main(int argc, char **argv) {
 	if (mode_compress) {
 		cv::Mat img;
 		{
-			Profiler::start("img_loading");
 			img = cv::imread(input_path, cv::IMREAD_UNCHANGED);
 			if (img.empty()) {
 				usage();
 				std::cerr << "ERROR: Cannot read " << input_path << ". Is it in a supported format?" << std::endl;
 				return -1;
 			}
-			Profiler::end("img_loading");
 		}
 
 		ImageMarlinHeader header(
