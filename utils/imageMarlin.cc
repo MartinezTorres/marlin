@@ -35,23 +35,11 @@ SOFTWARE.
 #include <fstream>
 #include <opencv/highgui.h>
 #include <opencv/cv.hpp>
+#include <unistd.h>
+
+#include "../src/profiler.hpp"
 
 using namespace marlin;
-
-struct TestTimer {
-	timespec c_start, c_end;
-
-	void start() { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_start); };
-
-	void stop() { clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &c_end); };
-
-	double operator()() { return (c_end.tv_sec - c_start.tv_sec) + 1.E-9 * (c_end.tv_nsec - c_start.tv_nsec); }
-};
-
-TestTimer tt;
-#define TESTTIME(timer, a) \
-	timer.start(); a; timer.stop(); \
-	std::cerr << "Tested \"" << #a << "\": " << int(timer()*1e6) << "us" << std::endl;
 
 void usage() {
 	std::string executable_name("imageMarlin");
@@ -61,7 +49,8 @@ void usage() {
 	std::cout << "Marlin utility to compress/decompress images" << std::endl;
 	std::cout << "======================================================================" << std::endl;
 	std::cout << "COMPRESSION Syntax: " << executable_name << " c <input_path> <output_path> \\" << std::endl
-	          << "\t[-qstep=" << ImageMarlinHeader::DEFAULT_QSTEP << "] "
+	          << "\t[-qstep=<" << ImageMarlinHeader::DEFAULT_QSTEP << ">] "
+			  << " [-profile=<profile>] [-v|-verbose]"
 	          << std::endl;
 	std::cout << "DECOMPRESSION Syntax: " << executable_name << "d <input_path> <output_path> "
 	          << std::endl;
@@ -71,6 +60,8 @@ void usage() {
 	std::cout << "  * input_path:  path to the image (c) / compressed (d) file" << std::endl;
 	std::cout << "  * output_path: path to the compressed (c) / reconstructed (d) file" << std::endl;
 	std::cout << "  * qstep:       (optional) quantization step, 1 for lossless" << std::endl;
+	std::cout << "  * profile:     path to the file where profiling information is to be stored" << std::endl;
+	std::cout << "  * verbose:     show extra info" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Compression examples:" << std::endl;
 	std::cout << std::endl;
@@ -98,7 +89,9 @@ void parse_arguments(int argc, char **argv,
 		std::string& input_path,
 		std::string& output_path,
 		uint32_t& qstep,
-		uint32_t& blockSize) {
+		uint32_t& blockSize,
+		std::string& path_profile,
+		bool& verbose) {
 	if (argc < 4) {
 		throw std::runtime_error("Invalid argument count");
 	}
@@ -130,14 +123,30 @@ void parse_arguments(int argc, char **argv,
 	if (argc > 4 && !mode_compress) {
 		throw std::runtime_error("Optional arguments can only appear for compression.");
 	}
+	std::regex re;
 	for (int i=4; i<argc; i++) {
 		std::string subject(argv[i]);
 		std::smatch match;
 
 		// qstep
-		std::regex re("-qstep=([[:digit:]]+)");
+		re = "-qstep=([[:digit:]]+)";
 		if (std::regex_search(subject, match, re)) {
 			qstep = atoi(match.str(1).data());
+			continue;
+		}
+
+		// path to the profiling file
+		re = "-profile=(.+)";
+		if (std::regex_search(subject, match, re)) {
+			path_profile = match.str(1);
+			continue;
+		}
+
+		// path to the profiling file
+		re = "-(v|verbose)";
+		if (std::regex_search(subject, match, re)) {
+			verbose = true;
+			continue;
 		}
 	}
 }
@@ -149,33 +158,40 @@ int main(int argc, char **argv) {
 	std::string output_path;
 	uint32_t qstep = ImageMarlinHeader::DEFAULT_QSTEP;
 	uint32_t blockSize = ImageMarlinHeader::DEFAULT_BLOCK_SIZE;
+	std::string path_profile;
+	bool verbose = false;
 
 	try {
-		parse_arguments(argc, argv, mode_compress, input_path, output_path, qstep, blockSize);
+		parse_arguments(argc, argv, mode_compress, input_path, output_path, qstep, blockSize, path_profile, verbose);
 	} catch (std::runtime_error ex) {
 		usage();
 		std::cerr << std::endl << "ERROR: " << ex.what() << std::endl;
 		return -1;
 	}
 
-	TestTimer ttmain;
+//	TestTimer ttmain;
 	if (mode_compress) {
-		cv::Mat img = cv::imread(input_path, cv::IMREAD_UNCHANGED);
-		if (img.empty()) {
-			usage();
-			std::cerr << "ERROR: Cannot read " << input_path << ". Is it in a supported format?" << std::endl;
-			return -1;
+		cv::Mat img;
+		{
+			Profiler::start("img_loading");
+			img = cv::imread(input_path, cv::IMREAD_UNCHANGED);
+			if (img.empty()) {
+				usage();
+				std::cerr << "ERROR: Cannot read " << input_path << ". Is it in a supported format?" << std::endl;
+				return -1;
+			}
+			Profiler::end("img_loading");
 		}
 
 		ImageMarlinHeader header(
 				(uint32_t) img.rows, (uint32_t) img.cols, (uint32_t) img.channels(),
 				blockSize, qstep);
-		header.show();
-
 		ImageMarlinCoder compressor(header);
-
+		if (verbose) {
+			header.show(std::cout);
+		}
 		std::ofstream off(output_path);
-		TESTTIME(ttmain, compressor.compress(img, off));
+		compressor.compress(img, off);
 	} else {
 		std::string compressed;
 		{
@@ -191,13 +207,18 @@ int main(int argc, char **argv) {
 		ImageMarlinHeader decompressedHeader;
 
 		cv::Mat img;
-		TESTTIME(ttmain, img = decompressor.decompress(compressed, decompressedHeader));
-
-		decompressedHeader.show();
-
+		img = decompressor.decompress(compressed, decompressedHeader);
+		if (verbose) {
+			decompressedHeader.show(std::cout);
+		}
 		cv::imwrite(output_path, img);
 	}
 
+	Profiler::report(path_profile, true);
+
+	if (verbose) {
+		Profiler::report(std::cout, false);
+	}
 
 	return 0;
 }

@@ -33,6 +33,8 @@ SOFTWARE.
 #include <immintrin.h>
 #include <cmath>
 
+#include "profiler.hpp"
+
 #define   LIKELY(condition) (__builtin_expect(static_cast<bool>(condition), 1))
 #define UNLIKELY(condition) (__builtin_expect(static_cast<bool>(condition), 0))
 
@@ -94,7 +96,7 @@ ssize_t compressMarlin8 (
 	View<uint8_t> dst, 
 	std::vector<size_t> &unrepresentedSymbols)
 {
-	
+	Profiler::start("ec_marlin8");
 	JumpTable jump(compressor.K, compressor.O, compressor.unrepresentedSymbolToken+1);	
 	
 		  uint8_t *out   = dst.start;
@@ -104,7 +106,8 @@ ssize_t compressMarlin8 (
 
 	
 	//We look for the word that sets up the machine state.
-	{		
+	{
+		Profiler::start("ec_unr_symbols");
 		TSource ss = *in++;
 		
 		MarlinIdx ms = compressor.source2marlin[ss>>compressor.shift];
@@ -115,11 +118,14 @@ ssize_t compressMarlin8 (
 		}
 		
 		j = compressor.compressorTableInitPointer[ms];
+		Profiler::end("ec_unr_symbols");
 	}
-	
+
+	Profiler::start("ec_table_jump");
+	MarlinIdx ms;
 	while (in<src.end) {
 		
-		MarlinIdx ms = compressor.source2marlin[(*in++)>>compressor.shift];
+		ms = compressor.source2marlin[(*in++)>>compressor.shift];
 		if (ms==compressor.unrepresentedSymbolToken) {
 			unrepresentedSymbols.push_back(in-src.start-1);
 			ms = 0; // 0 must be always the most probable symbol;
@@ -133,13 +139,17 @@ ssize_t compressMarlin8 (
 			out++;
 		}
 
-		if (dst.end-out<16) return -1;	// TODO: find the exact value
+		if (dst.end-out<16) {
+			Profiler::end("ec_table_jump");
+			return -1;	// TODO: find the exact value
+		}
 	}
-
-
 	//if (not (j & FLAG_NEXT_WORD)) 
 	*out++ = j & 0xFF;
-	
+	Profiler::end("ec_table_jump");
+
+	Profiler::end("ec_marlin8");
+
 	return out - dst.start;
 }
 
@@ -148,7 +158,7 @@ ssize_t compressMarlinFast(
 	const TMarlinCompress<TSource,MarlinIdx> &compressor,
 	View<const TSource> src, 
 	View<uint8_t> dst, 
-	std::vector<size_t> &unrepresentedSymbols) 
+	std::vector<size_t> &unrepresentedSymbols)
 {
 	
 	JumpTable jump(compressor.K, compressor.O, compressor.unrepresentedSymbolToken+1);	
@@ -160,7 +170,8 @@ ssize_t compressMarlinFast(
 
 	
 	//We look for the word that sets up the machine state.
-	{		
+	{
+		Profiler::start("ec_unr_symbols");
 		TSource ss = *in++;
 		
 		MarlinIdx ms = compressor.source2marlin[ss>>compressor.shift];
@@ -171,11 +182,12 @@ ssize_t compressMarlinFast(
 		}
 		
 		j = compressor.compressorTableInitPointer[ms];
+		Profiler::end("ec_unr_symbols");
 	}
 
+	Profiler::start("ec_actual_coding");
 	uint32_t value = 0;
-	 int32_t valueBits = 0;
-	
+	int32_t valueBits = 0;
 	while (in<src.end) {
 		
 		if (dst.end-out<16) return -1;	// TODO: find the exact value
@@ -213,6 +225,8 @@ ssize_t compressMarlinFast(
 		value = value << 8;
 		valueBits -= 8;
 	}
+
+	Profiler::end("ec_actual_coding");
 	
 	return out - dst.start;
 }	
@@ -280,10 +294,7 @@ auto TMarlinCompress<TSource,MarlinIdx>::buildCompressorTable(const TMarlinDicti
 
 template<typename TSource, typename MarlinIdx>
 ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, View<uint8_t> dst) const {
-
-	
-	//memcpy(dst.start,src.start,src.nBytes()); return src.nBytes();
-
+	Profiler::start("ec_special_cases");
 	// Assertions
 	if (dst.nBytes() < src.nBytes()) return -1; //TODO: Real error codes
 	
@@ -298,6 +309,7 @@ ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, Vi
 		
 		if (count==src.nElements()) {
 			reinterpret_cast<TSource *>(dst.start)[0] = src.start[0];
+			Profiler::end("ec_special_cases");
 			return sizeof(TSource);
 		}
 	}
@@ -305,12 +317,14 @@ ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, Vi
 	// Special case: if srcSize is not multiple of 8, we force it to be.
 	size_t padding = 0;
 	while (src.nBytes() % 8 != 0) {
-		
 		*reinterpret_cast<TSource *&>(dst.start)++ = *src.start++;			
 		padding += sizeof(TSource);
 	}
+	Profiler::end("ec_special_cases");
 
-	size_t residualSize = src.nElements()*shift/8;
+	const size_t srcElementCount = src.nElements();
+
+	size_t residualSize = srcElementCount*shift/8;
 
 
 	std::vector<size_t> unrepresentedSymbols;		
@@ -320,7 +334,7 @@ ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, Vi
 	
 	// Valid portion available to encode the marlin message.
 	View<uint8_t> marlinDst = marlin::make_view(dst.start+1,dst.end-residualSize);
-	ssize_t marlinSize = -1;
+	ssize_t marlinSize;
 	if (false) {
 		//marlinSize = compressMarlinReference(src, marlinDst, unrepresentedSymbols);
 	} else if (K==8) {
@@ -328,23 +342,28 @@ ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, Vi
 	} else {
 		marlinSize = compressMarlinFast(*this, src, marlinDst, unrepresentedSymbols);
 	}
-	
+
+	Profiler::start("ec_element_count");
 	size_t unrepresentedSize = unrepresentedSymbols.size() * ( sizeof(TSource) + (
-		src.nElements() < 0x100 ? sizeof(uint8_t) :
-		src.nElements() < 0x10000 ? sizeof(uint16_t) :
-		src.nElements() < 0x100000000ULL ? sizeof(uint32_t) :sizeof(uint64_t)
+		srcElementCount < 0x100 ? sizeof(uint8_t) :
+		srcElementCount < 0x10000 ? sizeof(uint16_t) :
+		srcElementCount < 0x100000000ULL ? sizeof(uint32_t) :sizeof(uint64_t)
 		));
+	Profiler::end("ec_element_count");
 	
 	
 	//if (unrepresentedSize) printf("%d \n", unrepresentedSize);
 	// If not worth encoding, we store raw.
+	Profiler::start("ec_raw");
 	if (marlinSize < 0 	// If the encoded size is negative means that Marlin could not provide any meaningful compression, and the whole stream will be copied.
 		or unrepresentedSymbols.size() > 255 
 		or 1 + marlinSize + unrepresentedSize + residualSize > src.nBytes()) {
 
 		memcpy(dst.start,src.start,src.nBytes());
+		Profiler::end("ec_raw");
 		return padding + src.nBytes();
 	}
+	Profiler::end("ec_raw");
 	
 	
 	*dst.start++ = unrepresentedSymbols.size();
@@ -352,6 +371,7 @@ ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, Vi
 	
 	
 	// Encode unrepresented symbols
+	Profiler::start("ec_encode_unr");
 	for (auto &s : unrepresentedSymbols) {
 		if (src.nElements() < 0x100) {
 			*reinterpret_cast<uint8_t *&>(dst.start)++ = s;	
@@ -364,9 +384,12 @@ ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, Vi
 		}
 		*reinterpret_cast<TSource *&>(dst.start)++ = src.start[s];	
 	}
+	Profiler::end("ec_encode_unr");
 	
 	// Encode residuals
+	Profiler::start("ec_shift8");
 	shift8(*this, src, dst);
+	Profiler::end("ec_shift8");
 	
 	return padding + 1 + marlinSize + unrepresentedSize + residualSize; 
 }
