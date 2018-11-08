@@ -50,23 +50,6 @@ namespace marlin {
  */
 class ImageMarlinHeader {
 
-	/**
-	 * Write an unsigned field value to out in a platform-independent manner.
-	 *
-	 * @throws std::domain_error if field is negative or cannot be represented in num_bytes
-	 *
-     * @tparam num_bytes number of bytes to use to store the value.
-     */
-	template<size_t num_bytes>
-	void write_field(std::ostream& out, uint32_t field) const;
-
-	/**
-	 * Read an unsigned field from in, assuming it was written with <num_bytes>write_field
-	 * @tparam num_bytes number of bytes used to store the value.
-	 */
-	template<size_t num_bytes>
-	uint32_t read_field(std::istream& in);
-
 public:
 	static const uint32_t DEFAULT_BLOCK_SIZE = 64;
 	static const uint32_t DEFAULT_QSTEP = 1;
@@ -125,7 +108,7 @@ public:
 	  *
 	  * @return the number of bytes written.
 	  */
-	 void dump_to(std::ostream &out) const;
+	 void dump_to(std::ostream& out) const;
 
 	 /**
 	  * Read and update the header parameters by reading them from in
@@ -135,7 +118,7 @@ public:
 	  *
 	  * @return the number of bytes consumed.
 	  */
-	 void load_from(std::istream &in);
+	 void load_from(std::istream& in);
 
 	 /**
 	  * Return the number of bytes that it takes to store the header
@@ -152,34 +135,30 @@ public:
 	  * Print the header to out
 	  */
 	 void show(std::ostream& out = std::cout);
+
+protected:
+	/**
+	 * Write an unsigned field value to out in a platform-independent manner.
+	 *
+	 * @throws std::domain_error if field is negative or cannot be represented in num_bytes
+	 *
+     * @tparam num_bytes number of bytes to use to store the value.
+     */
+	template<size_t num_bytes>
+	void write_field(std::ostream& out, uint32_t field) const;
+
+	/**
+	 * Read an unsigned field from in, assuming it was written with <num_bytes>write_field
+	 * @tparam num_bytes number of bytes used to store the value.
+	 */
+	template<size_t num_bytes>
+	uint32_t read_field(std::istream& in);
 };
 
 /**
  * Class to compress images
  */
 class ImageMarlinCoder {
-
-	const ImageMarlinHeader header;
-
-	/**
-	 * Entropy code all data in uncompressed with a Laplacian dictionary
-	 * and produce a vector of compressed bytes.
-	 */
-	std::vector<uint8_t> entropyCodeLaplacian(const std::vector<uint8_t> &uncompressed, size_t blockSize);
-
-	/**
-	 * Entropy code all data in uncompressed with every precomputed dictionary
-	 * and return results for the best coder. (Slow!)
-	 * and produce a vector of compressed bytes.
-	 */
-	std::vector<uint8_t> entropyCodeBestDict(
-			const std::vector<uint8_t> &uncompressed, size_t blockSize);
-
-	/**
-	 * Apply quantization to the image.
-	 */
-	void quantize(cv::Mat1b& img);
-
 public:
 	/**
 	 * Initialize an image compressor with the parameters given in header
@@ -201,10 +180,31 @@ public:
 	 * @return a string with the compressed format bytes
 	 */
 	void compress(const cv::Mat& img, std::ostream& out);
+
+protected:
+	const ImageMarlinHeader header;
+
+	/**
+	 * Entropy code all data in uncompressed with a Laplacian dictionary
+	 * and produce a vector of compressed bytes.
+	 */
+	std::vector<uint8_t> entropyCodeLaplacian(const std::vector<uint8_t> &uncompressed, size_t blockSize);
+
+	/**
+	 * Entropy code all data in uncompressed with every precomputed dictionary
+	 * and return results for the best coder. (Slow!)
+	 * and produce a vector of compressed bytes.
+	 */
+	std::vector<uint8_t> entropyCodeBestDict(
+			const std::vector<uint8_t> &uncompressed, size_t blockSize);
+
+	/**
+	 * Apply quantization to the image.
+	 */
+	void quantize(cv::Mat1b& img);
 };
 
 class ImageMarlinDecoder {
-	size_t entropyDecode(marlin::View<uint8_t> uncompressed, marlin::View<const uint8_t> &compressed, size_t blockSize);
 
 public:
 	/**
@@ -217,6 +217,9 @@ public:
 	 * Decompress and return an image, and store the read header into decompressedHeader.
 	 */
 	cv::Mat decompress(const std::string &compressedString, ImageMarlinHeader& decompressedHeader);
+
+protected:
+	size_t entropyDecode(marlin::View<uint8_t> uncompressed, marlin::View<const uint8_t> &compressed, size_t blockSize);
 };
 
 

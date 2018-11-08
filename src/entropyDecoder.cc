@@ -537,13 +537,13 @@ ssize_t TMarlinDecompress<TSource,MarlinIdx>::decompress(View<const uint8_t> src
 
 		size_t idx;
 		if (dst.nElements() < 0x100) {
-			idx = *reinterpret_cast<const uint8_t *&>(unrepresentedSrc.start)++;	
+			idx = *reinterpret_cast<const uint8_t *&>(unrepresentedSrc.start)++;
 		} else if (dst.nElements() < 0x10000) {
-			idx = *reinterpret_cast<const uint16_t *&>(unrepresentedSrc.start)++;	
+			idx = *reinterpret_cast<const uint16_t *&>(unrepresentedSrc.start)++;
 		} else if (dst.nElements() < 0x100000000ULL) {
-			idx = *reinterpret_cast<const uint32_t *&>(unrepresentedSrc.start)++;	
+			idx = *reinterpret_cast<const uint32_t *&>(unrepresentedSrc.start)++;
 		} else {
-			idx = *reinterpret_cast<const uint64_t *&>(unrepresentedSrc.start)++;	
+			idx = *reinterpret_cast<const uint64_t *&>(unrepresentedSrc.start)++;
 		}
 //			printf("%d \n", idx, *reinterpret_cast<const TSource *&>(unrepresentedSrc.start));
 		dst.start[idx] = *reinterpret_cast<const TSource *&>(unrepresentedSrc.start)++;

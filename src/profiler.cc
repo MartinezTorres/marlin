@@ -156,6 +156,7 @@ namespace {
 		Event(std::string name_, Event* parent_=nullptr);
 	};
 
+
 	Event* Event::start_child(std::string name_) {
 		auto it_found_child = children_by_name.find(name_);
 		Event * child;
@@ -255,9 +256,6 @@ namespace {
 		}
 	}
 
-	/**
-	 * Set to now all the timespecs in clock_map
-	 */
 	void Event::setClocksNow(std::map<clockid_t, timespec> &clock_map) {
 		for (auto it : clock_types_names) {
 			const clockid_t& clock_id = it.first;
@@ -271,7 +269,7 @@ namespace {
 		}
 	}
 
-	Event::Event(std::string name_, Event* parent_) : name(name_), parent(parent_), times(0) {
+	Event::Event(std::string name_, Event* parent_) : name(name_), times(0), parent(parent_) {
 		for (auto it : clock_types_names) {
 			durations.emplace(it.first, 0.0);
 		}
@@ -386,8 +384,6 @@ void Profiler::report(std::ostream& out, bool csv_format) {
 	}
 
 }
-
-
 
 void Profiler::report(std::string output_path, bool csv_format) {
 	if (! output_path.empty()) {
