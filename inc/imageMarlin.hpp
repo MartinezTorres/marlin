@@ -165,8 +165,7 @@ class ImageMarlinCoder {
 	 * Entropy code all data in uncompressed with a Laplacian dictionary
 	 * and produce a vector of compressed bytes.
 	 */
-	std::vector<uint8_t> entropyCodeLaplacian(
-			const std::vector<uint8_t> &uncompressed, size_t blockSize);
+	std::vector<uint8_t> entropyCodeLaplacian(const std::vector<uint8_t> &uncompressed, size_t blockSize);
 
 	/**
 	 * Entropy code all data in uncompressed with every precomputed dictionary
@@ -176,6 +175,11 @@ class ImageMarlinCoder {
 	std::vector<uint8_t> entropyCodeBestDict(
 			const std::vector<uint8_t> &uncompressed, size_t blockSize);
 
+	/**
+	 * Apply quantization to the image.
+	 */
+	void quantize(cv::Mat1b& img);
+
 public:
 	/**
 	 * Initialize an image compressor with the parameters given in header
@@ -184,8 +188,8 @@ public:
 	ImageMarlinCoder(const ImageMarlinHeader& header_) : header(header_) {}
 
 	/**
-	 * Compress an image with the parameters specified in header
-     *
+	 * Compress an image with the parameters specified in header.
+	 *
 	 * @return a string with the compressed format bytes
 	 */
 	std::string compress(const cv::Mat& img);
@@ -193,6 +197,8 @@ public:
 	/**
 	 * Compress an image with the parameters specified in header
      * and write the results to out.
+     *
+	 * @return a string with the compressed format bytes
 	 */
 	void compress(const cv::Mat& img, std::ostream& out);
 };
@@ -212,6 +218,7 @@ public:
 	 */
 	cv::Mat decompress(const std::string &compressedString, ImageMarlinHeader& decompressedHeader);
 };
+
 
 }
 
