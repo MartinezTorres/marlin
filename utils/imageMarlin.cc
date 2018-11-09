@@ -184,32 +184,38 @@ int main(int argc, char **argv) {
 		ImageMarlinHeader header(
 				(uint32_t) img.rows, (uint32_t) img.cols, (uint32_t) img.channels(),
 				blockSize, qstep);
-		ImageMarlinCoder compressor(header);
 		if (verbose) {
 			header.show(std::cout);
 		}
 		std::ofstream off(output_path);
-		compressor.compress(img, off);
+		ImageMarlinCoder* compressor = header.newCoder();
+		compressor->compress(img, off);
+		delete compressor;
 	} else {
-		std::string compressed;
+		std::string compressedData;
 		{
 			std::ifstream iss(input_path);
 			iss.seekg(0, std::ios::end);
 			size_t sz = iss.tellg();
-			compressed.resize(sz);
+			compressedData.resize(sz);
 			iss.seekg(0, std::ios::beg);
-			iss.read(&compressed[0], sz);
+			iss.read(&compressedData[0], sz);
 		}
 
-		ImageMarlinDecoder decompressor;
-		ImageMarlinHeader decompressedHeader;
+		ImageMarlinHeader decompressedHeader(compressedData);
+		ImageMarlinDecoder* decompressor = decompressedHeader.newDecoder();
+		std::vector<uint8_t> decompressedData(decompressedHeader.rows * decompressedHeader.cols);
 
-		cv::Mat img;
-		img = decompressor.decompress(compressed, decompressedHeader);
+		Profiler::start("decompression");
+		decompressor->decompress(compressedData, decompressedData, decompressedHeader);
+		Profiler::end("decompression");
+
+		cv::Mat1b img(decompressedHeader.rows, decompressedHeader.cols, &decompressedData[0]);
+		cv::imwrite(output_path, img);
 		if (verbose) {
 			decompressedHeader.show(std::cout);
 		}
-		cv::imwrite(output_path, img);
+		delete decompressor;
 	}
 
 	Profiler::report(path_profile, true);

@@ -45,6 +45,12 @@ SOFTWARE.
 
 namespace marlin {
 
+class ImageMarlinHeader;
+class ImageMarlinCoder;
+class ImageMarlinDecoder;
+class ImageMarlinTransformer;
+class ImageMarlinBlockEC;
+
 /**
  * Header defining the image properties and the codec configuration paramenters.
  */
@@ -57,7 +63,7 @@ public:
 	// Image dimensions
 	uint32_t rows, cols, channels;
 	// width (and height) of each block into which the image is divided for entropy coding
-	uint32_t blockSize;
+	uint32_t blocksize;
 	// Quantization step. Use 1 for lossless compression.
 	uint32_t qstep;
 
@@ -78,7 +84,7 @@ public:
 			rows(rows_),
 			cols(cols_),
 			channels(channels_),
-			blockSize(blockSize_),
+			blocksize(blockSize_),
 			qstep(qstep_) {
 		validate();
 	}
@@ -100,6 +106,18 @@ public:
 	 	load_from(data);
 	 	validate();
 	 }
+
+	 /**
+	  * @return a new ImageMarlinCoder reference based on the header parameters,
+	  *   which must be destroyed manually
+	  */
+	 ImageMarlinCoder* newCoder();
+
+	 /**
+	  * @return an ImageMarlinDecoder reference based on the header parameters,
+	  *   which must be destroyed manually
+	  */
+ 	 ImageMarlinDecoder* newDecoder();
 
 	 /**
 	  * Write the header parameters to out in a platform-independent way.
@@ -162,9 +180,18 @@ class ImageMarlinCoder {
 public:
 	/**
 	 * Initialize an image compressor with the parameters given in header
-	 * (parameters are copied, and do not change if header_ changes)
+	 * (parameters are copied, and do not change if header_ changes).
+	 *
+	 * The transformer_ and blockEC_ are deleted on the dtor.
 	 */
-	ImageMarlinCoder(const ImageMarlinHeader& header_) : header(header_) {}
+	ImageMarlinCoder(
+			const ImageMarlinHeader& header_, ImageMarlinTransformer* transformer_, ImageMarlinBlockEC* blockEC_)
+			: header(header_), transformer(transformer_), blockEC(blockEC_) {}
+
+	/**
+	 * Delete the transformer and blockEC objects and release any other used resource.
+	 */
+	~ImageMarlinCoder();
 
 	/**
 	 * Compress an image with the parameters specified in header.
@@ -182,7 +209,12 @@ public:
 	void compress(const cv::Mat& img, std::ostream& out);
 
 protected:
+	// Header with all configuration parameters
 	const ImageMarlinHeader header;
+	// Image transformer (includes any prediction and quantization)
+	ImageMarlinTransformer *const transformer;
+	// Image splitting into blocks and their entropy coding
+	ImageMarlinBlockEC *const blockEC;
 
 	/**
 	 * Entropy code all data in uncompressed with a Laplacian dictionary
@@ -211,17 +243,80 @@ public:
 	 * Initialize an image decompressor with the parameters given in header
 	 * (parameters are copied, and do not change if header_ changes)
 	 */
-	ImageMarlinDecoder() {}
+	ImageMarlinDecoder(ImageMarlinTransformer * transformer_, ImageMarlinBlockEC * blockEC_) :
+			transformer(transformer_), blockEC(blockEC_) {}
+
+	~ImageMarlinDecoder();
 
 	/**
-	 * Decompress and return an image, and store the read header into decompressedHeader.
+	 * Entropy decode and inverse transform the bitstream in compressedString and store
+	 * the reconstructed samples in decompressedData.
+	 *
+	 * @param compressedString a string containing the compressed bitstream
+	 * @param reconstructedData pre-allocated vector where the reconstructed data is to be
+	 *   stored, each component sequentially and using raster order (one row after the other,
+	 *   from top to bottom).
 	 */
-	cv::Mat decompress(const std::string &compressedString, ImageMarlinHeader& decompressedHeader);
+	void decompress(
+			const std::string &compressedString,
+			std::vector<uint8_t>& reconstructedData,
+			ImageMarlinHeader& decompressedHeader);
 
 protected:
-	size_t entropyDecode(marlin::View<uint8_t> uncompressed, marlin::View<const uint8_t> &compressed, size_t blockSize);
+	// Image transformer (includes any prediction and quantization)
+	ImageMarlinTransformer *const transformer;
+	// Image splitting into blocks and their entropy coding
+	ImageMarlinBlockEC *const blockEC;
 };
 
+/**
+ * Image transformer (includes any prediction and quantization)
+ */
+class ImageMarlinTransformer {
+public:
+	/**
+	 * Apply the direct transformation of img and store the results in preprocessed,
+	 * and store any necessary side information in dc
+	 */
+	virtual void transform_direct(cv::Mat& img, std::vector<uint8_t>& dc, std::vector<uint8_t>& preprocessed) = 0;
+
+	/**
+	 * Perform the inverse transformation of entropy_decoded_data
+	 * and store the reconstructed samples in reconstructedData (which will
+	 * be resized to the needed size)
+	 */
+	virtual void transform_inverse(
+			std::vector<uint8_t>& entropy_decoded_data,
+			View<const uint8_t>& side_information,
+			std::vector<uint8_t>& reconstructedData) = 0;
+
+	virtual ~ImageMarlinTransformer() {}
+};
+
+/**
+ * Image splitting into blocks and their entropy coding.
+ *
+ * The decodeBlocks method is provided, encodeBlocks must be defined
+ * in subclasses.
+ *
+ * encodeblocks Must be compatible with the format expected by
+ * decodeBlocks, or provide an alternative implementation.
+ */
+class ImageMarlinBlockEC {
+public:
+	/// Divide a transformed image into blocks, entropy code them and obtain a bitstream
+	virtual std::vector<uint8_t> encodeBlocks(
+			const std::vector<uint8_t> &uncompressed,
+			size_t blockSize) = 0;
+
+	/// Recover a transformed image from a bitstream
+	virtual size_t decodeBlocks(
+			marlin::View<uint8_t> uncompressed,
+			marlin::View<const uint8_t> &compressed,
+			size_t blockSize);
+
+	virtual ~ImageMarlinBlockEC() {}
+};
 
 }
 

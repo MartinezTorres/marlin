@@ -45,7 +45,7 @@ std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
 	bool fast = true;
 
 	const uint32_t qstep = header.qstep;
-	const size_t bs = header.blockSize;
+	const size_t bs = header.blocksize;
 
 	const size_t brows = (orig_img.rows+bs-1)/bs;
 	const size_t bcols = (orig_img.cols+bs-1)/bs;
@@ -63,103 +63,70 @@ std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
 	std::vector<uint8_t> preprocessed(bcols*brows*bs*bs*img.channels());
 
 	if (img.channels()==3) {
-		if (qstep > 1) {
-			std::runtime_error("qstep>1 not supported for >1 components");
-		}
-
-		cv::Mat3b img3b = img;
-		// PREPROCESS IMAGE INTO BLOCKS
-		{
-			uint8_t *tb = &preprocessed[0*bcols*brows*bs*bs];
-			uint8_t *tg = &preprocessed[1*bcols*brows*bs*bs];
-			uint8_t *tr = &preprocessed[2*bcols*brows*bs*bs];
-
-			for (size_t i=0; i<img3b.rows-bs+1; i+=bs) {
-				for (size_t j=0; j<img3b.cols-bs+1; j+=bs) {
-
-					const uint8_t *s0 = &img3b(i,j)[0];
-					const uint8_t *s1 = &img3b(i,j)[0];
-
-					dc[3*((i/bs)*bcols + j/bs)+0] = *s0++;
-					dc[3*((i/bs)*bcols + j/bs)+1] = *s0++;
-					dc[3*((i/bs)*bcols + j/bs)+2] = *s0++;
-
-					*tb++ = 0;
-					*tg++ = 0;
-					*tr++ = 0;
-					for (size_t jj=1; jj<bs; jj++) {
-						*tb++ = *s0++ - *s1++;
-						*tg++ = *s0++ - *s1++;
-						*tr++ = *s0++ - *s1++;
-					}
-
-
-					for (size_t ii=1; ii<bs; ii++) {
-
-						s0 = &img3b(i+ii,j)[0];
-						s1 = &img3b(i+ii-1,j)[0];
-
-						for (size_t jj=0; jj<bs; jj++) {
-							*tb++ = *s0++ - *s1++;
-							*tg++ = *s0++ - *s1++;
-							*tr++ = *s0++ - *s1++;
-						}
-					}
-				}
-			}
-		}
-
-
-		{
-			uint8_t *tb = &preprocessed[0*bcols*brows*bs*bs];
-			uint8_t *tg = &preprocessed[1*bcols*brows*bs*bs];
-			uint8_t *tr = &preprocessed[2*bcols*brows*bs*bs];
-			for (size_t i=0; i<bcols*brows*bs*bs; i++) {
-				tb[i] -= tg[i];
-				tr[i] -= tg[i];
-			}
-		}
+		std::runtime_error("not supported for >1 components");
+//		if (qstep > 1) {
+//			std::runtime_error("qstep>1 not supported for >1 components");
+//		}
+//
+//		cv::Mat3b img3b = img;
+//		// PREPROCESS IMAGE INTO BLOCKS
+//		{
+//			uint8_t *tb = &preprocessed[0*bcols*brows*bs*bs];
+//			uint8_t *tg = &preprocessed[1*bcols*brows*bs*bs];
+//			uint8_t *tr = &preprocessed[2*bcols*brows*bs*bs];
+//
+//			for (size_t i=0; i<img3b.rows-bs+1; i+=bs) {
+//				for (size_t j=0; j<img3b.cols-bs+1; j+=bs) {
+//
+//					const uint8_t *s0 = &img3b(i,j)[0];
+//					const uint8_t *s1 = &img3b(i,j)[0];
+//
+//					dc[3*((i/bs)*bcols + j/bs)+0] = *s0++;
+//					dc[3*((i/bs)*bcols + j/bs)+1] = *s0++;
+//					dc[3*((i/bs)*bcols + j/bs)+2] = *s0++;
+//
+//					*tb++ = 0;
+//					*tg++ = 0;
+//					*tr++ = 0;
+//					for (size_t jj=1; jj<bs; jj++) {
+//						*tb++ = *s0++ - *s1++;
+//						*tg++ = *s0++ - *s1++;
+//						*tr++ = *s0++ - *s1++;
+//					}
+//
+//
+//					for (size_t ii=1; ii<bs; ii++) {
+//
+//						s0 = &img3b(i+ii,j)[0];
+//						s1 = &img3b(i+ii-1,j)[0];
+//
+//						for (size_t jj=0; jj<bs; jj++) {
+//							*tb++ = *s0++ - *s1++;
+//							*tg++ = *s0++ - *s1++;
+//							*tr++ = *s0++ - *s1++;
+//						}
+//					}
+//				}
+//			}
+//		}
+//
+//
+//		{
+//			uint8_t *tb = &preprocessed[0*bcols*brows*bs*bs];
+//			uint8_t *tg = &preprocessed[1*bcols*brows*bs*bs];
+//			uint8_t *tr = &preprocessed[2*bcols*brows*bs*bs];
+//			for (size_t i=0; i<bcols*brows*bs*bs; i++) {
+//				tb[i] -= tg[i];
+//				tr[i] -= tg[i];
+//			}
+//		}
 	} else if (img.channels()==1) {
 		cv::Mat1b img1b = img;
 
 		quantize(img1b);
 
 		Profiler::start("prediction");
-		// PREPROCESS IMAGE INTO BLOCKS
-		uint8_t *t = &preprocessed[0];
-
-		for (size_t i=0; i<img1b.rows-bs+1; i+=bs) {
-			for (size_t j=0; j<img1b.cols-bs+1; j+=bs) {
-				// i,j : index of the top,left position of the block in the image
-
-				// s0, s1 begin at the top,left of the block
-				const uint8_t *s0 = &img1b(i,j);
-				const uint8_t *s1 = &img1b(i,j);
-
-				// dc(blockrow, blockcol) contains the top,left element of the block
-				dc[(i/bs)*bcols + j/bs] = *s0++;
-
-				// The first row of the preprocessed (t) image
-				// predicts from the left neighbor.
-				// Only predictions are stored in t
-				*t++ = 0; // this corresponds to jj=0, stored in dc, hence prep. is 0
-				for (size_t jj=1; jj<bs; jj++) {
-					*t++ = *s0++ -*s1++;
-				}
-
-
-				// Remaining columns are predicted with the top element
-				// (ii starts at 1 because ii=0 is the first row, already processeD)
-				for (size_t ii=1; ii<bs; ii++) {
-					s0 = &img1b(i+ii,j);
-					s1 = &img1b(i+ii-1,j);
-
-					for (size_t jj=0; jj<bs; jj++) {
-						*t++ = *s0++ - *s1++;
-					}
-				}
-			}
-		}
+		transformer->transform_direct(img, dc, preprocessed);
 		Profiler::end("prediction");
 	}
 
@@ -174,10 +141,7 @@ std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
 
 	// Entropy code and write result
 	Profiler::start("entropy_coding");
-	auto compressed =
-			fast ?
-			entropyCodeLaplacian(preprocessed, bs * bs) :
-			entropyCodeBestDict(preprocessed, bs * bs);
+	auto compressed = blockEC->encodeBlocks(preprocessed, bs* bs);
 	Profiler::end("entropy_coding");
 
 	oss.write((const char *)compressed.data(), compressed.size());
@@ -233,83 +197,6 @@ void ImageMarlinCoder::quantize(cv::Mat1b& img) {
 	Profiler::end("quantization");
 }
 
-std::vector<uint8_t> ImageMarlinCoder::entropyCodeLaplacian(
-		const std::vector<uint8_t> &uncompressed, size_t blockSize) {
-
-	const size_t nBlocks = (uncompressed.size()+blockSize-1)/blockSize;
-
-	Profiler::start("ec_block_entropy");
-	std::vector<std::pair<uint8_t, size_t>> blocksEntropy;
-	for (size_t i=0; i<nBlocks; i++) {
-
-		size_t sz = std::min(blockSize, uncompressed.size()-i*blockSize);
-
-		// Skip analyzing very small blocks
-		if (sz < 8) {
-			blocksEntropy.emplace_back(255,i);
-			continue;
-		}
-
-		std::array<double, 256> hist; hist.fill(0.);
-		for (size_t j=1; j<sz; j++) hist[uncompressed[i*blockSize+j]]++;
-		for (auto &h : hist) h /= (sz-1);
-
-		double entropy = Distribution::entropy(hist)/8.;
-
-		blocksEntropy.emplace_back(std::max(0,std::min(255,int(entropy*256))),i);
-	}
-	// Sort packets depending on increasing entropy
-	std::sort(blocksEntropy.begin(), blocksEntropy.end());
-	Profiler::end("ec_block_entropy");
-
-	// Collect prebuilt dictionaries
-	const Marlin **prebuilt_dictionaries = Marlin_get_prebuilt_dictionaries();
-	prebuilt_dictionaries+=32; // Harcoded, selects Laplacian Distribution
-
-	// Compress
-	Profiler::start("ec_dictionary_coding");
-	std::vector<uint8_t> ec_header(nBlocks*3);
-	std::vector<uint8_t> scratchPad(nBlocks * blockSize);
-	for (size_t b=0; b<nBlocks; b++) {
-
-		size_t i = blocksEntropy[b].second;
-		size_t entropy = blocksEntropy[b].first;
-		size_t sz = std::min(blockSize, uncompressed.size()-i*blockSize);
-
-		auto in  = marlin::make_view(&uncompressed[i*blockSize], &uncompressed[i*blockSize+sz]);
-		auto out = marlin::make_view(&scratchPad[i*blockSize], &scratchPad[i*blockSize+blockSize]);
-
-		size_t compressedSize = prebuilt_dictionaries[(entropy*16)/256]->compress(in, out);
-
-		ec_header[3*i+0]=&prebuilt_dictionaries[(entropy*16)/256] - Marlin_get_prebuilt_dictionaries();
-		ec_header[3*i+1]=compressedSize  & 0xFF;
-		ec_header[3*i+2]=compressedSize >> 8;
-	}
-	Profiler::end("ec_dictionary_coding");
-
-
-	size_t fullCompressedSize = ec_header.size();
-	for (size_t i=0; i<nBlocks; i++) {
-		size_t compressedSize = (ec_header[3*i+2]<<8) + ec_header[3*i+1];
-		fullCompressedSize += compressedSize;
-	}
-
-	std::vector<uint8_t> out(fullCompressedSize);
-
-	memcpy(&out[0], ec_header.data(), ec_header.size());
-
-	{
-		size_t p = ec_header.size();
-		for (size_t i=0; i<nBlocks; i++) {
-			size_t compressedSize = (ec_header[3*i+2]<<8) + ec_header[3*i+1];
-			memcpy(&out[p], &scratchPad[i*blockSize], compressedSize);
-			p+=compressedSize;
-		}
-	}
-
-	return out;
-}
-
 
 std::vector<uint8_t> ImageMarlinCoder::entropyCodeBestDict(
 		const std::vector<uint8_t> &uncompressed, size_t blockSize) {
@@ -356,4 +243,9 @@ std::vector<uint8_t> ImageMarlinCoder::entropyCodeBestDict(
 void ImageMarlinCoder::compress(const cv::Mat& img, std::ostream& out) {
 	const std::string compressed = compress(img);
 	out.write(compressed.data(), compressed.size());
+}
+
+ImageMarlinCoder::~ImageMarlinCoder() {
+	delete transformer;
+	delete blockEC;
 }

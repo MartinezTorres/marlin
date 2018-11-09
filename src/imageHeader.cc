@@ -34,8 +34,32 @@ SOFTWARE.
 
 #include <imageMarlin.hpp>
 
+#include "imageBlockEC.hpp"
+#include "imageTransformer.hpp"
+
 using namespace marlin;
 
+
+ImageMarlinCoder* ImageMarlinHeader::newCoder() {
+	// Get the transformer
+	ImageMarlinTransformer* transformer;
+	transformer = new NorthPredictionTransformer(*this);
+
+	return new ImageMarlinCoder(
+			*this,
+			transformer,
+			new ImageMarlinLaplacianBlockEC());
+}
+
+ImageMarlinDecoder* ImageMarlinHeader::newDecoder() {
+	// Get the transformer
+	ImageMarlinTransformer* transformer;
+	transformer = new NorthPredictionTransformer(*this);
+
+	return new ImageMarlinDecoder(
+			transformer,
+			new ImageMarlinLaplacianBlockEC());
+}
 
 void ImageMarlinHeader::dump_to(std::ostream &out) const {
 	auto pos_before = out.tellp();
@@ -43,7 +67,7 @@ void ImageMarlinHeader::dump_to(std::ostream &out) const {
 	write_field<2>(out, rows);
 	write_field<2>(out, cols);
 	write_field<2>(out, channels);
-	write_field<2>(out, blockSize);
+	write_field<2>(out, blocksize);
 	write_field<1>(out, qstep);
 
 	if ((size_t) (out.tellp() - pos_before) != size()) {
@@ -57,7 +81,7 @@ void ImageMarlinHeader::load_from(std::istream &in) {
 	rows = read_field<2>(in);
 	cols = read_field<2>(in);
 	channels = read_field<2>(in);
-	blockSize = read_field<2>(in);
+	blocksize = read_field<2>(in);
 	qstep = read_field<1>(in);
 
 	if ((size_t) (in.tellg() - pos_before) != size()) {
@@ -77,7 +101,7 @@ void ImageMarlinHeader::validate() {
 	if (rows == 0 || cols == 0 || channels == 0) {
 		throw std::domain_error("All image dimensions must be positive");
 	}
-	if (blockSize == 0) {
+	if (blocksize == 0) {
 		throw std::domain_error("Block size must be positive");
 	}
 	if (qstep == 0) {
@@ -133,7 +157,7 @@ void ImageMarlinHeader::show(std::ostream& out) {
 	out << "    rows = " << rows << std::endl;
 	out << "    cols = " << cols << std::endl;
 	out << "    channels = " << channels << std::endl;
-	out << "    blockSize = " << blockSize << std::endl;
+	out << "    blocksize = " << blocksize << std::endl;
 	out << "    qstep = " << qstep << std::endl;
 	out << "}" << std::endl;
 }
