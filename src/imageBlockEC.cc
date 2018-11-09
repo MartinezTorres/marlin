@@ -164,4 +164,47 @@ size_t ImageMarlinBlockEC::decodeBlocks(
 	}
 }
 
+
+std::vector<uint8_t> ImageMarlinBestDicBlockEC::encodeBlocks(
+			const std::vector<uint8_t> &uncompressed, size_t blockSize) {
+
+	const size_t nBlocks = (uncompressed.size()+blockSize-1)/blockSize;
+
+	std::vector<std::pair<uint8_t, size_t>> blocksEntropy;
+
+	std::vector<uint8_t> ec_header(nBlocks*3);
+	std::vector<size_t> bestSizes(nBlocks, blockSize*2);
+	std::vector<std::vector<uint8_t>> bestBlocks(nBlocks, std::vector<uint8_t>(blockSize));
+	std::vector<uint8_t> scratchPad(blockSize);
+
+	for (auto **dict = Marlin_get_prebuilt_dictionaries(); *dict; dict++) {
+
+		for (size_t i=0; i<nBlocks; i++) {
+
+			size_t sz = std::min(blockSize, uncompressed.size()-i*blockSize);
+
+			auto in  = marlin::make_view(&uncompressed[i*blockSize], &uncompressed[i*blockSize+sz]);
+			auto out = marlin::make_view(scratchPad);
+
+			size_t compressedSize = (size_t) (*dict)->compress(in, out);
+
+			if (compressedSize<bestSizes[i]) {
+				bestSizes[i] = compressedSize;
+
+				ec_header[3*i+0] = dict-Marlin_get_prebuilt_dictionaries();
+				ec_header[3*i+1] = compressedSize  & 0xFF;
+				ec_header[3*i+2] = compressedSize >> 8;
+				bestBlocks[i] = scratchPad;
+			}
+		}
+	}
+
+	std::vector<uint8_t> compressedData = ec_header;
+	for (size_t i=0; i<nBlocks; i++)
+		for (size_t s = 0; s<bestSizes[i]; s++)
+			compressedData.push_back(bestBlocks[i][s]);
+
+	return compressedData;
+}
+
 }

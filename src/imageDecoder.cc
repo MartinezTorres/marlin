@@ -47,20 +47,19 @@ void ImageMarlinDecoder::decompress(
 		const std::string &compressedString,
 		std::vector<uint8_t>& reconstructedData,
 		ImageMarlinHeader& decompressedHeader) {
-	ImageMarlinHeader header(compressedString);
-	decompressedHeader = header;
+	decompressedHeader = ImageMarlinHeader(compressedString);
 
-	const size_t bs = header.blocksize;
-	const size_t brows = (header.rows + bs - 1) / bs;
-	const size_t bcols = (header.cols + bs - 1) / bs;
-	const size_t channels = header.channels;
+	const size_t bs = decompressedHeader.blocksize;
+	const size_t brows = (decompressedHeader.rows + bs - 1) / bs;
+	const size_t bcols = (decompressedHeader.cols + bs - 1) / bs;
+	const size_t channels = decompressedHeader.channels;
 
 	auto side_information = marlin::make_view(
-			(const uint8_t *) &compressedString[header.size()],
-			(const uint8_t *) &compressedString[header.size() + channels * bcols * brows]);
+			(const uint8_t *) &compressedString[decompressedHeader.size()],
+			(const uint8_t *) &compressedString[decompressedHeader.size() + channels * bcols * brows]);
 
 	auto compressed = marlin::make_view(
-			(const uint8_t *) &compressedString[header.size() + channels * bcols * brows],
+			(const uint8_t *) &compressedString[decompressedHeader.size() + channels * bcols * brows],
 			(const uint8_t *) &compressedString[compressedString.size()]);
 
 	std::vector<uint8_t> entropy_decoded_data(channels * bcols * brows * bs * bs);

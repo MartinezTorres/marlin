@@ -39,8 +39,22 @@ SOFTWARE.
 
 namespace marlin {
 
-
+/**
+ * Image block entropy coder using a family of laplacian dictionaries
+ * (default in the orginal marlinUtility)
+ */
 class ImageMarlinLaplacianBlockEC : public ImageMarlinBlockEC {
+public:
+	std::vector<uint8_t> encodeBlocks(
+			const std::vector<uint8_t> &uncompressed,
+			size_t blockSize);
+};
+
+/**
+ * Image block entropy coder that choses the best dictionary for
+ * compression. Slow.
+ */
+class ImageMarlinBestDicBlockEC : public ImageMarlinBlockEC {
 public:
 	std::vector<uint8_t> encodeBlocks(
 			const std::vector<uint8_t> &uncompressed,

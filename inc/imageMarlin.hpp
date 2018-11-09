@@ -215,25 +215,6 @@ protected:
 	ImageMarlinTransformer *const transformer;
 	// Image splitting into blocks and their entropy coding
 	ImageMarlinBlockEC *const blockEC;
-
-	/**
-	 * Entropy code all data in uncompressed with a Laplacian dictionary
-	 * and produce a vector of compressed bytes.
-	 */
-	std::vector<uint8_t> entropyCodeLaplacian(const std::vector<uint8_t> &uncompressed, size_t blockSize);
-
-	/**
-	 * Entropy code all data in uncompressed with every precomputed dictionary
-	 * and return results for the best coder. (Slow!)
-	 * and produce a vector of compressed bytes.
-	 */
-	std::vector<uint8_t> entropyCodeBestDict(
-			const std::vector<uint8_t> &uncompressed, size_t blockSize);
-
-	/**
-	 * Apply quantization to the image.
-	 */
-	void quantize(cv::Mat1b& img);
 };
 
 class ImageMarlinDecoder {
@@ -243,8 +224,10 @@ public:
 	 * Initialize an image decompressor with the parameters given in header
 	 * (parameters are copied, and do not change if header_ changes)
 	 */
-	ImageMarlinDecoder(ImageMarlinTransformer * transformer_, ImageMarlinBlockEC * blockEC_) :
-			transformer(transformer_), blockEC(blockEC_) {}
+	ImageMarlinDecoder(
+			ImageMarlinHeader& header_,
+			ImageMarlinTransformer * transformer_, ImageMarlinBlockEC * blockEC_) :
+			header(header_), transformer(transformer_), blockEC(blockEC_) {}
 
 	~ImageMarlinDecoder();
 
@@ -263,6 +246,7 @@ public:
 			ImageMarlinHeader& decompressedHeader);
 
 protected:
+	const ImageMarlinHeader header;
 	// Image transformer (includes any prediction and quantization)
 	ImageMarlinTransformer *const transformer;
 	// Image splitting into blocks and their entropy coding
@@ -276,9 +260,12 @@ class ImageMarlinTransformer {
 public:
 	/**
 	 * Apply the direct transformation of img and store the results in preprocessed,
-	 * and store any necessary side information in dc
+	 * and store any necessary side information in side_information
 	 */
-	virtual void transform_direct(cv::Mat& img, std::vector<uint8_t>& dc, std::vector<uint8_t>& preprocessed) = 0;
+	virtual void transform_direct(
+			uint8_t *original_data,
+			std::vector<uint8_t> &side_information,
+			std::vector<uint8_t> &preprocessed) = 0;
 
 	/**
 	 * Perform the inverse transformation of entropy_decoded_data
@@ -286,9 +273,9 @@ public:
 	 * be resized to the needed size)
 	 */
 	virtual void transform_inverse(
-			std::vector<uint8_t>& entropy_decoded_data,
-			View<const uint8_t>& side_information,
-			std::vector<uint8_t>& reconstructedData) = 0;
+			std::vector<uint8_t> &entropy_decoded_data,
+			View<const uint8_t> &side_information,
+			std::vector<uint8_t> &reconstructedData) = 0;
 
 	virtual ~ImageMarlinTransformer() {}
 };

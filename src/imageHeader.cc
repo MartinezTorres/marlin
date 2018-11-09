@@ -57,6 +57,7 @@ ImageMarlinDecoder* ImageMarlinHeader::newDecoder() {
 	transformer = new NorthPredictionTransformer(*this);
 
 	return new ImageMarlinDecoder(
+			*this,
 			transformer,
 			new ImageMarlinLaplacianBlockEC());
 }

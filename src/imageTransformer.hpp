@@ -49,12 +49,15 @@ class NorthPredictionTransformer : public ImageMarlinTransformer {
 public:
 	NorthPredictionTransformer(const ImageMarlinHeader& header_) : header(header_) {}
 
-	void transform_direct(cv::Mat& img, std::vector<uint8_t>& dc, std::vector<uint8_t>& preprocessed);
+	void transform_direct(
+			uint8_t *original_data,
+			std::vector<uint8_t> &side_information,
+			std::vector<uint8_t> &preprocessed);
 
 	void transform_inverse(
-			std::vector<uint8_t>& entropy_decoded_data,
-			View<const uint8_t>& side_information,
-			std::vector<uint8_t>& reconstructedData);
+			std::vector<uint8_t> &entropy_decoded_data,
+			View<const uint8_t> &side_information,
+			std::vector<uint8_t> &reconstructedData);
 
 protected:
 	const ImageMarlinHeader header;
@@ -65,7 +68,15 @@ protected:
 	 * @tparam qs quantization step to be used
 	 */
 	template<uint8_t qs>
-	void predict_and_quantize_direct(cv::Mat &img, std::vector<uint8_t> &dc, std::vector<uint8_t> &preprocessed);
+	void predict_and_quantize_direct(
+			uint8_t *original_data,
+			std::vector<uint8_t> &side_information,
+			std::vector<uint8_t> &preprocessed);
+
+	/**
+	 * Reconstruct data using the midpoint of the interval
+	 */
+	void midpoint_quantization_reconstruction(uint8_t* data);
 };
 
 }
