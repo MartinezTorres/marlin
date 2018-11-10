@@ -139,17 +139,17 @@ void parse_arguments(int argc, char **argv,
 	}
 	std::regex re;
 	for (int i=4; i<argc; i++) {
-		std::string subject(argv[i]);
+		std::string argument(argv[i]);
 		std::smatch match;
 
 		re = "-qstep=([[:digit:]]+)";
-		if (std::regex_search(subject, match, re)) {
+		if (std::regex_search(argument, match, re)) {
 			qstep = atoi(match.str(1).data());
 			continue;
 		}
 
 		re = "-qtype=([[:digit:]]+)";
-		if (std::regex_search(subject, match, re)) {
+		if (std::regex_search(argument, match, re)) {
 			uint8_t read_value = (uint8_t) atoi(match.str(1).data());
 			if (read_value == (uint8_t) ImageMarlinHeader::QuantizerType::Uniform) {
 				qtype = ImageMarlinHeader::QuantizerType::Uniform;
@@ -162,7 +162,7 @@ void parse_arguments(int argc, char **argv,
 		}
 
 		re = "-rectype=([[:digit:]]+)";
-		if (std::regex_search(subject, match, re)) {
+		if (std::regex_search(argument, match, re)) {
 			uint8_t read_value = (uint8_t) atoi(match.str(1).data());
 			if (read_value == (uint8_t) ImageMarlinHeader::ReconstructionType::Midpoint) {
 				rectype = ImageMarlinHeader::ReconstructionType::Midpoint;
@@ -176,18 +176,20 @@ void parse_arguments(int argc, char **argv,
 
 		// path to the profiling file
 		re = "-profile=(.+)";
-		if (std::regex_search(subject, match, re)) {
+		if (std::regex_search(argument, match, re)) {
 			path_profile = match.str(1);
 			continue;
 		}
 
 		re = "-(v|verbose)";
-		if (std::regex_search(subject, match, re)) {
+		if (std::regex_search(argument, match, re)) {
 			verbose = true;
 			continue;
 		}
 
-
+		std::stringstream ss;
+		ss << "Unrecognized argument " << argument;
+		throw std::runtime_error(ss.str());
 	}
 }
 

@@ -35,6 +35,15 @@ SOFTWARE.
 #include "imageTransformer.hpp"
 #include "profiler.hpp"
 
+namespace {
+	/**
+	 * @return -1, 0, 1 if val is <0, 0 or >0, respectively.
+	 */
+	template <typename T> int sgn(T val) {
+		return (T(0) < val) - (val < T(0));
+	}
+}
+
 namespace marlin {
 
 void NorthPredictionUniformQuantizer::transform_direct(
@@ -285,6 +294,22 @@ void NorthPredictionDeadzoneQuantizer::transform_direct(
 			predict_and_quantize_direct<8>(
 					original_data, side_information, preprocessed);
 			break;
+		case 16:
+			predict_and_quantize_direct<16>(
+					original_data, side_information, preprocessed);
+			break;
+		case 32:
+			predict_and_quantize_direct<32>(
+					original_data, side_information, preprocessed);
+			break;
+		case 33:
+			predict_and_quantize_direct<33>(
+					original_data, side_information, preprocessed);
+			break;
+		case 67:
+			predict_and_quantize_direct<67>(
+					original_data, side_information, preprocessed);
+			break;
 		default:
 			throw std::runtime_error("This implementation does not support this qstep value");
 	}
@@ -302,35 +327,30 @@ void NorthPredictionDeadzoneQuantizer::predict_and_quantize_direct(
 	const size_t imgCols = header.rows;
 	const size_t blocksize = header.blocksize;
 
-	Profiler::start("quantization");
-	if (qs > 1) {
-		const size_t pixelCount = header.rows * header.cols * header.channels;
-		for (size_t i = 0; i < pixelCount; i++) {
-			if (qs == 2) {
-				original_data[i] >>= 1;
-			} else if (qs == 4) {
-				original_data[i] >>= 2;
-			} else if (qs == 8) {
-				original_data[i] >>= 3;
-			} else if (qs == 16) {
-				original_data[i] >>= 4;
-			} else if (qs == 32) {
-				original_data[i] >>= 5;
-			} else {
-				original_data[i] /= qs;
-			}
-		}
-	}
-	Profiler::end("quantization");
-
-	// PREPROCESS IMAGE INTO BLOCKS
 	uint8_t *t = &preprocessed[0];
 
 	// Pointers to the original data
-	Profiler::start("prediction");
-	const uint8_t* or0;
-	const uint8_t* or1;
-	int16_t prediction;
+	Profiler::start("prediction+quantization");
+	uint8_t* or0;
+	uint8_t* or1;
+	uint8_t prediction;
+	uint8_t original_value;
+	uint8_t coded_qi;
+	int16_t prediction_error;
+	int16_t reconstructed_pred_error;
+	uint16_t reconstructed_value;
+
+	uint8_t effective_offset;
+	if (header.rectype == ImageMarlinHeader::ReconstructionType::Lowpoint) {
+		effective_offset = 0;
+	} else if (header.rectype == ImageMarlinHeader::ReconstructionType::Midpoint) {
+		effective_offset = qs >> 1;
+	} else {
+		throw std::runtime_error("Unsupported reconstruction type");
+	}
+	const uint8_t offset = effective_offset;
+
+
 	for (size_t i=0; i<imgRows-blocksize+1; i+=blocksize) {
 		for (size_t j=0; j<imgCols-blocksize+1; j+=blocksize) {
 			// i,j : index of the top,left position of the block in the image
@@ -347,8 +367,46 @@ void NorthPredictionDeadzoneQuantizer::predict_and_quantize_direct(
 			// Only predictions are stored in t
 			*t++ = 0; // this corresponds to jj=0, stored in side_information, hence prep. is 0
 			for (size_t jj=1; jj<blocksize; jj++) {
-				prediction = *or0++ - *or1++;
-				*t++ = prediction;
+				prediction = *or1;
+				original_value = *or0;
+				prediction_error = original_value - prediction;
+
+				if (qs > 1) {
+					if (qs == 2) {
+						coded_qi = (uint8_t) (sgn<int16_t>(prediction_error) * (abs(prediction_error) >> 1));
+						reconstructed_pred_error = ((int16_t)((int8_t) coded_qi)) * 2;
+						reconstructed_value = prediction + reconstructed_pred_error;
+						reconstructed_value += sgn<int16_t>(reconstructed_pred_error) * offset;
+					} else if (qs == 4) {
+						coded_qi = (uint8_t) (sgn<int16_t>(prediction_error) * (abs(prediction_error) >> 2));
+						reconstructed_pred_error = ((int16_t)((int8_t) coded_qi)) * 4;
+						reconstructed_value = prediction + reconstructed_pred_error; // Does not include offset
+						reconstructed_value += sgn<int16_t>(reconstructed_pred_error) * offset;
+					} else if (qs == 8) {
+						coded_qi = (uint8_t) (sgn<int16_t>(prediction_error) * (abs(prediction_error) >> 3));
+						reconstructed_pred_error = ((int16_t)((int8_t) coded_qi)) * 8;
+						reconstructed_value = prediction + reconstructed_pred_error; // Does not include offset
+						reconstructed_value += sgn<int16_t>(reconstructed_pred_error) * offset;
+					} else {
+						coded_qi = (uint8_t) (sgn<int16_t>(prediction_error) * (abs(prediction_error) / qs));
+						reconstructed_pred_error = ((int16_t)((int8_t) coded_qi)) * qs;
+						reconstructed_value = prediction + reconstructed_pred_error; // Does not include offset
+						reconstructed_value += sgn<int16_t>(reconstructed_pred_error) * offset;
+					}
+					if (reconstructed_value < 0) {
+						reconstructed_value = 0;
+					} else if (reconstructed_value > 255) {
+						reconstructed_value = 255;
+					}
+				} else {
+					coded_qi = (uint8_t) prediction_error;
+					reconstructed_value = original_value;
+				}
+
+				*t++ = coded_qi;
+				*or0 = (uint8_t) reconstructed_value;
+				or1++;
+				or0++;
 			}
 
 			// Remaining columns are predicted with the top element
@@ -358,13 +416,62 @@ void NorthPredictionDeadzoneQuantizer::predict_and_quantize_direct(
 				or1 = &original_data[(i+ii-1)*imgCols + j];
 
 				for (size_t jj=0; jj<blocksize; jj++) {
-					prediction = *or0++ - *or1++;
-					*t++ = prediction;
+					prediction = *or1;
+					original_value = *or0;
+					prediction_error = original_value - prediction;
+
+					if (qs > 1) {
+						if (qs == 2) {
+							coded_qi = (uint8_t) (sgn<int16_t>(prediction_error) * (abs(prediction_error) >> 1));
+							reconstructed_pred_error = ((int16_t)((int8_t) coded_qi)) * 2;
+							reconstructed_value = prediction + reconstructed_pred_error;
+							reconstructed_value += sgn<int16_t>(reconstructed_pred_error) * offset;
+						} else if (qs == 4) {
+							coded_qi = (uint8_t) (sgn<int16_t>(prediction_error) * (abs(prediction_error) >> 2));
+							reconstructed_pred_error = ((int16_t)((int8_t) coded_qi)) * 4;
+							reconstructed_value = prediction + reconstructed_pred_error; // Does not include offset
+							reconstructed_value += sgn<int16_t>(reconstructed_pred_error) * offset;
+						} else if (qs == 8) {
+							coded_qi = (uint8_t) (sgn<int16_t>(prediction_error) * (abs(prediction_error) >> 3));
+							reconstructed_pred_error = ((int16_t)((int8_t) coded_qi)) * 8;
+							reconstructed_value = prediction + reconstructed_pred_error; // Does not include offset
+							reconstructed_value += sgn<int16_t>(reconstructed_pred_error) * offset;
+						} else {
+							coded_qi = (uint8_t) (sgn<int16_t>(prediction_error) * (abs(prediction_error) / qs));
+							reconstructed_pred_error = ((int16_t)((int8_t) coded_qi)) * qs;
+							reconstructed_value = prediction + reconstructed_pred_error; // Does not include offset
+							reconstructed_value += sgn<int16_t>(reconstructed_pred_error) * offset;
+						}
+						if (reconstructed_value < 0) {
+							reconstructed_value = 0;
+						} else if (reconstructed_value > 255) {
+							reconstructed_value = 255;
+						}
+					} else {
+						coded_qi = (uint8_t) prediction_error;
+						reconstructed_value = original_value;
+					}
+					
+					if (i+ii == 3376 && j+jj == 2540) {
+						std::cout << "row = ii+i = " << (int) ii+i << std::endl;
+						std::cout << "col = jj+j = " << (int) jj+j << std::endl;
+						std::cout << "original_value = " << (int) original_value << std::endl;
+						std::cout << "prediction = " << (int) prediction << std::endl;
+						std::cout << "prediction_error = " << (int)prediction_error << std::endl;
+						std::cout << "coded_qi = " << (int) coded_qi << std::endl;
+						std::cout << "reconstructed_pred_error = " << (int) reconstructed_pred_error << std::endl;
+						std::cout << "reconstructed_value = " << (int) reconstructed_value << std::endl;
+					}
+
+					*or0 = (uint8_t) reconstructed_value;
+					*t++ = coded_qi;
+					or1++;
+					or0++;
 				}
 			}
 		}
 	}
-	Profiler::end("prediction");
+	Profiler::end("prediction+quantization");
 }
 
 void NorthPredictionDeadzoneQuantizer::transform_inverse(
@@ -382,10 +489,22 @@ void NorthPredictionDeadzoneQuantizer::transform_inverse(
 	const size_t bs = header.blocksize;
 	const size_t bcols = (header.cols + bs - 1) / bs;
 
-	Profiler::start("prediction");
+	uint8_t offset;
+	if (header.rectype == ImageMarlinHeader::ReconstructionType::Lowpoint) {
+		offset = 0;
+	} else if (header.rectype == ImageMarlinHeader::ReconstructionType::Midpoint) {
+		offset = (uint8_t) header.qstep/2;
+	} else {
+		throw std::runtime_error("Unsupported reconstruction type");
+	}
+
+	Profiler::start("prediction+quantization");
 	const uint8_t *t = &entropy_decoded_data[0];
 	uint8_t *r0;
 	uint8_t *r1;
+	int16_t prediction_error;
+	int16_t prediction;
+	int16_t reconstructed_value;
 	for (size_t i = 0; i < imgRows - bs + 1; i += bs) {
 		for (size_t j = 0; j < imgCols - bs + 1; j += bs) {
 			r0 = &(reconstructedData[i * imgCols + j]);
@@ -396,7 +515,19 @@ void NorthPredictionDeadzoneQuantizer::transform_inverse(
 			// Reconstruct first row
 			t++;
 			for (size_t jj = 1; jj < bs; jj++) {
-				*r0++ = *t++ + *r1++;
+				prediction = *r1++;
+				prediction_error = (int8_t) *t++;
+				prediction_error *=  header.qstep;
+
+				reconstructed_value = prediction + prediction_error;
+				reconstructed_value += sgn<int16_t>(prediction_error) * offset;
+				if (reconstructed_value < 0) {
+					reconstructed_value = 0;
+				} else if (reconstructed_value > 255) {
+					reconstructed_value = 255;
+				}
+
+				*r0++ = (uint8_t) reconstructed_value;
 			}
 
 			// Reconstruct remaining rows
@@ -405,41 +536,24 @@ void NorthPredictionDeadzoneQuantizer::transform_inverse(
 				r1 = &(reconstructedData[(i + ii - 1) * imgCols + j]);
 
 				for (size_t jj = 0; jj < bs; jj++) {
-					*r0++ = *r1++ + *t++;
+					prediction = *r1++;
+					prediction_error = (int8_t) *t++;
+					prediction_error *=  header.qstep;
+
+					reconstructed_value = prediction + prediction_error;
+					reconstructed_value += sgn<int16_t>(prediction_error) * offset;
+					if (reconstructed_value < 0) {
+						reconstructed_value = 0;
+					} else if (reconstructed_value > 255) {
+						reconstructed_value = 255;
+					}
+
+					*r0++ = (uint8_t) reconstructed_value;
 				}
 			}
 		}
 	}
-	Profiler::end("prediction");
-
-	Profiler::start("quantization");
-	const size_t pixelCount = header.rows * header.cols * header.channels;
-	const uint32_t interval_count = (256 + header.qstep - 1) / header.qstep;
-	auto size_last_qinterval = (const uint8_t) 256 - header.qstep * (interval_count - 1);
-	auto first_element_last_interval = (const uint8_t) (header.qstep * (interval_count - 1));
-	// offset for all but the last interval
-	uint8_t offset;
-	// offset for the last interval (might be a smaller interval)
-	uint8_t offset_last_interval;
-	if (header.rectype == ImageMarlinHeader::ReconstructionType::Midpoint)  {
-		offset = (uint8_t) header.qstep / 2;
-		offset_last_interval = (uint8_t) size_last_qinterval / 2;
-	} else {
-		offset = 0;
-		offset_last_interval = 0;
-	}
-
-	uint8_t* data = reconstructedData.data();
-	for (size_t i=0; i<pixelCount; i++) {
-		data[i] = data[i] * header.qstep;
-
-		if (data[i] >= first_element_last_interval) {
-			data[i] = data[i] + offset_last_interval;
-		} else {
-			data[i] = data[i] + offset;
-		}
-	}
-	Profiler::end("quantization");
+	Profiler::end("prediction+quantization");
 }
 
 

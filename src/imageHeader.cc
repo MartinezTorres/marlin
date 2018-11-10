@@ -198,9 +198,9 @@ void ImageMarlinHeader::show(std::ostream& out) {
 	out << "    channels = " << channels << std::endl;
 	out << "    blocksize = " << blocksize << std::endl;
 	out << "    qstep = " << qstep << std::endl;
-	if (qstep > 1) {
+//	if (qstep > 1) {
 		out << "    qtype = " << (uint32_t) qtype << std::endl;
 		out << "    rectype = " << (uint32_t) rectype << std::endl;
-	}
+//	}
 	out << "}" << std::endl;
 }
