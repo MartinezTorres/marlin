@@ -71,6 +71,38 @@ protected:
 			std::vector<uint8_t> &preprocessed);
 };
 
+/**
+ * Transformer that predicts each pixel with the north neighbor (left neighbor for the first row)
+ */
+class NorthPredictionDeadzoneQuantizer : public ImageMarlinTransformer {
+public:
+	NorthPredictionDeadzoneQuantizer(const ImageMarlinHeader& header_) : header(header_) {}
+
+	void transform_direct(
+			uint8_t *original_data,
+			std::vector<uint8_t> &side_information,
+			std::vector<uint8_t> &preprocessed);
+
+	void transform_inverse(
+			std::vector<uint8_t> &entropy_decoded_data,
+			View<const uint8_t> &side_information,
+			std::vector<uint8_t> &reconstructedData);
+
+protected:
+	const ImageMarlinHeader header;
+
+	/**
+	 * Apply the direct prediction and quantization transform.
+	 *
+	 * @tparam qs quantization step to be used
+	 */
+	template<uint8_t qs>
+	void predict_and_quantize_direct(
+			uint8_t *original_data,
+			std::vector<uint8_t> &side_information,
+			std::vector<uint8_t> &preprocessed);
+};
+
 }
 
 

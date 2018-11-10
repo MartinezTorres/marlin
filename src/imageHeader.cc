@@ -43,7 +43,13 @@ using namespace marlin;
 ImageMarlinCoder* ImageMarlinHeader::newCoder() {
 	// Get the transformer
 	ImageMarlinTransformer* transformer;
-	transformer = new NorthPredictionUniformQuantizer(*this);
+	if (qtype == QuantizerType::Uniform) {
+		transformer = new NorthPredictionUniformQuantizer(*this);
+	} else if (qtype == QuantizerType::Deadzone) {
+		transformer = new NorthPredictionDeadzoneQuantizer(*this);
+	} else {
+		throw std::runtime_error("Unsupported qtype");
+	}
 
 	return new ImageMarlinCoder(
 			*this,
@@ -54,7 +60,13 @@ ImageMarlinCoder* ImageMarlinHeader::newCoder() {
 ImageMarlinDecoder* ImageMarlinHeader::newDecoder() {
 	// Get the transformer
 	ImageMarlinTransformer* transformer;
-	transformer = new NorthPredictionUniformQuantizer(*this);
+	if (qtype == QuantizerType::Uniform) {
+		transformer = new NorthPredictionUniformQuantizer(*this);
+	} else if (qtype == QuantizerType::Deadzone) {
+		transformer = new NorthPredictionDeadzoneQuantizer(*this);
+	} else {
+		throw std::runtime_error("Unsupported qtype");
+	}
 
 	return new ImageMarlinDecoder(
 			*this,
