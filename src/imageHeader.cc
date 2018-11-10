@@ -43,7 +43,7 @@ using namespace marlin;
 ImageMarlinCoder* ImageMarlinHeader::newCoder() {
 	// Get the transformer
 	ImageMarlinTransformer* transformer;
-	transformer = new NorthPredictionTransformer(*this);
+	transformer = new NorthPredictionUniformQuantizer(*this);
 
 	return new ImageMarlinCoder(
 			*this,
@@ -54,7 +54,7 @@ ImageMarlinCoder* ImageMarlinHeader::newCoder() {
 ImageMarlinDecoder* ImageMarlinHeader::newDecoder() {
 	// Get the transformer
 	ImageMarlinTransformer* transformer;
-	transformer = new NorthPredictionTransformer(*this);
+	transformer = new NorthPredictionUniformQuantizer(*this);
 
 	return new ImageMarlinDecoder(
 			*this,
@@ -70,6 +70,10 @@ void ImageMarlinHeader::dump_to(std::ostream &out) const {
 	write_field<2>(out, channels);
 	write_field<2>(out, blocksize);
 	write_field<1>(out, qstep);
+	if (qstep > 1) {
+		write_field<1>(out, (uint8_t) qtype);
+		write_field<1>(out, (uint8_t) rectype);
+	}
 
 	if ((size_t) (out.tellp() - pos_before) != size()) {
 		throw std::runtime_error("Invalid size or number of bytes written");
@@ -84,18 +88,40 @@ void ImageMarlinHeader::load_from(std::istream &in) {
 	channels = read_field<2>(in);
 	blocksize = read_field<2>(in);
 	qstep = read_field<1>(in);
+	qtype = ImageMarlinHeader::DEFAULT_QTYPE;
+	rectype = ImageMarlinHeader::DEFAULT_RECONSTRUCTION_TYPE;
+	if (qstep > 1) {
+		uint32_t read_qtype = read_field<1>(in);
+		if (read_qtype == (uint32_t) ImageMarlinHeader::QuantizerType::Uniform) {
+			qtype = ImageMarlinHeader::QuantizerType::Uniform;
+		} else if (read_qtype == (uint32_t) ImageMarlinHeader::QuantizerType::Deadzone) {
+			qtype = ImageMarlinHeader::QuantizerType::Deadzone;
+		} else {
+			throw std::runtime_error("Invalid stored qtype");
+		}
+
+		uint32_t read_rectype = read_field<1>(in);
+		if (read_rectype == (uint32_t) ImageMarlinHeader::ReconstructionType::Midpoint) {
+			rectype = ImageMarlinHeader::ReconstructionType::Midpoint;
+		} else if (read_rectype == (uint32_t) ImageMarlinHeader::ReconstructionType::Lowpoint) {
+			rectype = ImageMarlinHeader::ReconstructionType::Lowpoint;
+		} else {
+			throw std::runtime_error("Invalid stored rectype");
+		}
+	}
+	
 
 	if ((size_t) (in.tellg() - pos_before) != size()) {
-		std::cout << "-------------" << std::endl;
-        std::cout << (size_t) (in.tellg() - pos_before) << std::endl;
-		std::cout << size() << std::endl;
-		std::cout << "-------------" << std::endl;
 		throw std::runtime_error("Invalid size or number of bytes read");
 	}
 }
 
 size_t ImageMarlinHeader::size() const {
-	return 2+2+2+2+1;
+	size_t size = 2+2+2+2+1;
+	if (qstep > 1) {
+		size += 1+1;
+	}
+	return size;
 }
 
 void ImageMarlinHeader::validate() {
@@ -160,5 +186,9 @@ void ImageMarlinHeader::show(std::ostream& out) {
 	out << "    channels = " << channels << std::endl;
 	out << "    blocksize = " << blocksize << std::endl;
 	out << "    qstep = " << qstep << std::endl;
+	if (qstep > 1) {
+		out << "    qtype = " << (uint32_t) qtype << std::endl;
+		out << "    rectype = " << (uint32_t) rectype << std::endl;
+	}
 	out << "}" << std::endl;
 }

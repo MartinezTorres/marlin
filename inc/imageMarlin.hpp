@@ -57,8 +57,15 @@ class ImageMarlinBlockEC;
 class ImageMarlinHeader {
 
 public:
+
+	enum class QuantizerType : uint8_t {Uniform = 0, Deadzone = 1};
+	enum class ReconstructionType : uint8_t {Midpoint = 0, Lowpoint = 1};
+
+	// Default values
 	static const uint32_t DEFAULT_BLOCK_SIZE = 64;
 	static const uint32_t DEFAULT_QSTEP = 1;
+	static const QuantizerType DEFAULT_QTYPE = QuantizerType::Uniform;
+	static const ReconstructionType DEFAULT_RECONSTRUCTION_TYPE = ReconstructionType::Midpoint;
 
 	// Image dimensions
 	uint32_t rows, cols, channels;
@@ -66,6 +73,10 @@ public:
 	uint32_t blocksize;
 	// Quantization step. Use 1 for lossless compression.
 	uint32_t qstep;
+	// Quantization type
+	QuantizerType qtype;
+	// Quantization reconstruction type
+	ReconstructionType rectype;
 
 	/**
 	 * Empty constructor
@@ -80,12 +91,17 @@ public:
 			uint32_t cols_,
 			uint32_t channels_,
 			uint32_t blockSize_=DEFAULT_BLOCK_SIZE,
-			uint32_t qstep_=DEFAULT_QSTEP) :
+			uint32_t qstep_=DEFAULT_QSTEP,
+			QuantizerType qtype_=DEFAULT_QTYPE,
+			ReconstructionType rectype_=DEFAULT_RECONSTRUCTION_TYPE) :
 			rows(rows_),
 			cols(cols_),
 			channels(channels_),
 			blocksize(blockSize_),
-			qstep(qstep_) {
+			qstep(qstep_),
+			qtype(qtype_),
+			rectype(rectype_)
+			{
 		validate();
 	}
 

@@ -40,13 +40,7 @@ SOFTWARE.
 using namespace marlin;
 
 std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
-	Profiler::start("compression");
-
-	bool fast = true;
-
-	const uint32_t qstep = header.qstep;
 	const size_t bs = header.blocksize;
-
 	const size_t brows = (orig_img.rows+bs-1)/bs;
 	const size_t bcols = (orig_img.cols+bs-1)/bs;
 	cv::Mat img;
@@ -64,9 +58,7 @@ std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
 
 	if (header.channels != 1) {
 		throw std::runtime_error("Images with more than one component are not yet supported");
-
 	}
-
 	// TODO: add support for >1 components
 	cv::Mat1b img1b = img;
 
@@ -74,25 +66,23 @@ std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
 		throw std::runtime_error("This implementation supports only continuous matrix data");
 	}
 
-	Profiler::start("prediction");
+	Profiler::start("transformation");
 	transformer->transform_direct(img1b.data, side_information, preprocessed);
-	Profiler::end("prediction");
+	Profiler::end("transformation");
 
-	std::ostringstream oss;
 	// Write configuration header
+	std::ostringstream oss;
 	header.dump_to(oss);
 
-	// Write block-representative pixels
+	// Write side information (block-representative pixels by default)
 	oss.write((const char *) side_information.data(), side_information.size());
 
 	// Entropy code and write result
 	Profiler::start("entropy_coding");
 	auto compressed = blockEC->encodeBlocks(preprocessed, bs* bs);
 	Profiler::end("entropy_coding");
-
 	oss.write((const char *)compressed.data(), compressed.size());
 
-	Profiler::end("compression");
 	return oss.str();
 }
 

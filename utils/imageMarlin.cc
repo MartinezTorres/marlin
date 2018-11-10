@@ -50,7 +50,9 @@ void usage() {
 	std::cout << "======================================================================" << std::endl;
 	std::cout << "COMPRESSION Syntax: " << executable_name << " c <input_path> <output_path> \\" << std::endl
 	          << "\t[-qstep=<" << ImageMarlinHeader::DEFAULT_QSTEP << ">] "
-			  << " [-profile=<profile>] [-v|-verbose]"
+	          << "[-qtype=<" << (int) ImageMarlinHeader::DEFAULT_QTYPE << ">] "
+			  << "[-rectype=<" << (int) ImageMarlinHeader::DEFAULT_RECONSTRUCTION_TYPE << ">] "
+			  << "[-profile=<profile>] [-v|-verbose]"
 	          << std::endl;
 	std::cout << "DECOMPRESSION Syntax: " << executable_name << "d <input_path> <output_path> "
 	          << std::endl;
@@ -59,9 +61,18 @@ void usage() {
 	std::cout << "  * c|d:         compress (c) / decompress (d)" << std::endl;
 	std::cout << "  * input_path:  path to the image (c) / compressed (d) file" << std::endl;
 	std::cout << "  * output_path: path to the compressed (c) / reconstructed (d) file" << std::endl;
-	std::cout << "  * qstep:       (optional) quantization step, 1 for lossless" << std::endl;
 	std::cout << "  * profile:     path to the file where profiling information is to be stored" << std::endl;
-	std::cout << "  * verbose:     show extra info" << std::endl;
+
+	std::cout << "  * qstep:       (optional) quantization step, 1 for lossless, default=1" << std::endl;
+	std::cout << "  * qtype:       (optional) quantization type ("
+	          << (int) ImageMarlinHeader::QuantizerType::Uniform << ": uniform, "
+			  << (int) ImageMarlinHeader::QuantizerType::Deadzone << ": deadzone) "
+			  << " default=" << (int) ImageMarlinHeader::DEFAULT_QTYPE << std::endl;
+	std::cout << "  * rectype:     (optional) quantization reconstruction type" << std::endl
+	          << "                     (" << (int) ImageMarlinHeader::ReconstructionType::Midpoint << ": interval midpoint, "
+			  << (int) ImageMarlinHeader::ReconstructionType::Lowpoint << ": interval low) "
+	          << " default=" << (int) ImageMarlinHeader::DEFAULT_RECONSTRUCTION_TYPE << std::endl;
+	std::cout << "  * verbose|v:   show extra info" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Compression examples:" << std::endl;
 	std::cout << std::endl;
@@ -91,7 +102,10 @@ void parse_arguments(int argc, char **argv,
 		uint32_t& qstep,
 		uint32_t& blockSize,
 		std::string& path_profile,
-		bool& verbose) {
+		bool& verbose,
+		ImageMarlinHeader::QuantizerType& qtype,
+        ImageMarlinHeader::ReconstructionType& rectype
+		) {
 	if (argc < 4) {
 		throw std::runtime_error("Invalid argument count");
 	}
@@ -128,10 +142,35 @@ void parse_arguments(int argc, char **argv,
 		std::string subject(argv[i]);
 		std::smatch match;
 
-		// qstep
 		re = "-qstep=([[:digit:]]+)";
 		if (std::regex_search(subject, match, re)) {
 			qstep = atoi(match.str(1).data());
+			continue;
+		}
+
+		re = "-qtype=([[:digit:]]+)";
+		if (std::regex_search(subject, match, re)) {
+			uint8_t read_value = (uint8_t) atoi(match.str(1).data());
+			if (read_value == (uint8_t) ImageMarlinHeader::QuantizerType::Uniform) {
+				qtype = ImageMarlinHeader::QuantizerType::Uniform;
+			} else if (read_value == (uint8_t) ImageMarlinHeader::QuantizerType::Deadzone) {
+				qtype = ImageMarlinHeader::QuantizerType::Deadzone;
+			} else {
+				throw std::runtime_error("Invalid qtype");
+			}
+			continue;
+		}
+
+		re = "-rectype=([[:digit:]]+)";
+		if (std::regex_search(subject, match, re)) {
+			uint8_t read_value = (uint8_t) atoi(match.str(1).data());
+			if (read_value == (uint8_t) ImageMarlinHeader::ReconstructionType::Midpoint) {
+				rectype = ImageMarlinHeader::ReconstructionType::Midpoint;
+			} else if (read_value == (uint8_t) ImageMarlinHeader::ReconstructionType::Lowpoint) {
+				rectype = ImageMarlinHeader::ReconstructionType::Lowpoint;
+			} else {
+				throw std::runtime_error("Invalid rectype");
+			}
 			continue;
 		}
 
@@ -142,12 +181,13 @@ void parse_arguments(int argc, char **argv,
 			continue;
 		}
 
-		// path to the profiling file
 		re = "-(v|verbose)";
 		if (std::regex_search(subject, match, re)) {
 			verbose = true;
 			continue;
 		}
+
+
 	}
 }
 
@@ -157,12 +197,16 @@ int main(int argc, char **argv) {
 	std::string input_path;
 	std::string output_path;
 	uint32_t qstep = ImageMarlinHeader::DEFAULT_QSTEP;
+	ImageMarlinHeader::QuantizerType  qtype = ImageMarlinHeader::DEFAULT_QTYPE;
+	ImageMarlinHeader::ReconstructionType rectype = ImageMarlinHeader::DEFAULT_RECONSTRUCTION_TYPE;
 	uint32_t blockSize = ImageMarlinHeader::DEFAULT_BLOCK_SIZE;
 	std::string path_profile;
 	bool verbose = false;
 
 	try {
-		parse_arguments(argc, argv, mode_compress, input_path, output_path, qstep, blockSize, path_profile, verbose);
+		parse_arguments(argc, argv, mode_compress, input_path, output_path,
+				qstep, blockSize, path_profile, verbose,
+				qtype, rectype);
 	} catch (std::runtime_error ex) {
 		usage();
 		std::cerr << std::endl << "ERROR: " << ex.what() << std::endl;
@@ -183,13 +227,15 @@ int main(int argc, char **argv) {
 
 		ImageMarlinHeader header(
 				(uint32_t) img.rows, (uint32_t) img.cols, (uint32_t) img.channels(),
-				blockSize, qstep);
+				blockSize, qstep, qtype, rectype);
 		if (verbose) {
 			header.show(std::cout);
 		}
 		std::ofstream off(output_path);
 		ImageMarlinCoder* compressor = header.newCoder();
+		Profiler::start("compression");
 		compressor->compress(img, off);
+		Profiler::end("compression");
 		delete compressor;
 	} else {
 		std::string compressedData;

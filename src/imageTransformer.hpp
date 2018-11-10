@@ -40,14 +40,11 @@ SOFTWARE.
 namespace marlin {
 
 /**
- * Transformer that predicts each pixel with the north neighbor (left neighbor for the first row).
- * For qstep=1, this is identical to the original ImageMarlin transformer.
- *
- * @tparam qstep quantization step
+ * Transformer that predicts each pixel with the north neighbor (left neighbor for the first row)
  */
-class NorthPredictionTransformer : public ImageMarlinTransformer {
+class NorthPredictionUniformQuantizer : public ImageMarlinTransformer {
 public:
-	NorthPredictionTransformer(const ImageMarlinHeader& header_) : header(header_) {}
+	NorthPredictionUniformQuantizer(const ImageMarlinHeader& header_) : header(header_) {}
 
 	void transform_direct(
 			uint8_t *original_data,
@@ -72,11 +69,6 @@ protected:
 			uint8_t *original_data,
 			std::vector<uint8_t> &side_information,
 			std::vector<uint8_t> &preprocessed);
-
-	/**
-	 * Reconstruct data using the midpoint of the interval
-	 */
-	void midpoint_quantization_reconstruction(uint8_t* data);
 };
 
 }
