@@ -58,7 +58,7 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 	if (not conf.count("shift")) {
 		
 		double best = 0;
-		size_t shift = (sourceEntropy>4?6:0);
+		size_t shift = 0;
 		for (int i=0; i<6; i++) {
 			
 			auto testConf = conf;
@@ -67,8 +67,8 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 			if (test > 1.0001*best) {
 				best = test;
 				conf = testConf;
-			} else break;
-			shift += (sourceEntropy>4?-1:+1);
+			};
+			shift ++;
 		}
 	}
 
