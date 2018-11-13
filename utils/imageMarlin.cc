@@ -52,7 +52,7 @@ void usage() {
 	          << "\t[-qstep=<" << ImageMarlinHeader::DEFAULT_QSTEP << ">] "
 	          << "[-qtype=<" << (int) ImageMarlinHeader::DEFAULT_QTYPE << ">] "
 			  << "[-rectype=<" << (int) ImageMarlinHeader::DEFAULT_RECONSTRUCTION_TYPE << ">] "
-			  << "[-profile=<profile>] [-v|-verbose]"
+			  << "[-profile=<profile>] [-ttype=<ttype>] [-entfreq=<entfreq>] [-v|-verbose]"
 	          << std::endl;
 	std::cout << "DECOMPRESSION Syntax: " << executable_name << "d <input_path> <output_path> "
 	          << std::endl;
@@ -63,6 +63,9 @@ void usage() {
 	std::cout << "  * output_path: path to the compressed (c) / reconstructed (d) file" << std::endl;
 	std::cout << "  * profile:     path to the file where profiling information is to be stored" << std::endl;
 
+	std::cout << "  * ttype:       type of transform (0: north prediction, 1: fast left DPCM), default="
+	          << (int) ImageMarlinHeader::DEFAULT_TRANSFORM_TYPE << std::endl;
+
 	std::cout << "  * qstep:       (optional) quantization step, 1 for lossless, default=1" << std::endl;
 	std::cout << "  * qtype:       (optional) quantization type ("
 	          << (int) ImageMarlinHeader::QuantizerType::Uniform << ": uniform, "
@@ -72,6 +75,8 @@ void usage() {
 	          << "                     (" << (int) ImageMarlinHeader::ReconstructionType::Midpoint << ": interval midpoint, "
 			  << (int) ImageMarlinHeader::ReconstructionType::Lowpoint << ": interval low) "
 	          << " default=" << (int) ImageMarlinHeader::DEFAULT_RECONSTRUCTION_TYPE << std::endl;
+	std::cout << "  * entfreq:     entropy is calculated for 1 out of every entfreq blocks. "
+			  << "Default=" << ImageMarlinHeader::DEFAULT_ENTROPY_FREQUENCY << std::endl;
 	std::cout << "  * verbose|v:   show extra info" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Compression examples:" << std::endl;
@@ -104,7 +109,9 @@ void parse_arguments(int argc, char **argv,
 		std::string& path_profile,
 		bool& verbose,
 		ImageMarlinHeader::QuantizerType& qtype,
-        ImageMarlinHeader::ReconstructionType& rectype
+        ImageMarlinHeader::ReconstructionType& rectype,
+        ImageMarlinHeader::TransformType& transtype,
+        uint32_t& blockEntropyFrequency
 		) {
 	if (argc < 4) {
 		throw std::runtime_error("Invalid argument count");
@@ -174,6 +181,28 @@ void parse_arguments(int argc, char **argv,
 			continue;
 		}
 
+		re = "-ttype=([[:digit:]]+)";
+		if (std::regex_search(argument, match, re)) {
+			uint8_t read_value = (uint8_t) atoi(match.str(1).data());
+			if (read_value == (uint8_t) ImageMarlinHeader::TransformType::North) {
+				transtype = ImageMarlinHeader::TransformType::North;
+			} else if (read_value == (uint8_t) ImageMarlinHeader::TransformType::FastLeft) {
+				transtype = ImageMarlinHeader::TransformType::FastLeft;
+			} else {
+				throw std::runtime_error("Invalid ttype");
+			}
+			continue;
+		}
+
+		re = "-entfreq=([[:digit:]]+)";
+		if (std::regex_search(argument, match, re)) {
+			blockEntropyFrequency = atoi(match.str(1).data());
+			if (blockEntropyFrequency < 1) {
+				throw std::runtime_error("Invalid value of entfreq. Must be >= 1.");
+			}
+			continue;
+		}
+
 		// path to the profiling file
 		re = "-profile=(.+)";
 		if (std::regex_search(argument, match, re)) {
@@ -201,21 +230,22 @@ int main(int argc, char **argv) {
 	uint32_t qstep = ImageMarlinHeader::DEFAULT_QSTEP;
 	ImageMarlinHeader::QuantizerType  qtype = ImageMarlinHeader::DEFAULT_QTYPE;
 	ImageMarlinHeader::ReconstructionType rectype = ImageMarlinHeader::DEFAULT_RECONSTRUCTION_TYPE;
-	uint32_t blockSize = ImageMarlinHeader::DEFAULT_BLOCK_SIZE;
+	ImageMarlinHeader::TransformType  transtype = ImageMarlinHeader::DEFAULT_TRANSFORM_TYPE;
+	uint32_t blockSize = ImageMarlinHeader::DEFAULT_BLOCK_WIDTH;
+	uint32_t entropyFrequency = ImageMarlinHeader::DEFAULT_ENTROPY_FREQUENCY;
 	std::string path_profile;
 	bool verbose = false;
 
 	try {
 		parse_arguments(argc, argv, mode_compress, input_path, output_path,
 				qstep, blockSize, path_profile, verbose,
-				qtype, rectype);
+				qtype, rectype, transtype, entropyFrequency);
 	} catch (std::runtime_error ex) {
 		usage();
 		std::cerr << std::endl << "ERROR: " << ex.what() << std::endl;
 		return -1;
 	}
 
-//	TestTimer ttmain;
 	if (mode_compress) {
 		cv::Mat img;
 		{
@@ -229,7 +259,7 @@ int main(int argc, char **argv) {
 
 		ImageMarlinHeader header(
 				(uint32_t) img.rows, (uint32_t) img.cols, (uint32_t) img.channels(),
-				blockSize, qstep, qtype, rectype);
+				blockSize, qstep, qtype, rectype, transtype, entropyFrequency);
 		if (verbose) {
 			header.show(std::cout);
 		}

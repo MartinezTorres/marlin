@@ -53,6 +53,9 @@ void NorthPredictionUniformQuantizer::transform_direct(
 		throw std::runtime_error("only one channel supported at the time");
 	}
 
+	if (header.transtype != ImageMarlinHeader::TransformType::North) {
+		throw std::runtime_error("This class supports only North transform type");
+	}
 	if (header.qtype != ImageMarlinHeader::QuantizerType::Uniform) {
 		throw std::runtime_error("This class supports only Uniform quantization");
 	}
@@ -104,10 +107,10 @@ void NorthPredictionUniformQuantizer::predict_and_quantize_direct(
 		std::vector<uint8_t> &preprocessed) {
 
 	//	const size_t brows = (img.rows+blocksize-1)/blocksize;
-	const size_t bcols = (header.cols+header.blocksize-1)/header.blocksize;
+	const size_t bcols = (header.cols+header.blockWidth-1)/header.blockWidth;
 	const size_t imgRows = header.rows;
 	const size_t imgCols = header.rows;
-	const size_t blocksize = header.blocksize;
+	const size_t blocksize = header.blockWidth;
 
 	Profiler::start("quantization");
 	if (qs > 1) {
@@ -183,7 +186,7 @@ void NorthPredictionUniformQuantizer::transform_inverse(
 
 	const size_t imgRows = header.rows;
 	const size_t imgCols = header.cols;
-	const size_t bs = header.blocksize;
+	const size_t bs = header.blockWidth;
 	const size_t bcols = (header.cols + bs - 1) / bs;
 
 	Profiler::start("prediction");
@@ -255,6 +258,9 @@ void NorthPredictionDeadzoneQuantizer::transform_direct(
 		throw std::runtime_error("only one channel supported at the time");
 	}
 
+	if (header.transtype != ImageMarlinHeader::TransformType::North) {
+		throw std::runtime_error("This class supports only North transform type");
+	}
 	if (header.qtype != ImageMarlinHeader::QuantizerType::Deadzone) {
 		throw std::runtime_error("This class supports only Deadzone quantization");
 	}
@@ -322,10 +328,10 @@ void NorthPredictionDeadzoneQuantizer::predict_and_quantize_direct(
 		std::vector<uint8_t> &preprocessed) {
 
 	//	const size_t brows = (img.rows+blocksize-1)/blocksize;
-	const size_t bcols = (header.cols+header.blocksize-1)/header.blocksize;
+	const size_t bcols = (header.cols+header.blockWidth-1)/header.blockWidth;
 	const size_t imgRows = header.rows;
 	const size_t imgCols = header.rows;
-	const size_t blocksize = header.blocksize;
+	const size_t blocksize = header.blockWidth;
 
 	uint8_t *t = &preprocessed[0];
 
@@ -451,17 +457,6 @@ void NorthPredictionDeadzoneQuantizer::predict_and_quantize_direct(
 						coded_qi = (uint8_t) prediction_error;
 						reconstructed_value = original_value;
 					}
-					
-					if (i+ii == 3376 && j+jj == 2540) {
-						std::cout << "row = ii+i = " << (int) ii+i << std::endl;
-						std::cout << "col = jj+j = " << (int) jj+j << std::endl;
-						std::cout << "original_value = " << (int) original_value << std::endl;
-						std::cout << "prediction = " << (int) prediction << std::endl;
-						std::cout << "prediction_error = " << (int)prediction_error << std::endl;
-						std::cout << "coded_qi = " << (int) coded_qi << std::endl;
-						std::cout << "reconstructed_pred_error = " << (int) reconstructed_pred_error << std::endl;
-						std::cout << "reconstructed_value = " << (int) reconstructed_value << std::endl;
-					}
 
 					*or0 = (uint8_t) reconstructed_value;
 					*t++ = coded_qi;
@@ -486,7 +481,7 @@ void NorthPredictionDeadzoneQuantizer::transform_inverse(
 
 	const size_t imgRows = header.rows;
 	const size_t imgCols = header.cols;
-	const size_t bs = header.blocksize;
+	const size_t bs = header.blockWidth;
 	const size_t bcols = (header.cols + bs - 1) / bs;
 
 	uint8_t offset;
@@ -554,6 +549,162 @@ void NorthPredictionDeadzoneQuantizer::transform_inverse(
 		}
 	}
 	Profiler::end("prediction+quantization");
+}
+
+
+/// Fast left DPCM, uniform quantizer
+
+void FastLeftUniformQuantizer::transform_direct(
+		uint8_t *original_data, std::vector<uint8_t> &side_information, std::vector<uint8_t> &preprocessed) {
+
+	if (header.channels != 1) {
+		throw std::runtime_error("only one channel supported at the time");
+	}
+
+	if (header.transtype != ImageMarlinHeader::TransformType::FastLeft) {
+		throw std::runtime_error("This class supports only FastLeft transformation");
+	}
+	if (header.qtype != ImageMarlinHeader::QuantizerType::Uniform) {
+		throw std::runtime_error("This class supports only Uniform quantization");
+	}
+
+	switch (header.qstep) {
+		case 0:
+			throw std::runtime_error("Invalid qstep=0");
+		case 1:
+			predict_and_quantize_direct<1>(
+					original_data, side_information, preprocessed);
+			break;
+		case 2:
+			predict_and_quantize_direct<2>(
+					original_data, side_information, preprocessed);
+			break;
+		case 3:
+			predict_and_quantize_direct<3>(
+					original_data, side_information, preprocessed);
+			break;
+		case 4:
+			predict_and_quantize_direct<4>(
+					original_data, side_information, preprocessed);
+			break;
+		case 5:
+			predict_and_quantize_direct<5>(
+					original_data, side_information, preprocessed);
+			break;
+		case 6:
+			predict_and_quantize_direct<6>(
+					original_data, side_information, preprocessed);
+			break;
+		case 7:
+			predict_and_quantize_direct<7>(
+					original_data, side_information, preprocessed);
+			break;
+		case 8:
+			predict_and_quantize_direct<8>(
+					original_data, side_information, preprocessed);
+			break;
+		default:
+			throw std::runtime_error("This implementation does not support this qstep value");
+	}
+}
+
+template<uint8_t qs>
+void FastLeftUniformQuantizer::predict_and_quantize_direct(
+		uint8_t *original_data,
+		std::vector<uint8_t> &side_information,
+		std::vector<uint8_t> &preprocessed) {
+
+	//	const size_t brows = (img.rows+blocksize-1)/blocksize;
+	const size_t pixelCount = header.rows * header.cols * header.channels;
+
+	Profiler::start("quantization");
+	if (qs > 1) {
+		uint8_t* original = original_data;
+		for (size_t i = 0; i < pixelCount; i++) {
+			if (qs == 2) {
+				*original >>= 1;
+			} else if (qs == 4) {
+				*original >>= 2;
+			} else if (qs == 8) {
+				*original >>= 3;
+			} else if (qs == 16) {
+				*original >>= 4;
+			} else if (qs == 32) {
+				*original >>= 5;
+			} else {
+				*original /= qs;
+			}
+			original++;
+		}
+	}
+	Profiler::end("quantization");
+
+	uint8_t previous_value = original_data[0];
+	side_information[0] = original_data[0]; // Only this value is used. TODO: code only the needed SI
+	uint8_t *transformed = &preprocessed[0];
+	uint8_t *original = original_data;
+	Profiler::start("prediction");
+	for (size_t i=0; i<pixelCount; i++) {
+		*transformed = *original - previous_value;
+		previous_value = *original;
+		original++;
+		transformed++;
+	}
+	Profiler::end("prediction");
+}
+
+void FastLeftUniformQuantizer::transform_inverse(
+		std::vector<uint8_t> &entropy_decoded_data,
+		View<const uint8_t> &side_information,
+	std::vector<uint8_t> &reconstructedData) {
+	reconstructedData.resize(header.rows * header.cols * header.channels);
+
+	if (header.channels != 1) {
+		throw std::runtime_error("only one channel supported at the time");
+	}
+	const uint8_t *predicted = &entropy_decoded_data[0];
+
+	uint8_t *reconstructed = &(reconstructedData[0]);
+	uint8_t last_value = side_information[0];
+
+	const size_t pixel_count = header.rows * header.cols * header.channels;
+	Profiler::start("prediction");
+	for (size_t i=0; i<pixel_count; i++) {
+		*reconstructed = *predicted + last_value;
+		last_value = *reconstructed;
+		predicted++;
+		reconstructed++;
+	}
+	Profiler::end("prediction");
+
+	Profiler::start("quantization");
+	const size_t pixelCount = header.rows * header.cols * header.channels;
+	const uint32_t interval_count = (256 + header.qstep - 1) / header.qstep;
+	auto size_last_qinterval = (const uint8_t) 256 - header.qstep * (interval_count - 1);
+	auto first_element_last_interval = (const uint8_t) (header.qstep * (interval_count - 1));
+	// offset for all but the last interval
+	uint8_t offset;
+	// offset for the last interval (might be a smaller interval)
+	uint8_t offset_last_interval;
+	if (header.rectype == ImageMarlinHeader::ReconstructionType::Midpoint)  {
+		offset = (uint8_t) header.qstep / 2;
+		offset_last_interval = (uint8_t) size_last_qinterval / 2;
+	} else {
+		offset = 0;
+		offset_last_interval = 0;
+	}
+
+	uint8_t* data = reconstructedData.data();
+	for (size_t i=0; i<pixelCount; i++) {
+		data[i] = data[i] * header.qstep;
+
+		if (data[i] >= first_element_last_interval) {
+			data[i] = data[i] + offset_last_interval;
+		} else {
+			data[i] = data[i] + offset;
+		}
+	}
+	Profiler::end("quantization");
 }
 
 

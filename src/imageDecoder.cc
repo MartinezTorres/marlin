@@ -49,7 +49,7 @@ void ImageMarlinDecoder::decompress(
 		ImageMarlinHeader& decompressedHeader) {
 	decompressedHeader = ImageMarlinHeader(compressedString);
 
-	const size_t bs = decompressedHeader.blocksize;
+	const size_t bs = decompressedHeader.blockWidth;
 	const size_t brows = (decompressedHeader.rows + bs - 1) / bs;
 	const size_t bcols = (decompressedHeader.cols + bs - 1) / bs;
 	const size_t channels = decompressedHeader.channels;

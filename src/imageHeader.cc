@@ -41,37 +41,51 @@ using namespace marlin;
 
 
 ImageMarlinCoder* ImageMarlinHeader::newCoder() {
-	// Get the transformer
-	ImageMarlinTransformer* transformer;
-	if (qtype == QuantizerType::Uniform) {
-		transformer = new NorthPredictionUniformQuantizer(*this);
-	} else if (qtype == QuantizerType::Deadzone) {
-		transformer = new NorthPredictionDeadzoneQuantizer(*this);
-	} else {
-		throw std::runtime_error("Unsupported qtype");
+	// Get the right subclass depending on the parameters
+	ImageMarlinTransformer* transformer = nullptr;
+	ImageMarlinBlockEC* blockEC = nullptr;
+	if (transtype == TransformType::North) {
+		if (qtype == QuantizerType::Uniform) {
+			transformer = new NorthPredictionUniformQuantizer(*this);
+		} else if (qtype == QuantizerType::Deadzone) {
+			transformer = new NorthPredictionDeadzoneQuantizer(*this);
+		}
+		blockEC = new LaplacianBlockEC(*this);
+	} else if (transtype == TransformType::FastLeft) {
+		if (qtype == QuantizerType::Uniform) {
+			transformer = new FastLeftUniformQuantizer(*this);
+		}
+		blockEC = new LaplacianBlockEC(*this);
+	}
+	if (transformer == nullptr || blockEC == nullptr) {
+		throw std::runtime_error("Invalid transform / quantizer combination");
 	}
 
-	return new ImageMarlinCoder(
-			*this,
-			transformer,
-			new ImageMarlinLaplacianBlockEC());
+	return new ImageMarlinCoder(*this, transformer, blockEC);
 }
 
 ImageMarlinDecoder* ImageMarlinHeader::newDecoder() {
-	// Get the transformer
-	ImageMarlinTransformer* transformer;
-	if (qtype == QuantizerType::Uniform) {
-		transformer = new NorthPredictionUniformQuantizer(*this);
-	} else if (qtype == QuantizerType::Deadzone) {
-		transformer = new NorthPredictionDeadzoneQuantizer(*this);
-	} else {
-		throw std::runtime_error("Unsupported qtype");
+	// Get the right subclass depending on the parameters
+	ImageMarlinTransformer* transformer = nullptr;
+	ImageMarlinBlockEC* blockEC = nullptr;
+	if (transtype == TransformType::North) {
+		if (qtype == QuantizerType::Uniform) {
+			transformer = new NorthPredictionUniformQuantizer(*this);
+		} else if (qtype == QuantizerType::Deadzone) {
+			transformer = new NorthPredictionDeadzoneQuantizer(*this);
+		}
+		blockEC = new LaplacianBlockEC(*this);
+	} else if (transtype == TransformType::FastLeft) {
+		if (qtype == QuantizerType::Uniform) {
+			transformer = new FastLeftUniformQuantizer(*this);
+		}
+		blockEC = new LaplacianBlockEC(*this);
+	}
+	if (transformer == nullptr || blockEC == nullptr) {
+		throw std::runtime_error("Invalid transform / quantizer combination");
 	}
 
-	return new ImageMarlinDecoder(
-			*this,
-			transformer,
-			new ImageMarlinLaplacianBlockEC());
+	return new ImageMarlinDecoder(*this, transformer, blockEC);
 }
 
 void ImageMarlinHeader::dump_to(std::ostream &out) const {
@@ -80,7 +94,8 @@ void ImageMarlinHeader::dump_to(std::ostream &out) const {
 	write_field<2>(out, rows);
 	write_field<2>(out, cols);
 	write_field<2>(out, channels);
-	write_field<2>(out, blocksize);
+	write_field<2>(out, blockWidth);
+	write_field<1>(out, (uint8_t) transtype);
 	write_field<1>(out, qstep);
 	if (qstep > 1) {
 		write_field<1>(out, (uint8_t) qtype);
@@ -98,7 +113,15 @@ void ImageMarlinHeader::load_from(std::istream &in) {
 	rows = read_field<2>(in);
 	cols = read_field<2>(in);
 	channels = read_field<2>(in);
-	blocksize = read_field<2>(in);
+	blockWidth = read_field<2>(in);
+	uint32_t read_transtype = read_field<1>(in);
+	if (read_transtype == (uint32_t) ImageMarlinHeader::TransformType::North) {
+		transtype = ImageMarlinHeader::TransformType::North;
+	} else if (read_transtype == (uint32_t) ImageMarlinHeader::TransformType::FastLeft) {
+		transtype = ImageMarlinHeader::TransformType::FastLeft;
+	} else {
+		throw std::runtime_error("Invalid stored transtype");
+	}
 	qstep = read_field<1>(in);
 	qtype = ImageMarlinHeader::DEFAULT_QTYPE;
 	rectype = ImageMarlinHeader::DEFAULT_RECONSTRUCTION_TYPE;
@@ -129,7 +152,7 @@ void ImageMarlinHeader::load_from(std::istream &in) {
 }
 
 size_t ImageMarlinHeader::size() const {
-	size_t size = 2+2+2+2+1;
+	size_t size = 2+2+2+2+1+1;
 	if (qstep > 1) {
 		size += 1+1;
 	}
@@ -140,7 +163,7 @@ void ImageMarlinHeader::validate() {
 	if (rows == 0 || cols == 0 || channels == 0) {
 		throw std::domain_error("All image dimensions must be positive");
 	}
-	if (blocksize == 0) {
+	if (blockWidth == 0) {
 		throw std::domain_error("Block size must be positive");
 	}
 	if (qstep == 0) {
@@ -196,11 +219,11 @@ void ImageMarlinHeader::show(std::ostream& out) {
 	out << "    rows = " << rows << std::endl;
 	out << "    cols = " << cols << std::endl;
 	out << "    channels = " << channels << std::endl;
-	out << "    blocksize = " << blocksize << std::endl;
+	out << "    blocksize = " << blockWidth << std::endl;
+	out << "    transtype = " << (uint32_t) transtype << std::endl;
 	out << "    qstep = " << qstep << std::endl;
-//	if (qstep > 1) {
-		out << "    qtype = " << (uint32_t) qtype << std::endl;
-		out << "    rectype = " << (uint32_t) rectype << std::endl;
-//	}
+	out << "    qtype = " << (uint32_t) qtype << std::endl;
+	out << "    rectype = " << (uint32_t) rectype << std::endl;
+	out << "    blockEntropyFrequency = " << (uint32_t) blockEntropyFrequency << std::endl;
 	out << "}" << std::endl;
 }

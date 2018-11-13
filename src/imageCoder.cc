@@ -40,7 +40,7 @@ SOFTWARE.
 using namespace marlin;
 
 std::string ImageMarlinCoder::compress(const cv::Mat& orig_img) {
-	const size_t bs = header.blocksize;
+	const size_t bs = header.blockWidth;
 	const size_t brows = (orig_img.rows+bs-1)/bs;
 	const size_t bcols = (orig_img.cols+bs-1)/bs;
 	cv::Mat img;

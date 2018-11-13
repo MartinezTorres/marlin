@@ -60,23 +60,29 @@ public:
 
 	enum class QuantizerType : uint8_t {Uniform = 0, Deadzone = 1};
 	enum class ReconstructionType : uint8_t {Midpoint = 0, Lowpoint = 1};
+	enum class TransformType : uint8_t {North=0, FastLeft=1};
 
 	// Default values
-	static const uint32_t DEFAULT_BLOCK_SIZE = 64;
+	static const uint32_t DEFAULT_BLOCK_WIDTH = 64;
 	static const uint32_t DEFAULT_QSTEP = 1;
+	static const uint32_t DEFAULT_ENTROPY_FREQUENCY = 1;
 	static const QuantizerType DEFAULT_QTYPE = QuantizerType::Uniform;
 	static const ReconstructionType DEFAULT_RECONSTRUCTION_TYPE = ReconstructionType::Midpoint;
+	static const TransformType DEFAULT_TRANSFORM_TYPE = TransformType::North;
 
 	// Image dimensions
 	uint32_t rows, cols, channels;
 	// width (and height) of each block into which the image is divided for entropy coding
-	uint32_t blocksize;
+	uint32_t blockWidth;
 	// Quantization step. Use 1 for lossless compression.
 	uint32_t qstep;
 	// Quantization type
 	QuantizerType qtype;
 	// Quantization reconstruction type
 	ReconstructionType rectype;
+	// Type of transformation
+	TransformType transtype;
+	uint32_t blockEntropyFrequency;
 
 	/**
 	 * Empty constructor
@@ -90,18 +96,21 @@ public:
 			uint32_t rows_,
 			uint32_t cols_,
 			uint32_t channels_,
-			uint32_t blockSize_=DEFAULT_BLOCK_SIZE,
+			uint32_t blockWidth_=DEFAULT_BLOCK_WIDTH,
 			uint32_t qstep_=DEFAULT_QSTEP,
 			QuantizerType qtype_=DEFAULT_QTYPE,
-			ReconstructionType rectype_=DEFAULT_RECONSTRUCTION_TYPE) :
+			ReconstructionType rectype_=DEFAULT_RECONSTRUCTION_TYPE,
+			TransformType transtype_=DEFAULT_TRANSFORM_TYPE,
+			uint32_t blockEntropyFrequency_=DEFAULT_ENTROPY_FREQUENCY) :
 			rows(rows_),
 			cols(cols_),
 			channels(channels_),
-			blocksize(blockSize_),
+			blockWidth(blockWidth_),
 			qstep(qstep_),
 			qtype(qtype_),
-			rectype(rectype_)
-			{
+			rectype(rectype_),
+			transtype(transtype_),
+			blockEntropyFrequency(blockEntropyFrequency_){
 		validate();
 	}
 

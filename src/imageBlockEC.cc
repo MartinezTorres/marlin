@@ -40,84 +40,7 @@ SOFTWARE.
 
 namespace marlin {
 
-
-std::vector<uint8_t> ImageMarlinLaplacianBlockEC::encodeBlocks(
-		const std::vector<uint8_t> &uncompressed,
-		size_t blockSize) {
-	const size_t nBlocks = (uncompressed.size()+blockSize-1)/blockSize;
-
-	Profiler::start("ec_block_entropy");
-	std::vector<std::pair<uint8_t, size_t>> blocksEntropy;
-	for (size_t i=0; i<nBlocks; i++) {
-
-		size_t sz = std::min(blockSize, uncompressed.size()-i*blockSize);
-
-		// Skip analyzing very small blocks
-		if (sz < 8) {
-			blocksEntropy.emplace_back(255,i);
-			continue;
-		}
-
-		std::array<double, 256> hist; hist.fill(0.);
-		for (size_t j=1; j<sz; j++) hist[uncompressed[i*blockSize+j]]++;
-		for (auto &h : hist) h /= (sz-1);
-
-		double entropy = Distribution::entropy(hist)/8.;
-
-		blocksEntropy.emplace_back(std::max(0,std::min(255,int(entropy*256))),i);
-	}
-	// Sort packets depending on increasing entropy
-	std::sort(blocksEntropy.begin(), blocksEntropy.end());
-	Profiler::end("ec_block_entropy");
-
-	// Collect prebuilt dictionaries
-	const Marlin **prebuilt_dictionaries = Marlin_get_prebuilt_dictionaries();
-	prebuilt_dictionaries+=32; // Harcoded, selects Laplacian Distribution
-
-	// Compress
-	Profiler::start("ec_dictionary_coding");
-	std::vector<uint8_t> ec_header(nBlocks*3);
-	std::vector<uint8_t> scratchPad(nBlocks * blockSize);
-	for (size_t b=0; b<nBlocks; b++) {
-
-		size_t i = blocksEntropy[b].second;
-		size_t entropy = blocksEntropy[b].first;
-		size_t sz = std::min(blockSize, uncompressed.size()-i*blockSize);
-
-		auto in  = marlin::make_view(&uncompressed[i*blockSize], &uncompressed[i*blockSize+sz]);
-		auto out = marlin::make_view(&scratchPad[i*blockSize], &scratchPad[i*blockSize+blockSize]);
-
-		size_t compressedSize = prebuilt_dictionaries[(entropy*16)/256]->compress(in, out);
-
-		ec_header[3*i+0]=&prebuilt_dictionaries[(entropy*16)/256] - Marlin_get_prebuilt_dictionaries();
-		ec_header[3*i+1]=compressedSize  & 0xFF;
-		ec_header[3*i+2]=compressedSize >> 8;
-	}
-	Profiler::end("ec_dictionary_coding");
-
-
-	size_t fullCompressedSize = ec_header.size();
-	for (size_t i=0; i<nBlocks; i++) {
-		size_t compressedSize = (ec_header[3*i+2]<<8) + ec_header[3*i+1];
-		fullCompressedSize += compressedSize;
-	}
-
-	std::vector<uint8_t> out(fullCompressedSize);
-
-	memcpy(&out[0], ec_header.data(), ec_header.size());
-
-	{
-		size_t p = ec_header.size();
-		for (size_t i=0; i<nBlocks; i++) {
-			size_t compressedSize = (ec_header[3*i+2]<<8) + ec_header[3*i+1];
-			memcpy(&out[p], &scratchPad[i*blockSize], compressedSize);
-			p+=compressedSize;
-		}
-	}
-
-	return out;
-}
-
+// Common block-based entropy decoding
 
 size_t ImageMarlinBlockEC::decodeBlocks(
 		marlin::View<uint8_t> uncompressed,
@@ -165,7 +88,92 @@ size_t ImageMarlinBlockEC::decodeBlocks(
 }
 
 
-std::vector<uint8_t> ImageMarlinBestDicBlockEC::encodeBlocks(
+
+// Laplacian Block EC (original marlinUtility)
+
+std::vector<uint8_t> LaplacianBlockEC::encodeBlocks(
+		const std::vector<uint8_t> &uncompressed,
+		size_t blockSize) {
+	const size_t nBlocks = (uncompressed.size()+blockSize-1)/blockSize;
+
+	Profiler::start("ec_block_entropy");
+	std::vector<std::pair<uint8_t, size_t>> blocksEntropy;
+	// Calculate entropy only for 1 out of entropy_frequency block
+	double calculated_entropy = 0;
+	for (size_t i=0; i<nBlocks; i++) {
+		if (i % header.blockEntropyFrequency == 0) {
+			size_t sz = std::min(blockSize, uncompressed.size() - i * blockSize);
+
+			// Skip analyzing very small blocks
+			if (sz < 8) {
+				blocksEntropy.emplace_back(255, i);
+				continue;
+			}
+
+			std::array<double, 256> hist;
+			hist.fill(0.);
+			for (size_t j = 1; j < sz; j++) hist[uncompressed[i * blockSize + j]]++;
+			for (auto &h : hist) h /= (sz - 1);
+
+			calculated_entropy = Distribution::entropy(hist) / 8.;
+		}
+		// else: entropy is that of % entropy_frequency == 0
+		blocksEntropy.emplace_back(std::max(0, std::min(255, int(calculated_entropy * 256))), i);
+	}
+	// Sort packets depending on increasing entropy
+	std::sort(blocksEntropy.begin(), blocksEntropy.end());
+	Profiler::end("ec_block_entropy");
+
+	// Collect prebuilt dictionaries
+	const Marlin **prebuilt_dictionaries = Marlin_get_prebuilt_dictionaries();
+	prebuilt_dictionaries+=32; // Harcoded, selects Laplacian Distribution
+
+	// Compress
+	Profiler::start("ec_dictionary_coding");
+	std::vector<uint8_t> ec_header(nBlocks*3);
+	std::vector<uint8_t> scratchPad(nBlocks * blockSize);
+	for (size_t b=0; b<nBlocks; b++) {
+
+		size_t i = blocksEntropy[b].second;
+		size_t entropy = blocksEntropy[b].first;
+		size_t sz = std::min(blockSize, uncompressed.size()-i*blockSize);
+
+		auto in  = marlin::make_view(&uncompressed[i*blockSize], &uncompressed[i*blockSize+sz]);
+		auto out = marlin::make_view(&scratchPad[i*blockSize], &scratchPad[i*blockSize+blockSize]);
+
+		size_t compressedSize = prebuilt_dictionaries[(entropy*16)/256]->compress(in, out);
+
+		ec_header[3*i+0]=&prebuilt_dictionaries[(entropy*16)/256] - Marlin_get_prebuilt_dictionaries();
+		ec_header[3*i+1]=compressedSize  & 0xFF;
+		ec_header[3*i+2]=compressedSize >> 8;
+	}
+	Profiler::end("ec_dictionary_coding");
+
+
+	size_t fullCompressedSize = ec_header.size();
+	for (size_t i=0; i<nBlocks; i++) {
+		size_t compressedSize = (ec_header[3*i+2]<<8) + ec_header[3*i+1];
+		fullCompressedSize += compressedSize;
+	}
+
+	std::vector<uint8_t> out(fullCompressedSize);
+
+	memcpy(&out[0], ec_header.data(), ec_header.size());
+	{
+		size_t p = ec_header.size();
+		for (size_t i=0; i<nBlocks; i++) {
+			size_t compressedSize = (ec_header[3*i+2]<<8) + ec_header[3*i+1];
+			memcpy(&out[p], &scratchPad[i*blockSize], compressedSize);
+			p+=compressedSize;
+		}
+	}
+
+	return out;
+}
+
+// Slow best-dictionary selection encoding
+
+std::vector<uint8_t> ImageMarlinBestDictBlockEC::encodeBlocks(
 			const std::vector<uint8_t> &uncompressed, size_t blockSize) {
 
 	const size_t nBlocks = (uncompressed.size()+blockSize-1)/blockSize;

@@ -40,21 +40,31 @@ SOFTWARE.
 namespace marlin {
 
 /**
- * Image block entropy coder using a family of laplacian dictionaries
- * (default in the orginal marlinUtility)
+ * Fast version of LaplacianBlockEC: entropy is calculated for a few pixels only,
+ * instead of for every block.
  */
-class ImageMarlinLaplacianBlockEC : public ImageMarlinBlockEC {
+class LaplacianBlockEC : public ImageMarlinBlockEC {
+
 public:
+	/**
+	 * @param block_entropy_frequency_ block entropy is calculated for 1 out of block_entropy_frequency_
+	 * blocks
+	 */
+	LaplacianBlockEC(ImageMarlinHeader& header_) : header(header_) {}
+
 	std::vector<uint8_t> encodeBlocks(
 			const std::vector<uint8_t> &uncompressed,
 			size_t blockSize);
+
+protected:
+	ImageMarlinHeader header;
 };
 
 /**
  * Image block entropy coder that choses the best dictionary for
  * compression. Slow.
  */
-class ImageMarlinBestDicBlockEC : public ImageMarlinBlockEC {
+class ImageMarlinBestDictBlockEC : public ImageMarlinBlockEC {
 public:
 	std::vector<uint8_t> encodeBlocks(
 			const std::vector<uint8_t> &uncompressed,
