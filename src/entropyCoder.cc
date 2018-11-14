@@ -33,6 +33,8 @@ SOFTWARE.
 #include <immintrin.h>
 #include <cmath>
 
+#include "profiler.hpp"
+
 #define   LIKELY(condition) (__builtin_expect(static_cast<bool>(condition), 1))
 #define UNLIKELY(condition) (__builtin_expect(static_cast<bool>(condition), 0))
 
@@ -94,7 +96,6 @@ ssize_t compressMarlin8 (
 	View<uint8_t> dst, 
 	std::vector<size_t> &unrepresentedSymbols)
 {
-	
 	JumpTable jump(compressor.K, compressor.O, compressor.unrepresentedSymbolToken+1);	
 	
 		  uint8_t *out   = dst.start;
@@ -104,7 +105,7 @@ ssize_t compressMarlin8 (
 
 	
 	//We look for the word that sets up the machine state.
-	{		
+	{
 		TSource ss = *in++;
 		
 		MarlinIdx ms = compressor.source2marlin[ss>>compressor.shift];
@@ -116,10 +117,11 @@ ssize_t compressMarlin8 (
 		
 		j = compressor.compressorTableInitPointer[ms];
 	}
-	
+
+	MarlinIdx ms;
 	while (in<src.end) {
 		
-		MarlinIdx ms = compressor.source2marlin[(*in++)>>compressor.shift];
+		ms = compressor.source2marlin[(*in++)>>compressor.shift];
 		if (ms==compressor.unrepresentedSymbolToken) {
 			unrepresentedSymbols.push_back(in-src.start-1);
 			ms = 0; // 0 must be always the most probable symbol;
@@ -133,13 +135,13 @@ ssize_t compressMarlin8 (
 			out++;
 		}
 
-		if (dst.end-out<16) return -1;	// TODO: find the exact value
+		if (dst.end-out<16) {
+			return -1;	// TODO: find the exact value
+		}
 	}
-
-
 	//if (not (j & FLAG_NEXT_WORD)) 
 	*out++ = j & 0xFF;
-	
+
 	return out - dst.start;
 }
 
@@ -148,7 +150,7 @@ ssize_t compressMarlinFast(
 	const TMarlinCompress<TSource,MarlinIdx> &compressor,
 	View<const TSource> src, 
 	View<uint8_t> dst, 
-	std::vector<size_t> &unrepresentedSymbols) 
+	std::vector<size_t> &unrepresentedSymbols)
 {
 	
 	JumpTable jump(compressor.K, compressor.O, compressor.unrepresentedSymbolToken+1);	
@@ -160,7 +162,7 @@ ssize_t compressMarlinFast(
 
 	
 	//We look for the word that sets up the machine state.
-	{		
+	{
 		TSource ss = *in++;
 		
 		MarlinIdx ms = compressor.source2marlin[ss>>compressor.shift];
@@ -174,8 +176,7 @@ ssize_t compressMarlinFast(
 	}
 
 	uint32_t value = 0;
-	 int32_t valueBits = 0;
-	
+	int32_t valueBits = 0;
 	while (in<src.end) {
 		
 		if (dst.end-out<16) return -1;	// TODO: find the exact value
@@ -280,10 +281,6 @@ auto TMarlinCompress<TSource,MarlinIdx>::buildCompressorTable(const TMarlinDicti
 
 template<typename TSource, typename MarlinIdx>
 ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, View<uint8_t> dst) const {
-
-	
-	//memcpy(dst.start,src.start,src.nBytes()); return src.nBytes();
-
 	// Assertions
 	if (dst.nBytes() < src.nBytes()) return -1; //TODO: Real error codes
 	
@@ -305,12 +302,13 @@ ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, Vi
 	// Special case: if srcSize is not multiple of 8, we force it to be.
 	size_t padding = 0;
 	while (src.nBytes() % 8 != 0) {
-		
 		*reinterpret_cast<TSource *&>(dst.start)++ = *src.start++;			
 		padding += sizeof(TSource);
 	}
 
-	size_t residualSize = src.nElements()*shift/8;
+	const size_t srcElementCount = src.nElements();
+
+	size_t residualSize = srcElementCount*shift/8;
 
 
 	std::vector<size_t> unrepresentedSymbols;		
@@ -320,7 +318,7 @@ ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, Vi
 	
 	// Valid portion available to encode the marlin message.
 	View<uint8_t> marlinDst = marlin::make_view(dst.start+1,dst.end-residualSize);
-	ssize_t marlinSize = -1;
+	ssize_t marlinSize;
 	if (false) {
 		//marlinSize = compressMarlinReference(src, marlinDst, unrepresentedSymbols);
 	} else if (K==8) {
@@ -328,11 +326,11 @@ ssize_t TMarlinCompress<TSource,MarlinIdx>::compress(View<const TSource> src, Vi
 	} else {
 		marlinSize = compressMarlinFast(*this, src, marlinDst, unrepresentedSymbols);
 	}
-	
+
 	size_t unrepresentedSize = unrepresentedSymbols.size() * ( sizeof(TSource) + (
-		src.nElements() < 0x100 ? sizeof(uint8_t) :
-		src.nElements() < 0x10000 ? sizeof(uint16_t) :
-		src.nElements() < 0x100000000ULL ? sizeof(uint32_t) :sizeof(uint64_t)
+		srcElementCount < 0x100 ? sizeof(uint8_t) :
+		srcElementCount < 0x10000 ? sizeof(uint16_t) :
+		srcElementCount < 0x100000000ULL ? sizeof(uint32_t) :sizeof(uint64_t)
 		));
 	
 	

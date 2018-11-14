@@ -1,17 +1,19 @@
 #include "marlin.h"
-#include "distribution.hpp"
+#include "../src/distribution.hpp"
 #include <iostream>
 
 static void printAlpha(std::vector<uint8_t> msg) {
-	for (size_t i=0; i<msg.size(); i++)
-		printf("%c", char('a'+msg[i]));
+	for (size_t i=0; i<msg.size(); i++) {
+		printf("%c", char('a' + msg[i]));
 		printf("\n");
+	}
 }
 
 static void printHex(std::vector<uint8_t> msg) {
-	for (size_t i=0; i<msg.size(); i++)
+	for (size_t i=0; i<msg.size(); i++) {
 		printf("%02X", msg[i]);
 		printf("\n");
+	}
 }
 
 static bool testMini() {
@@ -125,7 +127,7 @@ static bool testLaplace() {
 int main() {
 
 	return 
-		//testMini() and
+		testMini() and
 		testLaplace() and
 		true?0:-1;
 }

@@ -1,10 +1,16 @@
 /***********************************************************************
 
+imageBlockEC: Implementation of the transformed image <-> bitstream functionality
+
+MIT License
+
+Copyright (c) 2018 Manuel Martinez Torres, portions by Miguel Hernández-Cabronero
+
 Marlin: A Fast Entropy Codec
 
 MIT License
 
-Copyright (c) 2017 Manuel Martinez Torres
+Copyright (c) 2018 Manuel Martinez Torres
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,40 +32,44 @@ SOFTWARE.
 
 ***********************************************************************/
 
+#ifndef IMAGEBLOCKEC_HPP
+#define IMAGEBLOCKEC_HPP
 
-#include <marlin.h>
+#include <imageMarlin.hpp>
 
-////////////////////////////////////////////////////////////////////////
-//
-// Public Methods
+namespace marlin {
 
-ssize_t Marlin_compress(const Marlin *dict, uint8_t* dst, size_t dstCapacity, const uint8_t* src, size_t srcSize) {
-	
-	return dict->compress(marlin::make_view(src,src+srcSize), marlin::make_view(dst,dst+dstCapacity));
+/**
+ * Fast version of LaplacianBlockEC: entropy is calculated for a few pixels only,
+ * instead of for every block.
+ */
+class LaplacianBlockEC : public ImageMarlinBlockEC {
+
+public:
+	/**
+	 * @param block_entropy_frequency_ block entropy is calculated for 1 out of block_entropy_frequency_
+	 * blocks
+	 */
+	LaplacianBlockEC(ImageMarlinHeader& header_) : header(header_) {}
+
+	std::vector<uint8_t> encodeBlocks(
+			const std::vector<uint8_t> &uncompressed,
+			size_t blockSize);
+
+protected:
+	ImageMarlinHeader header;
+};
+
+/**
+ * Image block entropy coder that choses the best dictionary for
+ * compression. Slow.
+ */
+class ImageMarlinBestDictBlockEC : public ImageMarlinBlockEC {
+public:
+	std::vector<uint8_t> encodeBlocks(
+			const std::vector<uint8_t> &uncompressed,
+			size_t blockSize);
+};
+
 }
-
-ssize_t Marlin_decompress(const Marlin *dict, uint8_t* dst, size_t dstSize, const uint8_t* src, size_t srcSize) {
-	
-	return dict->decompress(marlin::make_view(src,src+srcSize), marlin::make_view(dst,dst+dstSize));
-}
-
-Marlin *Marlin_build_dictionary(const char *name, const double hist[256]) {
-	return new Marlin(name,std::vector<double>(&hist[0], &hist[256]));
-}
-
-void Marlin_free_dictionary(Marlin *dict) {
-	
-	if (dict != nullptr)
-		delete dict;
-}
-
-/*const MarlinDictionary **Marlin_get_prebuilt_dictionaries() {
-	
-	return nullptr;
-}
-
-const MarlinDictionary * Marlin_estimate_best_dictionary(const MarlinDictionary **dict, const uint8_t* src, size_t srcSize) {
-	
-	return nullptr;
-}*/
-
+#endif /* IMAGEBLOCKEC_HPP */

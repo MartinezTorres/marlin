@@ -275,6 +275,9 @@ struct TMarlin :
 		name(name_),
 		K(K_), O(O_), shift(shift_), maxWordSize(maxWordSize_) {}
 };
+
+
+
 }
 
 
