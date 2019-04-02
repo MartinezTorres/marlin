@@ -48,7 +48,7 @@ std::map<std::string, double> TMarlinDictionary<TSource,MarlinIdx>::updateConf(
 	conf.emplace("minMarlinSymbols", 2U);
 	conf.emplace("maxMarlinSymbols",(1U<<size_t(conf.at("K"))));
 	conf["maxMarlinSymbols"] = std::min(conf["maxMarlinSymbols"], double((1U<<size_t(conf.at("K")))));
-	conf["maxMarlinSymbols"] = std::min(conf["maxMarlinSymbols"], double((1U<<(8*sizeof(MarlinIdx)))));
+	conf["maxMarlinSymbols"] = std::min(conf["maxMarlinSymbols"], double((1U<<(8*sizeof(MarlinIdx)))-1));
 
 	double maxWordSize = conf["maxWordSize"];
 	conf["maxWordSize"] = 255;
