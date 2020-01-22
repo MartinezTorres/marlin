@@ -272,6 +272,24 @@ void print(const TMarlinDictionary<TSource,MarlinIdx> &dictionary, std::vector<s
 }
 
 template<typename TSource, typename MarlinIdx>
+std::vector<double> TMarlinDictionary<TSource,MarlinIdx>::sanitizeAlphabet(const std::vector<double> &sourceAlphabet) {
+    
+    std::vector<double> res = sourceAlphabet;
+    
+    if (res.size()<1) res.push_back(0);
+    double sum = 0;
+    for (auto &v : res) {
+        if (v<0) v=0;
+        if (std::isnan(v)) v=0;
+        sum += v;
+    }
+    if (sum<1e-10) res[0] = 1;
+    
+    return res;
+}
+
+
+template<typename TSource, typename MarlinIdx>
 auto TMarlinDictionary<TSource,MarlinIdx>::buildMarlinAlphabet() const -> MarlinAlphabet {
 	
 	// Group symbols by their high bits

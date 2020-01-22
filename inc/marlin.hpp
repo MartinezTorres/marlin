@@ -81,6 +81,7 @@ struct TMarlinDictionary{
 	typedef Word_<MarlinIdx>  Word;
 	typedef MarlinSymbol_<TSource> MarlinSymbol;
 
+	const std::vector<double> sourceAlphabet;
 	const Configuration conf;
 
 	const size_t K                = conf.at("K");           // Non overlapping bits of codeword.
@@ -94,7 +95,6 @@ struct TMarlinDictionary{
 	};
 	
 	/// ALPHABETS
-	const std::vector<double> sourceAlphabet;
 	const double sourceEntropy = calcSourceEntropy(sourceAlphabet);
 	const MarlinAlphabet marlinAlphabet = buildMarlinAlphabet();
 		
@@ -107,19 +107,21 @@ struct TMarlinDictionary{
 	const double compressionRatio = efficiency/sourceEntropy; //Expected compression ratio
 	const bool isSkip = calcSkip();        // If all words are small, we can do a faster decoding algorithm;
 
+
 	/// CONSTRUCTOR
 	TMarlinDictionary( 
 		const std::vector<double> &sourceAlphabet_,
 		Configuration conf_ = Configuration()) 
 		: 
-		conf(updateConf(sourceAlphabet_, conf_)), 
-		sourceAlphabet(sourceAlphabet_)
+		sourceAlphabet(sanitizeAlphabet(sourceAlphabet_)),
+		conf(updateConf(sourceAlphabet, conf_))
 		{}
 
 private:
 	// Sets default configurations
 	static std::map<std::string, double> updateConf(const std::vector<double> &sourceAlphabet, Configuration conf);
 
+    static std::vector<double> sanitizeAlphabet(const std::vector<double> &sourceAlphabet);
 	MarlinAlphabet buildMarlinAlphabet() const;
 	
 	std::vector<Word> buildDictionary() const;
