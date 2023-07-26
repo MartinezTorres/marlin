@@ -33,8 +33,6 @@ SOFTWARE.
 #include <regex>
 #include <iostream>
 #include <fstream>
-#include <opencv/highgui.h>
-#include <opencv/cv.hpp>
 #include <unistd.h>
 
 #include "../src/profiler.hpp"

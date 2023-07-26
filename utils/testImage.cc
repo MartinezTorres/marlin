@@ -1,11 +1,9 @@
-#include <marlin.h>
+#include <imageMarlin.hpp>
 #include <distribution.hpp>
 
 #include <iostream>
 #include <sstream>
 #include <fstream>
-#include <opencv/highgui.h>
-#include <opencv/cv.hpp>
 
 
 struct TestTimer {

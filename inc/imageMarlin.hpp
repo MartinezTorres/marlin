@@ -38,8 +38,8 @@ SOFTWARE.
 #include <time.h>
 #include <string.h>
 #include <sstream>
-#include <opencv/highgui.h>
-#include <opencv/cv.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/core.hpp>
 
 #include <marlin.h>
 
